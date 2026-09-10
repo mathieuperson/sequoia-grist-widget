@@ -320,9 +320,20 @@
     allowSelectBy: true
   });
 
-  function pilierClass(pilier) {
+  // Grist can hand back a Choice/Reference value either as a plain string
+  // or as an encoded list (["L", "value", ...]) — normalize to text first.
+  function pilierText(pilier) {
     if (!pilier) return '';
-    const p = pilier.toLowerCase();
+    if (Array.isArray(pilier)) {
+      return pilier.filter(v => typeof v === 'string' && v !== 'L').join(', ');
+    }
+    return String(pilier);
+  }
+
+  function pilierClass(pilier) {
+    const text = pilierText(pilier);
+    if (!text) return '';
+    const p = text.toLowerCase();
     if (p.includes('fondamentale') || p.includes('core')) return 'core';
     if (p.includes('sécurité') || p.includes('securite')) return 'secu';
     if (p.includes('environnement')) return 'env';
@@ -340,7 +351,7 @@
       record.nom_acteur,
       record.entreprise_activite,
       record.acteur_categorie,
-      record.axe_sequoia
+      pilierText(record.axe_sequoia)
     ].filter(Boolean).join(' ').toLowerCase();
     return haystack.includes(query);
   }
@@ -401,8 +412,11 @@
       ? '<img src="' + record.url_logo + '" alt="logo" onerror="this.parentElement.innerHTML=\'<span class=&quot;fallback&quot;>' + initials(record.nom_acteur) + '</span>\'">'
       : '<span class="fallback">' + initials(record.nom_acteur) + '</span>';
 
-    const pilierBadge = record.pilier_sequoia
-      ? '<span class="pilier-badge"><span class="dot"></span>' + record.pilier_sequoia + '</span>' : '';
+    const pilier = pilierText(record.pilier_sequoia);
+    const axe = pilierText(record.axe_sequoia);
+
+    const pilierBadge = pilier
+      ? '<span class="pilier-badge"><span class="dot"></span>' + pilier + '</span>' : '';
 
     wrap.innerHTML =
       '<div class="card">' +
@@ -419,9 +433,9 @@
           '<div class="info-grid">' +
             '<div class="info-item"><div class="label">Activité</div><div class="value">' + (record.entreprise_activite || '') + '</div></div>' +
             '<div class="info-item"><div class="label">Taille</div><div class="value">' + (record.entreprise_taille || '') + '</div></div>' +
-            '<div class="info-item"><div class="label">Axe Sequoia</div><div class="value">' + (record.axe_sequoia || '') + '</div></div>' +
+            '<div class="info-item"><div class="label">Axe Sequoia</div><div class="value">' + axe + '</div></div>' +
             '<div class="info-item"><div class="label">Pilier Sequoia</div><div class="value">' +
-              (record.pilier_sequoia ? '<span class="value-pill ' + pilierClass(record.pilier_sequoia) + '">' + record.pilier_sequoia + '</span>' : '') +
+              (pilier ? '<span class="value-pill ' + pilierClass(pilier) + '">' + pilier + '</span>' : '') +
             '</div></div>' +
           '</div>' +
         '</div>' +
