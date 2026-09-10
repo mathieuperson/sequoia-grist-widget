@@ -2,6 +2,10 @@
   --sequoia-green: #1f6b3f;
   --sequoia-green-dark: #144a2b;
   --sequoia-green-light: #eaf4ee;
+  --pilier-core: #7c3aed;      /* violet — Core AI / IA fondamentale */
+  --pilier-secu: #2563eb;      /* bleu — IA & sécurité */
+  --pilier-env: #1f6b3f;       /* vert — IA & environnement */
+  --cluster-gradient: linear-gradient(135deg, var(--pilier-core) 0%, var(--pilier-secu) 55%, var(--pilier-env) 100%);
   --bg: #f4f6f5;
   --card-bg: #ffffff;
   --border: #e3e6e4;
@@ -157,7 +161,7 @@ body {
 }
 
 .card-header {
-  background: linear-gradient(135deg, var(--sequoia-green), var(--sequoia-green-dark));
+  background: var(--cluster-gradient);
   padding: 24px 28px 20px;
   display: flex;
   align-items: center;
@@ -205,13 +209,30 @@ body {
   align-items: center;
   padding: 5px 12px;
   border-radius: 20px;
-  background: var(--sequoia-green-light);
-  color: var(--sequoia-green-dark);
+  background: var(--cluster-gradient);
+  color: #fff;
   font-size: 12.5px;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .tag:empty { display: none; }
+
+/* Fixed color-coding for the 3 Sequoia pillars, used wherever a record's
+   pilier_sequoia value is shown (permanent, not gradient — one solid
+   color per pillar so it stays recognizable across the app). */
+.value-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 11px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+}
+.value-pill.core { background: var(--pilier-core); }
+.value-pill.secu { background: var(--pilier-secu); }
+.value-pill.env { background: var(--pilier-env); }
+.value-pill.autre { background: var(--text-muted); }
 
 .info-grid {
   display: grid;

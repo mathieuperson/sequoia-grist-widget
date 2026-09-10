@@ -10,6 +10,17 @@ function escapeHtml(str) {
     .replace(/'/g, '&#39;');
 }
 
+// Maps a "pilier_sequoia" value to its fixed color class (core/secu/env),
+// used to render a <span class="value-pill ${pilierClass(v)}">.
+function pilierClass(pilier) {
+  if (!pilier) return '';
+  const p = String(pilier).toLowerCase();
+  if (p.includes('fondamentale') || p.includes('core')) return 'core';
+  if (p.includes('sécurité') || p.includes('securite')) return 'secu';
+  if (p.includes('environnement')) return 'env';
+  return 'autre';
+}
+
 function initials(name) {
   if (!name) return '?';
   return String(name).trim().split(/\s+/).slice(0, 2).map(w => w[0].toUpperCase()).join('');

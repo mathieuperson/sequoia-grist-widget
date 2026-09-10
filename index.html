@@ -8,6 +8,10 @@
   :root {
     --sequoia-green: #1f6b3f;
     --sequoia-green-dark: #144a2b;
+    --pilier-core: #7c3aed;      /* violet — Core AI / IA fondamentale */
+    --pilier-secu: #2563eb;      /* bleu — IA & sécurité */
+    --pilier-env: #1f6b3f;       /* vert — IA & environnement */
+    --cluster-gradient: linear-gradient(135deg, var(--pilier-core) 0%, var(--pilier-secu) 55%, var(--pilier-env) 100%);
     --bg: #f4f6f5;
     --card-bg: #ffffff;
     --border: #e3e6e4;
@@ -150,12 +154,32 @@
   }
 
   .card-header {
-    background: linear-gradient(135deg, var(--sequoia-green), var(--sequoia-green-dark));
+    background: var(--cluster-gradient);
     padding: 28px 28px 22px;
     display: flex;
     align-items: center;
     gap: 20px;
     color: #fff;
+  }
+
+  .pilier-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    background: rgba(255,255,255,0.22);
+    margin-left: auto;
+    white-space: nowrap;
+  }
+
+  .pilier-badge .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #fff;
   }
 
   .logo-frame {
@@ -210,25 +234,21 @@
     font-style: italic;
   }
 
-  .tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-bottom: 22px;
-  }
-
-  .tag {
+  .value-pill {
     display: inline-flex;
     align-items: center;
-    padding: 5px 12px;
+    gap: 6px;
+    padding: 3px 11px;
     border-radius: 20px;
-    background: #eaf4ee;
-    color: var(--sequoia-green-dark);
-    font-size: 12.5px;
-    font-weight: 500;
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
   }
 
-  .tag:empty { display: none; }
+  .value-pill.core { background: var(--pilier-core); }
+  .value-pill.secu { background: var(--pilier-secu); }
+  .value-pill.env { background: var(--pilier-env); }
+  .value-pill.autre { background: var(--text-muted); }
 
   .info-grid {
     display: grid;
@@ -299,6 +319,15 @@
     requiredAccess: 'read table',
     allowSelectBy: true
   });
+
+  function pilierClass(pilier) {
+    if (!pilier) return '';
+    const p = pilier.toLowerCase();
+    if (p.includes('fondamentale') || p.includes('core')) return 'core';
+    if (p.includes('sécurité') || p.includes('securite')) return 'secu';
+    if (p.includes('environnement')) return 'env';
+    return 'autre';
+  }
 
   function initials(name) {
     if (!name) return '?';
@@ -372,6 +401,9 @@
       ? '<img src="' + record.url_logo + '" alt="logo" onerror="this.parentElement.innerHTML=\'<span class=&quot;fallback&quot;>' + initials(record.nom_acteur) + '</span>\'">'
       : '<span class="fallback">' + initials(record.nom_acteur) + '</span>';
 
+    const pilierBadge = record.pilier_sequoia
+      ? '<span class="pilier-badge"><span class="dot"></span>' + record.pilier_sequoia + '</span>' : '';
+
     wrap.innerHTML =
       '<div class="card">' +
         '<div class="card-header">' +
@@ -380,20 +412,17 @@
             '<h1>' + (record.nom_acteur || 'Sans nom') + '</h1>' +
             '<div class="category">' + [record.type_acteur, record.acteur_categorie].filter(Boolean).join(' · ') + '</div>' +
           '</div>' +
+          pilierBadge +
         '</div>' +
         '<div class="card-body">' +
           '<div class="description">' + (record.description || '') + '</div>' +
-          '<div class="tags">' +
-            (record.entreprise_activite ? '<span class="tag">' + record.entreprise_activite + '</span>' : '') +
-            (record.entreprise_taille ? '<span class="tag">' + record.entreprise_taille + '</span>' : '') +
-            (record.axe_sequoia ? '<span class="tag">' + record.axe_sequoia + '</span>' : '') +
-            (record.pilier_sequoia ? '<span class="tag">' + record.pilier_sequoia + '</span>' : '') +
-          '</div>' +
           '<div class="info-grid">' +
             '<div class="info-item"><div class="label">Activité</div><div class="value">' + (record.entreprise_activite || '') + '</div></div>' +
             '<div class="info-item"><div class="label">Taille</div><div class="value">' + (record.entreprise_taille || '') + '</div></div>' +
             '<div class="info-item"><div class="label">Axe Sequoia</div><div class="value">' + (record.axe_sequoia || '') + '</div></div>' +
-            '<div class="info-item"><div class="label">Pilier Sequoia</div><div class="value">' + (record.pilier_sequoia || '') + '</div></div>' +
+            '<div class="info-item"><div class="label">Pilier Sequoia</div><div class="value">' +
+              (record.pilier_sequoia ? '<span class="value-pill ' + pilierClass(record.pilier_sequoia) + '">' + record.pilier_sequoia + '</span>' : '') +
+            '</div></div>' +
           '</div>' +
         '</div>' +
       '</div>';
