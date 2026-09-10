@@ -184,3 +184,109 @@ async function getAttachmentDownloadUrl(id) {
   const { token, baseUrl } = await grist.docApi.getAccessToken({ readOnly: true });
   return `${baseUrl}/attachments/${id}/download?auth=${encodeURIComponent(token)}`;
 }
+
+// ---------- Reference / Reference-List picker (add/remove existing rows) ----------
+// Reads another table via docApi.fetchTable (requires 'full' access) to
+// offer autocomplete suggestions, and writes back with parseStrings:true
+// so Grist resolves the typed/picked display text to the matching row(s)
+// in the target table.
+
+const _tableCache = {};
+function fetchTableCached(tableId) {
+  if (!_tableCache[tableId]) {
+    _tableCache[tableId] = grist.docApi.fetchTable(tableId).catch(err => {
+      delete _tableCache[tableId];
+      throw err;
+    });
+  }
+  return _tableCache[tableId];
+}
+
+const DISPLAY_COL_CANDIDATES = ['Nom_Complet', 'NomComplet', 'nom_acteur', 'Nom', 'nom', 'Sujet', 'Objet', 'Name', 'Title', 'name'];
+
+function guessDisplayColumn(tableData) {
+  const cols = Object.keys(tableData).filter(k => k !== 'id' && k !== 'manualSort');
+  for (const candidate of DISPLAY_COL_CANDIDATES) {
+    if (cols.includes(candidate)) return candidate;
+  }
+  return cols[0] || 'id';
+}
+
+async function fetchReferenceOptions(tableId) {
+  const data = await fetchTableCached(tableId);
+  const col = guessDisplayColumn(data);
+  const ids = data.id || [];
+  const labels = data[col] || [];
+  return ids
+    .map((rowId, i) => ({ id: rowId, label: String(labels[i] ?? ('#' + rowId)) }))
+    .filter(o => o.label)
+    .sort((a, b) => a.label.localeCompare(b.label, 'fr'));
+}
+
+// Renders an add/remove chip picker with autocomplete into `container`.
+// `currentLabels` is the initial list of display strings already linked.
+// `onChange(labels)` is called with the full updated list on every add/remove.
+async function renderRefPicker(container, currentLabels, targetTableId, onChange) {
+  const datalistId = 'dl-' + Math.random().toString(36).slice(2);
+  let labels = (currentLabels || []).filter(Boolean);
+  let options = [];
+
+  function paint() {
+    container.innerHTML =
+      '<div class="ref-chips">' +
+        labels.map((l, i) =>
+          '<span class="ref-chip">' + escapeHtml(l) +
+          '<button type="button" data-i="' + i + '" title="Retirer">✕</button></span>'
+        ).join('') +
+      '</div>' +
+      '<input class="editable-input ref-input" list="' + datalistId + '" placeholder="Rechercher et ajouter… (Entrée)">' +
+      '<datalist id="' + datalistId + '">' +
+        options.map(o => '<option value="' + escapeHtml(o.label) + '">').join('') +
+      '</datalist>';
+
+    container.querySelectorAll('.ref-chip button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        labels.splice(Number(btn.dataset.i), 1);
+        paint();
+        onChange([...labels]);
+      });
+    });
+
+    const input = container.querySelector('.ref-input');
+    function tryAdd() {
+      const val = input.value.trim();
+      if (val && !labels.includes(val)) {
+        labels.push(val);
+        input.value = '';
+        paint();
+        onChange([...labels]);
+      }
+    }
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); tryAdd(); } });
+    input.addEventListener('change', tryAdd); // fires when picking a datalist suggestion
+  }
+
+  paint();
+
+  try {
+    options = await fetchReferenceOptions(targetTableId);
+    paint();
+  } catch (err) {
+    console.error('fetchReferenceOptions failed for', targetTableId, err);
+  }
+}
+
+async function saveRefField(recordId, colId, labels, statusEl) {
+  if (!colId) return;
+  try {
+    if (statusEl) statusEl.textContent = 'Enregistrement…';
+    await grist.getTable().update(
+      { id: recordId, fields: { [colId]: ['L', ...labels] } },
+      { parseStrings: true }
+    );
+    if (statusEl) statusEl.textContent = 'Enregistré ✓';
+  } catch (err) {
+    if (statusEl) statusEl.textContent = 'Erreur d’enregistrement';
+    console.error(err);
+  }
+}

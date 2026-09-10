@@ -304,21 +304,32 @@
       '</div>' +
       '<div class="info-grid">' +
         '<div class="info-item"><div class="label">Axe SequoIA</div><input class="editable-input" id="f-axe" value="' + escapeHtml(o.AxeSequoia || '') + '"></div>' +
-        '<div class="info-item"><div class="label">Partenaire(s)</div><div class="value">' + escapeHtml(formatValue(o.Partenaires)) + '</div></div>' +
         '<div class="info-item"><div class="label">Date de début</div><input type="date" class="editable-input" id="f-date-debut" value="' + gristDateToInputValue(o.DateDebut) + '"></div>' +
         '<div class="info-item"><div class="label">Échéance</div><input type="date" class="editable-input" id="f-echeance" value="' + gristDateToInputValue(o.Echeance) + '"></div>' +
         '<div class="info-item"><div class="label">Montant (€)</div><input type="number" class="editable-input" id="f-montant" value="' + (o.Montant != null ? o.Montant : '') + '"></div>' +
         '<div class="info-item"><div class="label">Etablissement(s) Cluster</div><div class="value">' + escapeHtml(formatValue(o.EtablissementCluster)) + '</div></div>' +
         '<div class="info-item"><div class="label">Laboratoire(s) Cluster</div><div class="value">' + escapeHtml(formatValue(o.LaboratoireCluster)) + '</div></div>' +
         '<div class="info-item"><div class="label">Equipe(s) Cluster</div><div class="value">' + escapeHtml(formatValue(o.EquipeCluster)) + '</div></div>' +
-        '<div class="info-item"><div class="label">Contact(s) Cluster</div><div class="value">' + escapeHtml(formatValue(o.ContactCluster)) + '</div></div>' +
-        '<div class="info-item"><div class="label">Contact(s) partenaire</div><div class="value">' + escapeHtml(formatValue(o.ContactPartenaire)) + '</div></div>' +
       '</div>' +
+      '<div class="section-title">Partenaire(s)</div>' +
+      '<div id="ref-partenaires"></div>' +
+      '<div class="section-title">Contact(s) partenaire</div>' +
+      '<div id="ref-contact-partenaire"></div>' +
+      '<div class="section-title">Contact(s) Cluster</div>' +
+      '<div id="ref-contact-cluster"></div>' +
       '<div class="section-title">Commentaire <span class="save-status" id="save-status"></span></div>' +
       '<textarea class="editable-textarea" id="f-commentaire" placeholder="Aucun commentaire.">' + escapeHtml(o.Commentaire || '') + '</textarea>';
 
     modal.hidden = false;
     document.getElementById('modal-close').addEventListener('click', () => { modal.hidden = true; });
+
+    const labelsOf = (v) => (formatValue(v) ? formatValue(v).split(', ') : []);
+    renderRefPicker(document.getElementById('ref-partenaires'), labelsOf(o.Partenaires), 'Structures',
+      (labels) => saveRefField(o.id, currentMappings.Partenaires, labels, document.getElementById('save-status')));
+    renderRefPicker(document.getElementById('ref-contact-partenaire'), labelsOf(o.ContactPartenaire), 'Contacts',
+      (labels) => saveRefField(o.id, currentMappings.ContactPartenaire, labels, document.getElementById('save-status')));
+    renderRefPicker(document.getElementById('ref-contact-cluster'), labelsOf(o.ContactCluster), 'Contacts',
+      (labels) => saveRefField(o.id, currentMappings.ContactCluster, labels, document.getElementById('save-status')));
 
     const statusEl = document.getElementById('save-status');
     const save = createFieldSaver((text) => { statusEl.textContent = text; });
