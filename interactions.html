@@ -548,7 +548,7 @@
       }
 
       renderRefPicker(document.getElementById('ref-partenaires'), labelsOf(r.Partenaires), 'Structures',
-        (labels) => { saveRefField(r.id, currentMappings.Partenaires, labels, document.getElementById('cr-save-status')); renderContactPartenairePicker(labels); });
+        (labels) => { saveRefField(r.id, currentMappings.Partenaires, labels, document.getElementById('cr-save-status')); renderContactPartenairePicker(chipLabels(labels)); });
       renderContactPartenairePicker(labelsOf(r.Partenaires));
       renderRefPicker(document.getElementById('ref-contact-cluster'), labelsOf(r.ContactCluster), 'Contacts',
         (labels) => saveRefField(r.id, currentMappings.ContactCluster, labels, document.getElementById('cr-save-status')));
@@ -656,17 +656,30 @@
 
   const createModal = document.getElementById('create-modal');
 
-  function openCreateModal() {
+  async function openCreateModal() {
     ['new-objet', 'new-date', 'new-echeance', 'new-suites', 'new-cr']
       .forEach(id => { document.getElementById(id).value = ''; });
 
-    const typeValues = Array.from(new Set(allRecords.map(r => r.Type).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'fr'));
     const typeSelect = document.getElementById('new-type');
-    typeSelect.innerHTML = '<option value="">—</option>' +
-      typeValues.map(t => '<option value="' + escapeHtml(t) + '">' + escapeHtml(t) + '</option>').join('');
+    typeSelect.innerHTML = '<option value="">—</option>';
 
     createModal.hidden = false;
     document.getElementById('new-objet').focus();
+
+    // Pull Type values from the *whole* Interactions table, not just the
+    // records currently loaded in this (possibly Structure-filtered)
+    // widget instance — otherwise the list is empty whenever the selected
+    // Structure has no interactions of its own yet.
+    try {
+      const tableId = await grist.getTable().getTableId();
+      const data = await fetchTableCached(tableId);
+      const typeValues = Array.from(new Set((data[currentMappings.Type] || []).filter(Boolean)))
+        .sort((a, b) => String(a).localeCompare(String(b), 'fr'));
+      typeSelect.innerHTML = '<option value="">—</option>' +
+        typeValues.map(t => '<option value="' + escapeHtml(t) + '">' + escapeHtml(t) + '</option>').join('');
+    } catch (err) {
+      console.error('Could not load Type values', err);
+    }
   }
   function closeCreateModal() { createModal.hidden = true; }
 
