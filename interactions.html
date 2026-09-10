@@ -205,7 +205,9 @@
       <div class="form-field"><label>Prochaine échéance</label><input id="new-echeance" type="date"></div>
       <div class="form-field"><label>Suites</label><input id="new-suites"></div>
       <div class="form-field full"><label>Compte-rendu</label><textarea id="new-cr"></textarea></div>
-      <div class="form-modal-note">Le(s) partenaire(s) et contact(s) associés ne sont pas modifiables depuis ce widget : renseignez-les depuis la table Interactions dans Grist si besoin.</div>
+      <div class="form-field full"><label>Partenaire(s)</label><div id="new-ref-partenaires"></div></div>
+      <div class="form-field full"><label>Contact(s) partenaire</label><div id="new-ref-contact-partenaire"></div></div>
+      <div class="form-modal-note">Les autres liens (contact cluster, établissement, laboratoire, équipe, opportunité) se renseignent depuis la fiche une fois l'interaction créée.</div>
     </div>
     <div class="form-modal-actions">
       <button class="btn-secondary" id="create-cancel">Annuler</button>
@@ -655,6 +657,17 @@
   });
 
   const createModal = document.getElementById('create-modal');
+  let newPartenaireChips = [];
+  let newContactPartenaireChips = [];
+  const NEW_STRUCTURE_LINK_CANDIDATES = ['Structures', 'Structure', 'Structure_s_', 'structures'];
+
+  function renderNewContactPartenairePicker(partenaireLabels) {
+    renderRefPicker(
+      document.getElementById('new-ref-contact-partenaire'), [], 'Contacts',
+      (chips) => { newContactPartenaireChips = chips; },
+      { linkCandidates: NEW_STRUCTURE_LINK_CANDIDATES, parentTableId: 'Structures', parentLabels: partenaireLabels }
+    );
+  }
 
   async function openCreateModal() {
     ['new-objet', 'new-date', 'new-echeance', 'new-suites', 'new-cr']
@@ -662,6 +675,12 @@
 
     const typeSelect = document.getElementById('new-type');
     typeSelect.innerHTML = '<option value="">—</option>';
+
+    newPartenaireChips = [];
+    newContactPartenaireChips = [];
+    renderRefPicker(document.getElementById('new-ref-partenaires'), [], 'Structures',
+      (chips) => { newPartenaireChips = chips; renderNewContactPartenairePicker(chipLabels(chips)); });
+    renderNewContactPartenairePicker([]);
 
     createModal.hidden = false;
     document.getElementById('new-objet').focus();
@@ -699,6 +718,12 @@
     if (currentMappings.ProchaineEcheance) fields[currentMappings.ProchaineEcheance] = inputValueToGristDate(document.getElementById('new-echeance').value);
     if (currentMappings.Suites) fields[currentMappings.Suites] = document.getElementById('new-suites').value.trim();
     if (currentMappings.CR) fields[currentMappings.CR] = document.getElementById('new-cr').value.trim();
+    if (currentMappings.Partenaires && newPartenaireChips.length) {
+      fields[currentMappings.Partenaires] = ['L', ...newPartenaireChips.map(c => c.id)];
+    }
+    if (currentMappings.ContactPartenaire && newContactPartenaireChips.length) {
+      fields[currentMappings.ContactPartenaire] = ['L', ...newContactPartenaireChips.map(c => c.id)];
+    }
 
     try {
       const created = await grist.getTable().create({ fields });

@@ -489,6 +489,61 @@
     const el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('input', () => saveField(recordId, colId, el.value, statusEl));
+    if (el.tagName === 'SELECT') el.addEventListener('change', () => saveField(recordId, colId, el.value, statusEl));
+  }
+
+  // Standalone helpers (index.html doesn't load common.js): fetch a column's
+  // real Grist-defined Choice options ("Modifier les choix" list, not just
+  // values currently in use) via the REST API's /tables/{tableId}/columns
+  // endpoint, which exposes each column's `type` and `widgetOptions` (a JSON
+  // string holding `choices` for Choice columns).
+  let _tableIdPromise = null;
+  function currentTableId() {
+    if (!_tableIdPromise) _tableIdPromise = grist.getTable().getTableId();
+    return _tableIdPromise;
+  }
+
+  const _choicesCache = {};
+  async function fetchColumnChoices(colId) {
+    const tableId = await currentTableId();
+    const cacheKey = tableId + '::' + colId;
+    if (cacheKey in _choicesCache) return _choicesCache[cacheKey];
+    try {
+      const { token, baseUrl } = await grist.docApi.getAccessToken({ readOnly: true });
+      const res = await fetch(`${baseUrl}/tables/${encodeURIComponent(tableId)}/columns?auth=${encodeURIComponent(token)}`);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+      const col = (data.columns || []).find(c => c.id === colId);
+      const type = col && col.fields && col.fields.type;
+      if (!type || type.indexOf('Choice') !== 0) { _choicesCache[cacheKey] = null; return null; }
+      let opts = col.fields.widgetOptions;
+      if (typeof opts === 'string') { try { opts = JSON.parse(opts); } catch { opts = null; } }
+      const choices = (opts && Array.isArray(opts.choices)) ? opts.choices : null;
+      _choicesCache[cacheKey] = choices;
+      return choices;
+    } catch (err) {
+      console.error('fetchColumnChoices failed for', colId, err);
+      _choicesCache[cacheKey] = null;
+      return null;
+    }
+  }
+
+  function escAttr(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  }
+
+  // Replaces a plain-value <select> (rendered synchronously with just the
+  // current value) with the full Choice list once fetched — same
+  // "paint now, fill in later" pattern used by the ref-pickers elsewhere.
+  function populateChoiceSelect(id, colId, currentValue) {
+    fetchColumnChoices(colId).then(choices => {
+      if (!choices) return; // not a Choice column, or fetch failed: keep the plain fallback
+      const el = document.getElementById(id);
+      if (!el) return;
+      const all = (currentValue && !choices.includes(currentValue)) ? [...choices, currentValue] : choices;
+      el.innerHTML = '<option value="">—</option>' +
+        all.map(c => '<option value="' + escAttr(c) + '"' + (c === currentValue ? ' selected' : '') + '>' + escAttr(c) + '</option>').join('');
+    });
   }
 
   // Grist can hand back a Choice/Reference value either as a plain string
@@ -710,10 +765,10 @@
           '<div class="section-title">Description <span class="save-status" id="save-status"></span></div>' +
           '<textarea class="editable-textarea" id="f-description" placeholder="Aucune description.">' + (record.description || '') + '</textarea>' +
           '<div class="info-grid">' +
-            '<div class="info-item"><div class="label">Type d\'acteur</div><input class="editable-input" id="f-type-acteur" value="' + (record.type_acteur || '') + '"></div>' +
-            '<div class="info-item"><div class="label">Catégorie</div><input class="editable-input" id="f-acteur-categorie" value="' + (record.acteur_categorie || '') + '"></div>' +
-            '<div class="info-item"><div class="label">Activité</div><input class="editable-input" id="f-entreprise-activite" value="' + (record.entreprise_activite || '') + '"></div>' +
-            '<div class="info-item"><div class="label">Taille</div><input class="editable-input" id="f-entreprise-taille" value="' + (record.entreprise_taille || '') + '"></div>' +
+            '<div class="info-item"><div class="label">Type d\'acteur</div><select class="editable-input" id="f-type-acteur"><option value="' + escAttr(record.type_acteur || '') + '" selected>' + (record.type_acteur || '—') + '</option></select></div>' +
+            '<div class="info-item"><div class="label">Catégorie</div><select class="editable-input" id="f-acteur-categorie"><option value="' + escAttr(record.acteur_categorie || '') + '" selected>' + (record.acteur_categorie || '—') + '</option></select></div>' +
+            '<div class="info-item"><div class="label">Activité</div><select class="editable-input" id="f-entreprise-activite"><option value="' + escAttr(record.entreprise_activite || '') + '" selected>' + (record.entreprise_activite || '—') + '</option></select></div>' +
+            '<div class="info-item"><div class="label">Taille</div><select class="editable-input" id="f-entreprise-taille"><option value="' + escAttr(record.entreprise_taille || '') + '" selected>' + (record.entreprise_taille || '—') + '</option></select></div>' +
             '<div class="info-item"><div class="label">Structure de recherche</div><input class="editable-input" id="f-recherche-structure" value="' + (record.recherche_structure || '') + '"></div>' +
             '<div class="info-item"><div class="label">Équipe / activité</div><input class="editable-input" id="f-recherche-equipe-activite" value="' + (record.recherche_equipe_activite || '') + '"></div>' +
             '<div class="info-item"><div class="label">Laboratoire</div><input class="editable-input" id="f-recherche-equipe-labo" value="' + (record.recherche_equipe_labo || '') + '"></div>' +
@@ -731,6 +786,10 @@
     bindInput('f-acteur-categorie', record.id, 'acteur_categorie', statusEl);
     bindInput('f-entreprise-activite', record.id, 'entreprise_activite', statusEl);
     bindInput('f-entreprise-taille', record.id, 'entreprise_taille', statusEl);
+    populateChoiceSelect('f-type-acteur', 'type_acteur', record.type_acteur || '');
+    populateChoiceSelect('f-acteur-categorie', 'acteur_categorie', record.acteur_categorie || '');
+    populateChoiceSelect('f-entreprise-activite', 'entreprise_activite', record.entreprise_activite || '');
+    populateChoiceSelect('f-entreprise-taille', 'entreprise_taille', record.entreprise_taille || '');
     bindInput('f-recherche-structure', record.id, 'recherche_structure', statusEl);
     bindInput('f-recherche-equipe-activite', record.id, 'recherche_equipe_activite', statusEl);
     bindInput('f-recherche-equipe-labo', record.id, 'recherche_equipe_labo', statusEl);
