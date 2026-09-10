@@ -10,8 +10,22 @@ Widgets personnalisés Grist pour le CRM SequoIA (déployés via GitHub Pages).
 | Fiche contact | `/contacts.html` | Contacts | Lecture |
 | Fiche interaction | `/interactions.html` | Interactions | Lecture + écriture (CR, pièces jointes) |
 | Pipeline opportunités (Kanban) | `/opportunites.html` | Opportunités | Lecture + écriture (statut) |
+| Dashboard financement CIFRE | `/cifre-financement.html` | Thèses (ou toute table de thèses doctorales) | Lecture |
 
 URL de base : `https://mathieuperson.github.io/sequoia-grist-widget/`
+
+### Dashboard financement CIFRE
+
+Regroupe les thèses CIFRE par **Université > Entreprise partenaire** : nombre de CIFRE, montant total, et
+répartition monétaire (salaire doctorant + contrat) / in-kind (encadrement entreprise) **par année**, réparties à
+parts égales sur la durée de la thèse (200k€/3 ans par défaut — 120k doctorant + 40k contrat en monétaire, 40k
+d'encadrement en in-kind). Export CSV, et paramètres (montants, durée par défaut) éditables et persistés dans le
+document via `grist.setOption`/`getOption`.
+
+Colonnes attendues sur la table source (mappage Grist classique) : Université, Entreprise partenaire, Date de
+début de thèse. Optionnelles : un champ "Financement CIFRE (oui/non)" pour filtrer si la table contient aussi des
+thèses non-CIFRE (sinon toutes les lignes sont comptées), une durée en années si différente de 3, un montant total
+si différent de 200k€ pour une thèse donnée.
 
 ## Mise en place dans Grist
 

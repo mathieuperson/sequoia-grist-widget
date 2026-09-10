@@ -349,6 +349,79 @@ async function testOpportunitesDateSave(browser) {
   await context.close();
 }
 
+function epoch(y, m, d) { return Date.UTC(y, m - 1, d) / 1000; }
+
+async function testCifreDashboard(browser) {
+  console.log('\n=== cifre-financement.html : pivot Université > Entreprise > années ===');
+  const cfg = {
+    widgetTableId: 'Theses',
+    baseUrl: 'https://mock.grist.local/api/docs/mockdoc',
+    tables: {
+      Theses: {
+        colIds: ['Universite', 'Entreprise', 'DateDebut', 'EstCIFRE', 'DureeAnnees', 'MontantTotal'],
+        data: {
+          id: [1, 2, 3, 4],
+          Universite: ['Université de Rennes', 'Université de Rennes', 'Université de Rennes', 'Université de Rennes'],
+          Entreprise: ['Orange', 'Orange', 'Neverhack', 'Orange'],
+          DateDebut: [epoch(2024, 9, 1), epoch(2025, 9, 1), epoch(2025, 1, 1), epoch(2023, 1, 1)],
+          // record #4 is explicitly NOT a CIFRE — must be excluded entirely
+          EstCIFRE: ['Oui', 'Oui', 'Oui', 'Non'],
+          DureeAnnees: [null, null, null, null],
+          MontantTotal: [null, null, null, null]
+        }
+      }
+    },
+    mappings: {
+      Universite: 'Universite', Entreprise: 'Entreprise', DateDebut: 'DateDebut',
+      EstCIFRE: 'EstCIFRE', DureeAnnees: 'DureeAnnees', MontantTotal: 'MontantTotal'
+    }
+  };
+
+  const { page, context, consoleErrors } = await openWidget(browser, 'cifre-financement.html', cfg);
+  await page.waitForTimeout(100);
+
+  const pivot = await page.evaluate(() => window.__lastPivot);
+  ok(pivot.totalNb === 3, 'la thèse marquée "Non" CIFRE est exclue (3 thèses comptées, pas 4)');
+  ok(pivot.totalMontant === 600000, 'montant total = 3 x 200k€ (défaut doctorant+contrat+encadrant)');
+  ok(pivot.groupList.length === 1 && pivot.groupList[0].universite === 'Université de Rennes',
+    'un seul groupe Université (Rennes)');
+
+  const rennes = pivot.groupList[0];
+  const orange = rennes.rows.find(r => r.entreprise === 'Orange');
+  const neverhack = rennes.rows.find(r => r.entreprise === 'Neverhack');
+  ok(!!orange && orange.nbCIFRE === 2 && orange.montantTotal === 400000, 'Orange : 2 CIFRE, 400k€');
+  ok(!!neverhack && neverhack.nbCIFRE === 1 && neverhack.montantTotal === 200000, 'Neverhack : 1 CIFRE, 200k€');
+
+  ok(JSON.stringify(pivot.years) === JSON.stringify([2024, 2025, 2026, 2027]),
+    'les années couvertes vont de 2024 (1ère thèse) à 2027 (fin de la 2e thèse, durée 3 ans)');
+
+  // 2025 and 2026 overlap both Orange theses (A: 2024-26, B: 2025-27) —
+  // monétaire/an = (120k+40k)/3 = 53 333.33, doubled where they overlap.
+  const near = (a, b) => Math.abs(a - b) < 1;
+  ok(near(orange.perYear[2024].monetaire, 160000 / 3), '2024 Orange monétaire = 160k/3 (seule la 1ère thèse)');
+  ok(near(orange.perYear[2025].monetaire, (160000 / 3) * 2), '2025 Orange monétaire = doublé (les 2 thèses se chevauchent)');
+  ok(near(orange.perYear[2027].inKind, 40000 / 3), '2027 Orange in-kind = 40k/3 (seule la 2e thèse, fin de période)');
+
+  const headerText = await page.locator('table.pivot thead').textContent();
+  ok(['2024', '2025', '2026', '2027'].every(y => headerText.includes(y)), 'les 4 années apparaissent en en-tête du tableau');
+  ok((await page.locator('.kpi-row').textContent()).includes('Universités'), 'les cartes KPI sont rendues');
+
+  // Settings: bumping the default doctorant salary must change the totals.
+  await page.click('#btn-settings');
+  await page.waitForTimeout(50);
+  await page.fill('#cfg-doctorant', '150000');
+  await page.click('#settings-save');
+  await page.waitForTimeout(100);
+  const pivot2 = await page.evaluate(() => window.__lastPivot);
+  ok(pivot2.totalMontant === 3 * (150000 + 40000 + 40000),
+    'changer le salaire doctorant dans les Paramètres recalcule bien les montants');
+  const optionCalls = await page.evaluate(() => window.__mockCalls.filter(c => c.fn === 'setOption'));
+  ok(optionCalls.length >= 1, 'la config est persistée via grist.setOption (survivra à un rechargement)');
+
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
 // PLAYWRIGHT_CHROMIUM_PATH lets a sandboxed/offline environment point at a
 // pre-installed browser (no network access to download one); omit it to use
 // Playwright's own managed install (after `npx playwright install chromium`).
@@ -361,6 +434,7 @@ try {
   await testContactsHeaderNomComplet(browser);
   await testContactsCreateFlow(browser);
   await testOpportunitesDateSave(browser);
+  await testCifreDashboard(browser);
 } finally {
   await browser.close();
 }
