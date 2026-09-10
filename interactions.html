@@ -47,6 +47,36 @@
   .cr-toolbar .mode-btn.active { background: var(--sequoia-green); color: #fff; }
   .cr-save-status { font-size: 11px; color: var(--text-muted); padding-right: 4px; }
 
+  .objet-input {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid transparent;
+    color: #fff;
+    font-size: 21px;
+    font-weight: 700;
+    padding: 2px 0;
+    width: 100%;
+  }
+  .objet-input::placeholder { color: rgba(255,255,255,0.6); }
+  .objet-input:hover { border-bottom-color: rgba(255,255,255,0.4); }
+  .objet-input:focus { outline: none; border-bottom-color: #fff; }
+
+  .header-subrow { display: flex; gap: 10px; margin-top: 4px; }
+  .header-subrow input {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid transparent;
+    color: #fff;
+    opacity: 0.9;
+    font-size: 13px;
+    padding: 2px 0;
+  }
+  .header-subrow input[type="date"] { width: 128px; color-scheme: dark; }
+  .header-subrow input[type="text"] { flex: 1; min-width: 80px; }
+  .header-subrow input::placeholder { color: rgba(255,255,255,0.6); }
+  .header-subrow input:hover { border-bottom-color: rgba(255,255,255,0.4); }
+  .header-subrow input:focus { outline: none; border-bottom-color: #fff; }
+
   .cr-editor {
     width: 100%;
     min-height: 220px;
@@ -106,9 +136,7 @@
 <div class="layout">
   <aside class="sidebar">
     <div class="sidebar-header">
-      <div class="search-box">
-        <input type="text" id="search" placeholder="Rechercher une interaction...">
-      </div>
+      <button class="btn-new" id="btn-new">+ Nouvelle interaction</button>
     </div>
     <div class="list" id="list">
       <div class="empty-list">Chargement…</div>
@@ -145,13 +173,6 @@
 
   grist.ready({ requiredAccess: 'full', columns: COLUMNS, allowSelectBy: true });
 
-  function matchesQuery(r, query) {
-    if (!query) return true;
-    const haystack = [r.Objet, r.Type, formatValue(r.Partenaires), r.Suites]
-      .filter(Boolean).join(' ').toLowerCase();
-    return haystack.includes(query);
-  }
-
   function sortByDateDesc(records) {
     return [...records].sort((a, b) => {
       const da = typeof a.Date === 'number' ? a.Date : 0;
@@ -161,12 +182,11 @@
   }
 
   function renderList() {
-    const query = (document.getElementById('search').value || '').trim().toLowerCase();
     const listEl = document.getElementById('list');
-    const filtered = sortByDateDesc(allRecords.filter(r => matchesQuery(r, query)));
+    const filtered = sortByDateDesc(allRecords);
 
     if (filtered.length === 0) {
-      listEl.innerHTML = '<div class="empty-list">Aucune interaction trouvée.</div>';
+      listEl.innerHTML = '<div class="empty-list">Aucune interaction. Cliquez sur "+ Nouvelle interaction" pour en créer une.</div>';
       return;
     }
 
@@ -323,8 +343,11 @@
         '<div class="card-header">' +
           '<div class="header-icon">📅</div>' +
           '<div class="header-text">' +
-            '<h1>' + escapeHtml(r.Objet || 'Sans objet') + '</h1>' +
-            '<div class="subtitle">' + [formatDate(r.Date), r.Type].filter(Boolean).join(' · ') + '</div>' +
+            '<input class="objet-input" id="f-objet" placeholder="Objet" value="' + escapeHtml(r.Objet || '') + '">' +
+            '<div class="header-subrow">' +
+              '<input type="date" id="f-date" value="' + gristDateToInputValue(r.Date) + '">' +
+              '<input type="text" id="f-type" placeholder="Type" value="' + escapeHtml(r.Type || '') + '">' +
+            '</div>' +
           '</div>' +
         '</div>' +
         '<div class="card-body">' +
@@ -338,8 +361,8 @@
             '<div class="info-item"><div class="label">Laboratoire Cluster</div><div class="value">' + escapeHtml(formatValue(r.LaboratoireCluster)) + '</div></div>' +
             '<div class="info-item"><div class="label">Equipe Cluster</div><div class="value">' + escapeHtml(formatValue(r.EquipeCluster)) + '</div></div>' +
             '<div class="info-item"><div class="label">Opportunité(s)</div><div class="value">' + escapeHtml(formatValue(r.Opportunites)) + '</div></div>' +
-            '<div class="info-item"><div class="label">Prochaine échéance</div><div class="value">' + escapeHtml(formatDate(r.ProchaineEcheance) || formatValue(r.ProchaineEcheance)) + '</div></div>' +
-            '<div class="info-item"><div class="label">Suites</div><div class="value">' + escapeHtml(r.Suites || '') + '</div></div>' +
+            '<div class="info-item"><div class="label">Prochaine échéance</div><input type="date" class="editable-input" id="f-echeance" value="' + gristDateToInputValue(r.ProchaineEcheance) + '"></div>' +
+            '<div class="info-item"><div class="label">Suites</div><input class="editable-input" id="f-suites" value="' + escapeHtml(r.Suites || '') + '"></div>' +
           '</div>' +
 
           '<div class="section-title">Compte-rendu</div>' +
@@ -363,6 +386,24 @@
           '<div class="pj-list" id="pj-list"></div>' +
         '</div>' +
       '</div>';
+
+    const saveField = debounce(async (colId, value) => {
+      if (!colId) return;
+      try {
+        saveStatus('Enregistrement…');
+        await grist.getTable().update({ id: r.id, fields: { [colId]: value } });
+        saveStatus('Enregistré ✓');
+      } catch (err) {
+        saveStatus('Erreur d’enregistrement');
+        console.error(err);
+      }
+    }, 700);
+
+    document.getElementById('f-objet').addEventListener('input', (e) => saveField(currentMappings.Objet, e.target.value));
+    document.getElementById('f-type').addEventListener('input', (e) => saveField(currentMappings.Type, e.target.value));
+    document.getElementById('f-date').addEventListener('change', (e) => saveField(currentMappings.Date, inputValueToGristDate(e.target.value)));
+    document.getElementById('f-echeance').addEventListener('change', (e) => saveField(currentMappings.ProchaineEcheance, inputValueToGristDate(e.target.value)));
+    document.getElementById('f-suites').addEventListener('input', (e) => saveField(currentMappings.Suites, e.target.value));
 
     const editor = document.getElementById('cr-editor');
     const preview = document.getElementById('cr-preview');
@@ -418,6 +459,13 @@
   grist.onRecords(function (records, mappings) {
     currentMappings = mappings;
     allRecords = mapRecords(records, mappings);
+    // If the interaction shown in the fiche fell out of the (possibly
+    // filtered) list — e.g. the linked Structure changed — Grist doesn't
+    // always re-fire onRecord, so clear it here explicitly.
+    if (current && !allRecords.some(r => r.id === current.id)) {
+      current = null;
+      renderFiche(null);
+    }
     renderList();
   });
 
@@ -427,7 +475,15 @@
     selectRecord(r);
   });
 
-  document.getElementById('search').addEventListener('input', renderList);
+  document.getElementById('btn-new').addEventListener('click', async () => {
+    try {
+      const created = await grist.getTable().create({ fields: {} });
+      const newId = Array.isArray(created) ? created[0].id : created.id;
+      grist.setCursorPos({ rowId: newId }).catch(() => {});
+    } catch (err) {
+      console.error(err);
+    }
+  });
 </script>
 
 </body>

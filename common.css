@@ -6,6 +6,15 @@
   --pilier-secu: #4fa5d8;      /* bleu — IA & sécurité (logo Cluster SequoIA) */
   --pilier-env: #4cae8c;       /* vert — IA & environnement (logo Cluster SequoIA) */
   --cluster-gradient: linear-gradient(135deg, var(--pilier-core) 0%, var(--pilier-secu) 55%, var(--pilier-env) 100%);
+  /* Statut d'opportunité — dégradé de funnel : gris-bleu (tôt) -> bleu ->
+     ambre -> orange -> vert (gagné), rouge distinct pour "Abandonné". */
+  --status-prospection: #64748b;
+  --status-qualification: #3b82f6;
+  --status-montage: #f59e0b;
+  --status-contractualisation: #ea580c;
+  --status-concretise: #22c55e;
+  --status-abandonne: #dc2626;
+  --status-default: #94a3b8;
   --bg: #f4f6f5;
   --card-bg: #ffffff;
   --border: #e3e6e4;
@@ -283,6 +292,74 @@ body {
   font-weight: 600;
   background: #fff3;
   color: #fff;
+}
+
+/* ---------- Inline-editable fields ---------- */
+.editable-input, .editable-select {
+  width: 100%;
+  border: 1px solid transparent;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  padding: 3px 5px;
+  border-radius: 6px;
+}
+
+.editable-input:hover, .editable-select:hover { background: var(--bg); }
+
+.editable-input:focus, .editable-select:focus {
+  outline: none;
+  border-color: var(--sequoia-green);
+  background: #fff;
+}
+
+.editable-textarea {
+  width: 100%;
+  min-height: 80px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 13.5px;
+  line-height: 1.5;
+  background: var(--bg);
+  resize: vertical;
+}
+
+.editable-textarea:focus {
+  outline: none;
+  border-color: var(--sequoia-green);
+  background: #fff;
+}
+
+.save-status, .cr-save-status {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.btn-new {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 9px;
+  margin-top: 10px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: none;
+  color: var(--sequoia-green-dark);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.btn-new:hover {
+  background: var(--sequoia-green-light);
+  border-color: var(--sequoia-green);
 }
 
 @media (max-width: 640px) {

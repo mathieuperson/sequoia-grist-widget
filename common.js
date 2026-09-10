@@ -58,6 +58,42 @@ function formatMontant(value) {
   return n.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
 }
 
+// Converts a Grist Date value (seconds since epoch, UTC midnight) to the
+// yyyy-mm-dd string an <input type="date"> expects, and back.
+function gristDateToInputValue(value) {
+  if (value === null || value === undefined || value === '') return '';
+  const d = typeof value === 'number' ? new Date(value * 1000) : new Date(value);
+  if (isNaN(d.getTime())) return '';
+  return d.toISOString().slice(0, 10);
+}
+
+function inputValueToGristDate(str) {
+  if (!str) return null;
+  const d = new Date(str + 'T00:00:00Z');
+  return isNaN(d.getTime()) ? null : Math.floor(d.getTime() / 1000);
+}
+
+// Fixed color for each opportunity Statut — a "funnel" progression from
+// cool/neutral (early stage) to warm/green (won), red standing apart for
+// "Abandonné". Matches the --status-* tokens in common.css and should
+// mirror the choice colors set in Grist for the Statut column.
+const STATUS_COLORS = {
+  'prospection': 'var(--status-prospection)',
+  'qualification': 'var(--status-qualification)',
+  'montage': 'var(--status-montage)',
+  'contractualisation': 'var(--status-contractualisation)',
+  'concrétisé': 'var(--status-concretise)',
+  'concretise': 'var(--status-concretise)',
+  'abandonné': 'var(--status-abandonne)',
+  'abandonne': 'var(--status-abandonne)'
+};
+
+function statusColor(status) {
+  if (!status) return 'var(--status-default)';
+  const key = String(status).trim().toLowerCase();
+  return STATUS_COLORS[key] || 'var(--status-default)';
+}
+
 function formatDate(value) {
   if (!value) return '';
   // Grist Date/DateTime columns come through as seconds-since-epoch.
