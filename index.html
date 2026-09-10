@@ -78,6 +78,75 @@
     opacity: 0.6;
   }
 
+  .list-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 10px;
+    font-size: 12.5px;
+  }
+
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-muted);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .toggle-row input { cursor: pointer; }
+
+  .filter-toggle-btn {
+    border: none;
+    background: none;
+    color: var(--sequoia-green-dark, var(--sequoia-green));
+    font-weight: 600;
+    cursor: pointer;
+    padding: 2px 0;
+  }
+
+  .filter-panel {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .filter-panel[hidden] { display: none; }
+
+  .filter-field label {
+    display: block;
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--text-muted);
+    margin-bottom: 3px;
+  }
+
+  .filter-field select {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 12.5px;
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  .filter-reset {
+    align-self: flex-start;
+    border: none;
+    background: none;
+    color: var(--text-muted);
+    font-size: 11.5px;
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 0;
+  }
+
   .partner-list {
     flex: 1;
     overflow-y: auto;
@@ -160,26 +229,6 @@
     align-items: center;
     gap: 20px;
     color: #fff;
-  }
-
-  .pilier-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 12px;
-    border-radius: 20px;
-    font-size: 12px;
-    font-weight: 600;
-    background: rgba(255,255,255,0.22);
-    margin-left: auto;
-    white-space: nowrap;
-  }
-
-  .pilier-badge .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: #fff;
   }
 
   .logo-frame {
@@ -300,6 +349,32 @@
       <div class="search-box">
         <input type="text" id="search" placeholder="Rechercher un partenaire...">
       </div>
+      <div class="list-controls">
+        <label class="toggle-row">
+          <input type="checkbox" id="show-prospects">
+          Afficher les prospects
+        </label>
+        <button class="filter-toggle-btn" id="filter-toggle" type="button">Filtres ▾</button>
+      </div>
+      <div class="filter-panel" id="filter-panel" hidden>
+        <div class="filter-field">
+          <label for="filter-type_acteur">Type d'acteur</label>
+          <select id="filter-type_acteur" data-field="type_acteur"><option value="">Tous</option></select>
+        </div>
+        <div class="filter-field">
+          <label for="filter-entreprise_activite">Activité</label>
+          <select id="filter-entreprise_activite" data-field="entreprise_activite"><option value="">Toutes</option></select>
+        </div>
+        <div class="filter-field">
+          <label for="filter-entreprise_taille">Taille</label>
+          <select id="filter-entreprise_taille" data-field="entreprise_taille"><option value="">Toutes</option></select>
+        </div>
+        <div class="filter-field">
+          <label for="filter-pilier_sequoia">Pilier SequoIA</label>
+          <select id="filter-pilier_sequoia" data-field="pilier_sequoia"><option value="">Tous</option></select>
+        </div>
+        <button class="filter-reset" id="filter-reset" type="button">Réinitialiser les filtres</button>
+      </div>
     </div>
     <div class="partner-list" id="partner-list">
       <div class="empty-list">Chargement…</div>
@@ -314,6 +389,9 @@
 <script>
   let allRecords = [];
   let currentRecord = null;
+
+  const FILTER_FIELDS = ['type_acteur', 'entreprise_activite', 'entreprise_taille', 'pilier_sequoia'];
+  const activeFilters = { type_acteur: '', entreprise_activite: '', entreprise_taille: '', pilier_sequoia: '' };
 
   grist.ready({
     requiredAccess: 'read table',
@@ -356,10 +434,45 @@
     return haystack.includes(query);
   }
 
+  function matchesFilters(record) {
+    const showProspects = document.getElementById('show-prospects').checked;
+    if (!showProspects && pilierText(record.acteur_categorie).trim().toLowerCase() === 'prospect') return false;
+
+    return FILTER_FIELDS.every(field => {
+      const wanted = activeFilters[field];
+      if (!wanted) return true;
+      return pilierText(record[field]) === wanted;
+    });
+  }
+
+  function populateFilterOptions() {
+    FILTER_FIELDS.forEach(field => {
+      const select = document.getElementById('filter-' + field);
+      const previous = select.value;
+      const values = Array.from(new Set(
+        allRecords.map(r => pilierText(r[field])).filter(Boolean)
+      )).sort((a, b) => a.localeCompare(b, 'fr'));
+
+      const placeholder = select.options[0];
+      select.innerHTML = '';
+      select.appendChild(placeholder);
+      values.forEach(v => {
+        const opt = document.createElement('option');
+        opt.value = v;
+        opt.textContent = v;
+        select.appendChild(opt);
+      });
+
+      // Keep the previous selection if it's still a valid option.
+      select.value = values.includes(previous) ? previous : '';
+      activeFilters[field] = select.value;
+    });
+  }
+
   function renderList() {
     const query = (document.getElementById('search').value || '').trim().toLowerCase();
     const listEl = document.getElementById('partner-list');
-    const filtered = allRecords.filter(r => matchesQuery(r, query));
+    const filtered = allRecords.filter(r => matchesQuery(r, query) && matchesFilters(r));
 
     if (filtered.length === 0) {
       listEl.innerHTML = '<div class="empty-list">Aucun partenaire trouvé.</div>';
@@ -415,9 +528,6 @@
     const pilier = pilierText(record.pilier_sequoia);
     const axe = pilierText(record.axe_sequoia);
 
-    const pilierBadge = pilier
-      ? '<span class="pilier-badge"><span class="dot"></span>' + pilier + '</span>' : '';
-
     wrap.innerHTML =
       '<div class="card">' +
         '<div class="card-header">' +
@@ -426,7 +536,6 @@
             '<h1>' + (record.nom_acteur || 'Sans nom') + '</h1>' +
             '<div class="category">' + [record.type_acteur, record.acteur_categorie].filter(Boolean).join(' · ') + '</div>' +
           '</div>' +
-          pilierBadge +
         '</div>' +
         '<div class="card-body">' +
           '<div class="description">' + (record.description || '') + '</div>' +
@@ -444,6 +553,7 @@
 
   grist.onRecords(function(records) {
     allRecords = records || [];
+    populateFilterOptions();
     renderList();
   });
 
@@ -454,6 +564,28 @@
   });
 
   document.getElementById('search').addEventListener('input', renderList);
+  document.getElementById('show-prospects').addEventListener('change', renderList);
+
+  document.getElementById('filter-toggle').addEventListener('click', () => {
+    const panel = document.getElementById('filter-panel');
+    panel.hidden = !panel.hidden;
+    document.getElementById('filter-toggle').textContent = panel.hidden ? 'Filtres ▾' : 'Filtres ▴';
+  });
+
+  FILTER_FIELDS.forEach(field => {
+    document.getElementById('filter-' + field).addEventListener('change', (e) => {
+      activeFilters[field] = e.target.value;
+      renderList();
+    });
+  });
+
+  document.getElementById('filter-reset').addEventListener('click', () => {
+    FILTER_FIELDS.forEach(field => {
+      activeFilters[field] = '';
+      document.getElementById('filter-' + field).value = '';
+    });
+    renderList();
+  });
 </script>
 
 </body>
