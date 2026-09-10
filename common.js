@@ -180,6 +180,37 @@ async function getAttachmentMeta(id) {
   return { id, fileName: fields.fileName || `Fichier #${id}`, fileSize: fields.fileSize };
 }
 
+// Reads a column's real Grist-defined Choice/Choice-List options (the list
+// configured in "Modifier les choix", not just the values currently used by
+// loaded records) via the REST API's /tables/{tableId}/columns endpoint,
+// which exposes each column's `type` and `widgetOptions` (a JSON string
+// holding `choices` for Choice columns). Returns null for non-Choice
+// columns or on any failure, so callers can fall back to a plain input.
+const _choicesCache = {};
+async function fetchColumnChoices(tableId, colId) {
+  if (!colId) return null;
+  const cacheKey = tableId + '::' + colId;
+  if (cacheKey in _choicesCache) return _choicesCache[cacheKey];
+  try {
+    const { token, baseUrl } = await grist.docApi.getAccessToken({ readOnly: true });
+    const res = await fetch(`${baseUrl}/tables/${encodeURIComponent(tableId)}/columns?auth=${encodeURIComponent(token)}`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const col = (data.columns || []).find(c => c.id === colId);
+    const type = col && col.fields && col.fields.type;
+    if (!type || type.indexOf('Choice') !== 0) { _choicesCache[cacheKey] = null; return null; }
+    let opts = col.fields.widgetOptions;
+    if (typeof opts === 'string') { try { opts = JSON.parse(opts); } catch { opts = null; } }
+    const choices = (opts && Array.isArray(opts.choices)) ? opts.choices : null;
+    _choicesCache[cacheKey] = choices;
+    return choices;
+  } catch (err) {
+    console.error('fetchColumnChoices failed for', tableId, colId, err);
+    _choicesCache[cacheKey] = null;
+    return null;
+  }
+}
+
 async function getAttachmentDownloadUrl(id) {
   const { token, baseUrl } = await grist.docApi.getAccessToken({ readOnly: true });
   return `${baseUrl}/attachments/${id}/download?auth=${encodeURIComponent(token)}`;
