@@ -534,6 +534,21 @@
 
     const pilier = pilierText(record.pilier_sequoia);
     const axe = pilierText(record.axe_sequoia);
+    const typeActeur = pilierText(record.type_acteur).toLowerCase();
+    const isEconomique = typeActeur.includes('economique') || typeActeur.includes('économique');
+    const isRecherche = typeActeur.includes('recherche');
+
+    // Certains champs ne sont pertinents (et remplis) que pour un des deux
+    // grands types d'acteur — on ne les affiche donc que dans ce cas, pour
+    // éviter des champs vides sans intérêt sur la fiche.
+    const economiqueFields = !isEconomique ? '' :
+      '<div class="info-item"><div class="label">Activité</div><div class="value">' + (record.entreprise_activite || '') + '</div></div>' +
+      '<div class="info-item"><div class="label">Taille</div><div class="value">' + (record.entreprise_taille || '') + '</div></div>';
+
+    const rechercheFields = !isRecherche ? '' :
+      '<div class="info-item"><div class="label">Structure de recherche</div><div class="value">' + (record.recherche_structure || '') + '</div></div>' +
+      '<div class="info-item"><div class="label">Équipe / activité</div><div class="value">' + (record.recherche_equipe_activite || '') + '</div></div>' +
+      '<div class="info-item"><div class="label">Laboratoire</div><div class="value">' + (record.recherche_equipe_labo || '') + '</div></div>';
 
     wrap.innerHTML =
       '<div class="card">' +
@@ -547,8 +562,8 @@
         '<div class="card-body">' +
           '<div class="description">' + (record.description || '') + '</div>' +
           '<div class="info-grid">' +
-            '<div class="info-item"><div class="label">Activité</div><div class="value">' + (record.entreprise_activite || '') + '</div></div>' +
-            '<div class="info-item"><div class="label">Taille</div><div class="value">' + (record.entreprise_taille || '') + '</div></div>' +
+            economiqueFields +
+            rechercheFields +
             '<div class="info-item"><div class="label">Axe Sequoia</div><div class="value">' + axe + '</div></div>' +
             '<div class="info-item"><div class="label">Pilier Sequoia</div><div class="value">' +
               (pilier ? '<span class="value-pill ' + pilierClass(pilier) + '">' + pilier + '</span>' : '') +
