@@ -477,6 +477,14 @@ body {
 }
 .form-field textarea { min-height: 70px; resize: vertical; }
 
+.required-mark { color: var(--status-abandonne, #DC2626); }
+.form-field-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+.form-field-hint.error { color: var(--status-abandonne, #DC2626); }
+
 .form-modal-note {
   grid-column: 1 / -1;
   font-size: 12px;

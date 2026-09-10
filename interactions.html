@@ -200,13 +200,17 @@
     <h2 class="form-modal-title">Nouvelle interaction</h2>
     <div class="form-modal-grid">
       <div class="form-field full"><label>Objet</label><input id="new-objet" autofocus></div>
+      <div class="form-field full">
+        <label>Partenaire(s) <span class="required-mark">*</span></label>
+        <div id="new-ref-partenaires"></div>
+        <div class="form-field-hint" id="new-partenaire-hint">Sans partenaire, l'interaction n'apparaîtra pas dans la fiche de la structure.</div>
+      </div>
+      <div class="form-field full"><label>Contact(s) partenaire</label><div id="new-ref-contact-partenaire"></div></div>
       <div class="form-field"><label>Date</label><input id="new-date" type="date"></div>
       <div class="form-field"><label>Type</label><select id="new-type"></select></div>
       <div class="form-field"><label>Prochaine échéance</label><input id="new-echeance" type="date"></div>
       <div class="form-field"><label>Suites</label><input id="new-suites"></div>
       <div class="form-field full"><label>Compte-rendu</label><textarea id="new-cr"></textarea></div>
-      <div class="form-field full"><label>Partenaire(s)</label><div id="new-ref-partenaires"></div></div>
-      <div class="form-field full"><label>Contact(s) partenaire</label><div id="new-ref-contact-partenaire"></div></div>
       <div class="form-modal-note">Les autres liens (contact cluster, établissement, laboratoire, équipe, opportunité) se renseignent depuis la fiche une fois l'interaction créée.</div>
     </div>
     <div class="form-modal-actions">
@@ -678,8 +682,15 @@
 
     newPartenaireChips = [];
     newContactPartenaireChips = [];
+    const hintEl = document.getElementById('new-partenaire-hint');
+    hintEl.textContent = "Sans partenaire, l'interaction n'apparaîtra pas dans la fiche de la structure.";
+    hintEl.classList.remove('error');
     renderRefPicker(document.getElementById('new-ref-partenaires'), [], 'Structures',
-      (chips) => { newPartenaireChips = chips; renderNewContactPartenairePicker(chipLabels(chips)); });
+      (chips) => {
+        newPartenaireChips = chips;
+        renderNewContactPartenairePicker(chipLabels(chips));
+        if (chips.length) hintEl.classList.remove('error');
+      });
     renderNewContactPartenairePicker([]);
 
     createModal.hidden = false;
@@ -713,6 +724,16 @@
   document.getElementById('create-submit').addEventListener('click', async () => {
     const objet = document.getElementById('new-objet').value.trim();
     if (!objet) { document.getElementById('new-objet').focus(); return; }
+
+    const hintEl = document.getElementById('new-partenaire-hint');
+    if (newPartenaireChips.length === 0) {
+      hintEl.textContent = 'Choisis au moins un partenaire (sinon l\'interaction n\'apparaîtra nulle part).';
+      hintEl.classList.add('error');
+      const input = document.querySelector('#new-ref-partenaires .ref-input');
+      if (input) input.focus();
+      return;
+    }
+    hintEl.classList.remove('error');
 
     const fields = {};
     if (currentMappings.Objet) fields[currentMappings.Objet] = objet;
