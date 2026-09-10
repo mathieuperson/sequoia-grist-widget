@@ -9,9 +9,9 @@
   /* Statut d'opportunité — dégradé de funnel : gris-bleu (tôt) -> bleu ->
      ambre -> orange -> vert (gagné), rouge distinct pour "Abandonné". */
   --status-prospection: #64748b;
-  --status-qualification: #3b82f6;
+  --status-qualification: #0ea5e9;
   --status-montage: #f59e0b;
-  --status-contractualisation: #ea580c;
+  --status-contractualisation: #8b5cf6;
   --status-concretise: #22c55e;
   --status-abandonne: #dc2626;
   --status-default: #94a3b8;
