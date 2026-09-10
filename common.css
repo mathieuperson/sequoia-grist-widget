@@ -173,10 +173,12 @@ body {
   background: var(--cluster-gradient);
   padding: 24px 28px 20px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 18px;
   color: #fff;
 }
+
+.card-header .header-icon { margin-top: 2px; }
 
 .header-icon {
   width: 64px;

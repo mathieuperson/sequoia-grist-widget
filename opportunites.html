@@ -157,12 +157,13 @@
     border: none;
     background: var(--sequoia-green-light);
     color: var(--sequoia-green-dark);
-    font-weight: 600;
-    font-size: 12px;
-    padding: 6px 12px;
-    border-radius: 20px;
+    width: 26px;
+    height: 26px;
+    min-width: 26px;
+    border-radius: 50%;
     cursor: pointer;
-    white-space: nowrap;
+    font-size: 13px;
+    line-height: 1;
     flex-shrink: 0;
   }
   .edit-toggle-btn:hover { background: var(--sequoia-green); color: #fff; }
@@ -396,7 +397,7 @@
     content.innerHTML =
       '<button class="close-btn" id="modal-close">✕</button>' +
       '<div class="modal-title-row">' + titleHtml +
-        '<button class="edit-toggle-btn" id="toggle-edit">' + (oppEditMode ? '✓ Terminé' : '✏️ Modifier') + '</button>' +
+        '<button class="edit-toggle-btn" id="toggle-edit" title="' + (oppEditMode ? 'Terminé' : 'Modifier') + '">' + (oppEditMode ? '✓' : '✏️') + '</button>' +
       '</div>' +
       bodyHtml;
 
@@ -439,8 +440,8 @@
     document.getElementById('f-sujet').addEventListener('input', (e) => save(o.id, currentMappings.Sujet, e.target.value));
     document.getElementById('f-type').addEventListener('input', (e) => save(o.id, currentMappings.Type, e.target.value));
     document.getElementById('f-axe').addEventListener('input', (e) => save(o.id, currentMappings.AxeSequoia, e.target.value));
-    document.getElementById('f-date-debut').addEventListener('change', (e) => save(o.id, currentMappings.DateDebut, inputValueToGristDate(e.target.value)));
-    document.getElementById('f-echeance').addEventListener('change', (e) => save(o.id, currentMappings.Echeance, inputValueToGristDate(e.target.value)));
+    document.getElementById('f-date-debut').addEventListener('input', (e) => save(o.id, currentMappings.DateDebut, inputValueToGristDate(e.target.value)));
+    document.getElementById('f-echeance').addEventListener('input', (e) => save(o.id, currentMappings.Echeance, inputValueToGristDate(e.target.value)));
     document.getElementById('f-montant').addEventListener('input', (e) => save(o.id, currentMappings.Montant, e.target.value === '' ? null : Number(e.target.value)));
     document.getElementById('f-commentaire').addEventListener('input', (e) => save(o.id, currentMappings.Commentaire, e.target.value));
   }
