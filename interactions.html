@@ -696,18 +696,20 @@
     createModal.hidden = false;
     document.getElementById('new-objet').focus();
 
-    // Prefer the column's real Grist-defined Choice list (includes values
-    // like a just-added "Webinaire" that no existing record uses yet).
-    // Fall back to scanning the *whole* Interactions table for distinct
-    // values actually in use if Type isn't a Choice column.
+    // Union of the column's real Grist-defined Choice list (includes values
+    // like a just-added "Webinaire" that no existing record uses yet) and
+    // the values actually in use across the *whole* Interactions table (a
+    // Choice column can carry values typed before being added to its
+    // formally configured choices list — Grist still accepts them).
     try {
       const tableId = await grist.getTable().getTableId();
-      let typeValues = await fetchColumnChoices(tableId, currentMappings.Type);
-      if (!typeValues) {
-        const data = await fetchTableCached(tableId);
-        typeValues = Array.from(new Set((data[currentMappings.Type] || []).filter(Boolean)));
-      }
-      typeValues = [...typeValues].sort((a, b) => String(a).localeCompare(String(b), 'fr'));
+      const [choices, data] = await Promise.all([
+        fetchColumnChoices(tableId, currentMappings.Type),
+        fetchTableCached(tableId)
+      ]);
+      const used = new Set((data[currentMappings.Type] || []).filter(Boolean));
+      const typeValues = Array.from(new Set([...(choices || []), ...used]))
+        .sort((a, b) => String(a).localeCompare(String(b), 'fr'));
       typeSelect.innerHTML = '<option value="">—</option>' +
         typeValues.map(t => '<option value="' + escapeHtml(t) + '">' + escapeHtml(t) + '</option>').join('');
     } catch (err) {

@@ -134,13 +134,17 @@
     <h2 class="form-modal-title">Nouveau contact</h2>
     <div class="form-modal-grid">
       <div class="form-field full"><label>Nom</label><input id="new-nom" autofocus></div>
+      <div class="form-field full">
+        <label>Structure(s) <span class="required-mark">*</span></label>
+        <div id="new-ref-structures"></div>
+        <div class="form-field-hint" id="new-structure-hint">Sans structure, le contact n'apparaîtra pas dans la fiche du partenaire.</div>
+      </div>
       <div class="form-field"><label>Prénom (facultatif)</label><input id="new-prenom"></div>
       <div class="form-field"><label>Fonction</label><input id="new-fonction"></div>
       <div class="form-field"><label>Email</label><input id="new-email" type="email"></div>
       <div class="form-field"><label>Téléphone</label><input id="new-telephone"></div>
       <div class="form-field full"><label>Linkedin</label><input id="new-linkedin"></div>
       <div class="form-field full"><label>Commentaire</label><textarea id="new-commentaire"></textarea></div>
-      <div class="form-modal-note">La structure associée n'est pas modifiable depuis ce widget : renseignez-la depuis la table Contacts dans Grist si besoin.</div>
     </div>
     <div class="form-modal-actions">
       <button class="btn-secondary" id="create-cancel">Annuler</button>
@@ -397,10 +401,19 @@
   }
 
   const createModal = document.getElementById('create-modal');
+  let newStructureChips = [];
 
   function openCreateModal() {
     ['new-nom', 'new-prenom', 'new-fonction', 'new-email', 'new-telephone', 'new-linkedin', 'new-commentaire']
       .forEach(id => { document.getElementById(id).value = ''; });
+
+    newStructureChips = [];
+    const hintEl = document.getElementById('new-structure-hint');
+    hintEl.textContent = "Sans structure, le contact n'apparaîtra pas dans la fiche du partenaire.";
+    hintEl.classList.remove('error');
+    renderRefPicker(document.getElementById('new-ref-structures'), [], 'Structures',
+      (chips) => { newStructureChips = chips; if (chips.length) hintEl.classList.remove('error'); });
+
     createModal.hidden = false;
     document.getElementById('new-nom').focus();
   }
@@ -415,8 +428,19 @@
     const nom = document.getElementById('new-nom').value.trim();
     if (!nom) { document.getElementById('new-nom').focus(); return; }
 
+    const hintEl = document.getElementById('new-structure-hint');
+    if (newStructureChips.length === 0) {
+      hintEl.textContent = "Choisis au moins une structure (sinon le contact n'apparaîtra nulle part).";
+      hintEl.classList.add('error');
+      const input = document.querySelector('#new-ref-structures .ref-input');
+      if (input) input.focus();
+      return;
+    }
+    hintEl.classList.remove('error');
+
     const fields = {};
     if (currentMappings.Nom) fields[currentMappings.Nom] = nom;
+    if (currentMappings.Structures) fields[currentMappings.Structures] = ['L', ...newStructureChips.map(c => c.id)];
     if (currentMappings.Prenom) fields[currentMappings.Prenom] = document.getElementById('new-prenom').value.trim();
     if (currentMappings.Fonction) fields[currentMappings.Fonction] = document.getElementById('new-fonction').value.trim();
     if (currentMappings.Email) fields[currentMappings.Email] = document.getElementById('new-email').value.trim();
