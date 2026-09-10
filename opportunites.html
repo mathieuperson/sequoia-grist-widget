@@ -327,10 +327,21 @@
     document.getElementById('modal-close').addEventListener('click', () => { modal.hidden = true; });
 
     const labelsOf = (v) => (formatValue(v) ? formatValue(v).split(', ') : []);
+    const structureLinkCandidates = ['Structures', 'Structure', 'Structure_s_', 'structures'];
+
+    function renderContactPartenairePicker(partenaireLabels) {
+      renderRefPicker(
+        document.getElementById('ref-contact-partenaire'),
+        labelsOf(o.ContactPartenaire),
+        'Contacts',
+        (labels) => saveRefField(o.id, currentMappings.ContactPartenaire, labels, document.getElementById('save-status')),
+        { linkCandidates: structureLinkCandidates, parentTableId: 'Structures', parentLabels: partenaireLabels }
+      );
+    }
+
     renderRefPicker(document.getElementById('ref-partenaires'), labelsOf(o.Partenaires), 'Structures',
-      (labels) => saveRefField(o.id, currentMappings.Partenaires, labels, document.getElementById('save-status')));
-    renderRefPicker(document.getElementById('ref-contact-partenaire'), labelsOf(o.ContactPartenaire), 'Contacts',
-      (labels) => saveRefField(o.id, currentMappings.ContactPartenaire, labels, document.getElementById('save-status')));
+      (labels) => { saveRefField(o.id, currentMappings.Partenaires, labels, document.getElementById('save-status')); renderContactPartenairePicker(labels); });
+    renderContactPartenairePicker(labelsOf(o.Partenaires));
     renderRefPicker(document.getElementById('ref-contact-cluster'), labelsOf(o.ContactCluster), 'Contacts',
       (labels) => saveRefField(o.id, currentMappings.ContactCluster, labels, document.getElementById('save-status')));
     renderRefPicker(document.getElementById('ref-etablissement'), labelsOf(o.EtablissementCluster), 'Structures',
