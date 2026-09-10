@@ -296,7 +296,8 @@
   let currentRecord = null;
 
   grist.ready({
-    requiredAccess: 'read table'
+    requiredAccess: 'read table',
+    allowSelectBy: true
   });
 
   function initials(name) {
