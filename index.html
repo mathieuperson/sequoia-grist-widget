@@ -326,6 +326,13 @@
     font-weight: 400;
   }
 
+  .info-item .value a {
+    color: var(--sequoia-green-dark);
+    text-decoration: none;
+    word-break: break-all;
+  }
+  .info-item .value a:hover { text-decoration: underline; }
+
   .placeholder {
     display: flex;
     align-items: center;
@@ -545,6 +552,9 @@
             '<div class="info-item"><div class="label">Axe Sequoia</div><div class="value">' + axe + '</div></div>' +
             '<div class="info-item"><div class="label">Pilier Sequoia</div><div class="value">' +
               (pilier ? '<span class="value-pill ' + pilierClass(pilier) + '">' + pilier + '</span>' : '') +
+            '</div></div>' +
+            '<div class="info-item"><div class="label">Site web</div><div class="value">' +
+              (record.url_site_web ? '<a href="' + record.url_site_web + '" target="_blank" rel="noopener">' + record.url_site_web + ' ↗</a>' : '') +
             '</div></div>' +
           '</div>' +
         '</div>' +

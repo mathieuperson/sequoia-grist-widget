@@ -167,6 +167,28 @@
   <div class="modal" id="modal-content"></div>
 </div>
 
+<div class="form-modal-backdrop" id="create-modal" hidden>
+  <div class="form-modal">
+    <button class="form-modal-close" id="create-close">✕</button>
+    <h2 class="form-modal-title">Nouvelle opportunité</h2>
+    <div class="form-modal-grid">
+      <div class="form-field full"><label>Sujet</label><input id="new-sujet" autofocus></div>
+      <div class="form-field"><label>Type</label><input id="new-type"></div>
+      <div class="form-field"><label>Statut</label><select id="new-statut"></select></div>
+      <div class="form-field"><label>Axe SequoIA</label><input id="new-axe"></div>
+      <div class="form-field"><label>Date de début</label><input id="new-date-debut" type="date"></div>
+      <div class="form-field"><label>Échéance</label><input id="new-echeance" type="date"></div>
+      <div class="form-field"><label>Montant (€)</label><input id="new-montant" type="number"></div>
+      <div class="form-field full"><label>Commentaire</label><textarea id="new-commentaire"></textarea></div>
+      <div class="form-modal-note">Le(s) partenaire(s) et contact(s) associés ne sont pas modifiables depuis ce widget : renseignez-les depuis la table Opportunités dans Grist si besoin.</div>
+    </div>
+    <div class="form-modal-actions">
+      <button class="btn-secondary" id="create-cancel">Annuler</button>
+      <button class="btn-primary" id="create-submit">Créer</button>
+    </div>
+  </div>
+</div>
+
 <script>
   const COLUMNS = [
     { name: 'Sujet', optional: false },
@@ -299,42 +321,65 @@
     document.getElementById('modal-close').addEventListener('click', () => { modal.hidden = true; });
 
     const statusEl = document.getElementById('save-status');
-    const save = debounce(async (colId, value) => {
-      if (!colId) return;
-      try {
-        statusEl.textContent = 'Enregistrement…';
-        await grist.getTable().update({ id: o.id, fields: { [colId]: value } });
-        statusEl.textContent = 'Enregistré ✓';
-      } catch (err) {
-        statusEl.textContent = 'Erreur d’enregistrement';
-        console.error(err);
-      }
-    }, 700);
+    const save = createFieldSaver((text) => { statusEl.textContent = text; });
 
-    document.getElementById('f-sujet').addEventListener('input', (e) => save(currentMappings.Sujet, e.target.value));
-    document.getElementById('f-type').addEventListener('input', (e) => save(currentMappings.Type, e.target.value));
-    document.getElementById('f-axe').addEventListener('input', (e) => save(currentMappings.AxeSequoia, e.target.value));
-    document.getElementById('f-date-debut').addEventListener('change', (e) => save(currentMappings.DateDebut, inputValueToGristDate(e.target.value)));
-    document.getElementById('f-echeance').addEventListener('change', (e) => save(currentMappings.Echeance, inputValueToGristDate(e.target.value)));
-    document.getElementById('f-montant').addEventListener('input', (e) => save(currentMappings.Montant, e.target.value === '' ? null : Number(e.target.value)));
-    document.getElementById('f-commentaire').addEventListener('input', (e) => save(currentMappings.Commentaire, e.target.value));
+    document.getElementById('f-sujet').addEventListener('input', (e) => save(o.id, currentMappings.Sujet, e.target.value));
+    document.getElementById('f-type').addEventListener('input', (e) => save(o.id, currentMappings.Type, e.target.value));
+    document.getElementById('f-axe').addEventListener('input', (e) => save(o.id, currentMappings.AxeSequoia, e.target.value));
+    document.getElementById('f-date-debut').addEventListener('change', (e) => save(o.id, currentMappings.DateDebut, inputValueToGristDate(e.target.value)));
+    document.getElementById('f-echeance').addEventListener('change', (e) => save(o.id, currentMappings.Echeance, inputValueToGristDate(e.target.value)));
+    document.getElementById('f-montant').addEventListener('input', (e) => save(o.id, currentMappings.Montant, e.target.value === '' ? null : Number(e.target.value)));
+    document.getElementById('f-commentaire').addEventListener('input', (e) => save(o.id, currentMappings.Commentaire, e.target.value));
   }
 
   document.getElementById('modal').addEventListener('click', (e) => {
     if (e.target.id === 'modal') document.getElementById('modal').hidden = true;
   });
 
-  document.getElementById('btn-new').addEventListener('click', async () => {
+  const createModal = document.getElementById('create-modal');
+
+  function openCreateModal() {
+    ['new-sujet', 'new-type', 'new-axe', 'new-date-debut', 'new-echeance', 'new-montant', 'new-commentaire']
+      .forEach(id => { document.getElementById(id).value = ''; });
+
+    const statutSelect = document.getElementById('new-statut');
+    statutSelect.innerHTML = STATUS_ORDER
+      .map(s => '<option value="' + escapeHtml(s) + '">' + escapeHtml(s) + '</option>')
+      .join('');
+
+    createModal.hidden = false;
+    document.getElementById('new-sujet').focus();
+  }
+  function closeCreateModal() { createModal.hidden = true; }
+
+  document.getElementById('btn-new').addEventListener('click', openCreateModal);
+  document.getElementById('create-close').addEventListener('click', closeCreateModal);
+  document.getElementById('create-cancel').addEventListener('click', closeCreateModal);
+  createModal.addEventListener('click', (e) => { if (e.target === createModal) closeCreateModal(); });
+
+  document.getElementById('create-submit').addEventListener('click', async () => {
+    const sujet = document.getElementById('new-sujet').value.trim();
+    if (!sujet) { document.getElementById('new-sujet').focus(); return; }
+
+    const fields = {};
+    if (currentMappings.Sujet) fields[currentMappings.Sujet] = sujet;
+    if (currentMappings.Type) fields[currentMappings.Type] = document.getElementById('new-type').value.trim();
+    if (currentMappings.Statut) fields[currentMappings.Statut] = document.getElementById('new-statut').value;
+    if (currentMappings.AxeSequoia) fields[currentMappings.AxeSequoia] = document.getElementById('new-axe').value.trim();
+    if (currentMappings.DateDebut) fields[currentMappings.DateDebut] = inputValueToGristDate(document.getElementById('new-date-debut').value);
+    if (currentMappings.Echeance) fields[currentMappings.Echeance] = inputValueToGristDate(document.getElementById('new-echeance').value);
+    const montant = document.getElementById('new-montant').value;
+    if (currentMappings.Montant) fields[currentMappings.Montant] = montant === '' ? null : Number(montant);
+    if (currentMappings.Commentaire) fields[currentMappings.Commentaire] = document.getElementById('new-commentaire').value.trim();
+
     try {
-      const fields = {};
-      if (STATUS_ORDER.length > 0 && currentMappings.Statut) fields[currentMappings.Statut] = STATUS_ORDER[0];
       const created = await grist.getTable().create({ fields });
       const newId = Array.isArray(created) ? created[0].id : created.id;
+      closeCreateModal();
       grist.setCursorPos({ rowId: newId }).catch(() => {});
-      const record = { id: newId, Statut: STATUS_ORDER[0] || '' };
-      openModal(record);
     } catch (err) {
       console.error(err);
+      alert('Erreur lors de la création de l’opportunité.');
     }
   });
 
