@@ -114,10 +114,18 @@ export function buildMockScript(cfg) {
     };
   }
 
+  const options = (CFG.options ? { ...CFG.options } : {});
+
   window.grist = {
     ready(opts) { readyOpts = opts; calls.push({ fn: 'ready', opts }); },
     onRecords(cb) { onRecordsCb = cb; setTimeout(fireRecords, 0); },
     onRecord(cb) { onRecordCb = cb; setTimeout(fireRecord, 0); },
+    getOption(key) { return Promise.resolve(options[key]); },
+    setOption(key, value) {
+      calls.push({ fn: 'setOption', key, value });
+      options[key] = value;
+      return Promise.resolve();
+    },
     setCursorPos(pos) {
       calls.push({ fn: 'setCursorPos', pos });
       CFG.cursorRowId = pos && pos.rowId;

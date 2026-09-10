@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Dashboard financement CIFRE</title>
+<link rel="stylesheet" href="./common.css">
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<script src="./common.js"></script>
+<style>
+  body { margin: 0; padding: 20px; background: var(--bg); }
+  .dash-header {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; margin-bottom: 18px; flex-wrap: wrap;
+  }
+  .dash-header h1 { font-size: 19px; margin: 0; color: var(--text); }
+  .dash-actions { display: flex; gap: 8px; }
+  .dash-actions button {
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 7px 12px; font: inherit; font-size: 13px; cursor: pointer; color: var(--text);
+  }
+  .dash-actions button:hover { background: var(--sequoia-green-light); border-color: var(--sequoia-green); }
+
+  .kpi-row { display: flex; gap: 12px; margin-bottom: 18px; flex-wrap: wrap; }
+  .kpi-card {
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 18px; min-width: 150px; flex: 1 1 150px;
+  }
+  .kpi-card .value { font-size: 24px; font-weight: 700; color: var(--sequoia-green-dark); line-height: 1.2; }
+  .kpi-card .label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); margin-top: 4px; }
+
+  .warn-banner {
+    background: #fff7ed; border: 1px solid #fdba74; color: #9a3412; border-radius: 8px;
+    padding: 9px 13px; font-size: 12.5px; margin-bottom: 10px;
+  }
+
+  .table-wrap {
+    overflow-x: auto; background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: 10px; margin-top: 8px;
+  }
+  table.pivot { border-collapse: collapse; width: 100%; font-size: 13px; min-width: 640px; }
+  table.pivot th, table.pivot td {
+    padding: 8px 12px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap;
+  }
+  table.pivot th:nth-child(1), table.pivot th:nth-child(2),
+  table.pivot td:nth-child(1), table.pivot td:nth-child(2) { text-align: left; }
+  table.pivot thead th {
+    background: var(--bg); font-weight: 600; color: var(--text-muted);
+    font-size: 10.5px; text-transform: uppercase; letter-spacing: .03em;
+  }
+  table.pivot tbody td:first-child { font-weight: 600; vertical-align: top; border-right: 1px solid var(--border); }
+  table.pivot tfoot td { font-weight: 700; background: var(--bg); border-top: 2px solid var(--border); }
+  .empty-state { padding: 48px 20px; text-align: center; color: var(--text-muted); }
+</style>
+</head>
+<body>
+
+<div class="dash-header">
+  <h1>Dashboard financement CIFRE</h1>
+  <div class="dash-actions">
+    <button id="btn-export">⬇ Exporter CSV</button>
+    <button id="btn-settings">⚙ Paramètres</button>
+  </div>
+</div>
+
+<div id="warnings"></div>
+<div class="kpi-row" id="kpi-row"></div>
+<div class="table-wrap"><table class="pivot" id="pivot-table"></table></div>
+
+<div class="form-modal-backdrop" id="settings-modal" hidden>
+  <div class="form-modal">
+    <button class="form-modal-close" id="settings-close">✕</button>
+    <h2 class="form-modal-title">Paramètres de calcul</h2>
+    <div class="form-modal-grid">
+      <div class="form-field"><label>Salaire doctorant (€, monétaire)</label><input type="number" id="cfg-doctorant"></div>
+      <div class="form-field"><label>Contrat de recherche (€, monétaire)</label><input type="number" id="cfg-contrat"></div>
+      <div class="form-field"><label>Encadrement entreprise (€, in-kind)</label><input type="number" id="cfg-encadrant"></div>
+      <div class="form-field"><label>Durée par défaut (années)</label><input type="number" id="cfg-duree"></div>
+      <div class="form-modal-note">
+        Valeurs par défaut de la convention CIFRE (200k€/3 ans = 120k doctorant + 40k contrat en monétaire, 40k
+        d'encadrement entreprise en in-kind), réparties à parts égales sur les années de la thèse. Une thèse peut
+        surcharger sa durée ou son montant total via les colonnes mappées correspondantes.
+      </div>
+    </div>
+    <div class="form-modal-actions">
+      <button class="btn-secondary" id="settings-cancel">Annuler</button>
+      <button class="btn-primary" id="settings-save">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const COLUMNS = [
+    { name: 'Universite', title: 'Université', optional: false },
+    { name: 'Entreprise', title: 'Entreprise partenaire', optional: false },
+    { name: 'DateDebut', title: 'Date de début de thèse', optional: false },
+    { name: 'EstCIFRE', title: 'Financement CIFRE (oui/non)', optional: true },
+    { name: 'DureeAnnees', title: 'Durée (années, si différente de 3)', optional: true },
+    { name: 'MontantTotal', title: 'Montant total (€, si différent de 200k)', optional: true }
+  ];
+
+  const DEFAULT_CONFIG = {
+    montantDoctorant: 120000,
+    montantContrat: 40000,
+    montantEncadrant: 40000,
+    dureeAnnees: 3
+  };
+
+  let allRecords = [];
+  let currentMappings = {};
+  let currentConfig = { ...DEFAULT_CONFIG };
+
+  grist.ready({ requiredAccess: 'read table', columns: COLUMNS, allowSelectBy: true });
+
+  // ---------- Config persisted in the document (per widget instance) ----------
+  async function loadConfig() {
+    try {
+      const stored = await grist.getOption('cifreConfig');
+      if (stored) currentConfig = { ...DEFAULT_CONFIG, ...JSON.parse(stored) };
+    } catch (err) {
+      console.error('getOption failed', err);
+    }
+  }
+  async function saveConfig(cfg) {
+    currentConfig = cfg;
+    try { await grist.setOption('cifreConfig', JSON.stringify(cfg)); }
+    catch (err) { console.error('setOption failed', err); }
+  }
+
+  // ---------- Pure computation (testable without Grist) ----------
+  function yearOf(dateEpochSeconds) {
+    if (dateEpochSeconds == null || dateEpochSeconds === '') return null;
+    const iso = gristDateToInputValue(dateEpochSeconds); // 'YYYY-MM-DD'
+    return iso ? Number(iso.slice(0, 4)) : null;
+  }
+
+  function isCIFRE(t, mappings) {
+    if (!mappings.EstCIFRE) return true; // not mapped: the table is assumed already CIFRE-scoped
+    const v = formatValue(t.EstCIFRE).trim().toLowerCase();
+    if (!v) return true; // empty: don't silently drop unlabeled rows
+    return !['non', 'no', 'false', '0', 'ko'].includes(v);
+  }
+
+  function computeRow(t, cfg) {
+    const duree = Number(t.DureeAnnees) > 0 ? Number(t.DureeAnnees) : cfg.dureeAnnees;
+    const montantTotalDefault = cfg.montantDoctorant + cfg.montantContrat + cfg.montantEncadrant;
+    const montantMonetaireDefault = cfg.montantDoctorant + cfg.montantContrat;
+    const ratioMonetaire = montantTotalDefault > 0 ? montantMonetaireDefault / montantTotalDefault : 0;
+    const montantTotal = Number(t.MontantTotal) > 0 ? Number(t.MontantTotal) : montantTotalDefault;
+    const montantMonetaire = montantTotal * ratioMonetaire;
+    const montantInKind = montantTotal - montantMonetaire;
+    const anneeDebut = yearOf(t.DateDebut);
+    const perYear = {};
+    if (anneeDebut != null && duree > 0) {
+      for (let i = 0; i < duree; i++) {
+        perYear[anneeDebut + i] = { monetaire: montantMonetaire / duree, inKind: montantInKind / duree };
+      }
+    }
+    return { montantTotal, anneeDebut, perYear };
+  }
+
+  // Groups by Université > Entreprise, sums nb/montant, and pivots the
+  // per-year monétaire/in-kind split. Pure function of (records, mappings,
+  // cfg) — no Grist calls — so it can be exercised directly in tests.
+  function computePivot(records, mappings, cfg) {
+    const groups = new Map(); // universite -> Map(entreprise -> agg)
+    const yearsSet = new Set();
+    let sansDate = 0, totalNb = 0, totalMontant = 0;
+
+    records.forEach(t => {
+      if (!isCIFRE(t, mappings)) return;
+      const universite = formatValue(t.Universite) || 'Non renseigné';
+      const entreprise = formatValue(t.Entreprise) || 'Non renseigné';
+      const r = computeRow(t, cfg);
+      if (r.anneeDebut == null) sansDate++;
+      totalNb++;
+      totalMontant += r.montantTotal;
+
+      if (!groups.has(universite)) groups.set(universite, new Map());
+      const byEntreprise = groups.get(universite);
+      if (!byEntreprise.has(entreprise)) byEntreprise.set(entreprise, { nbCIFRE: 0, montantTotal: 0, perYear: {} });
+      const agg = byEntreprise.get(entreprise);
+      agg.nbCIFRE++;
+      agg.montantTotal += r.montantTotal;
+      Object.keys(r.perYear).forEach(y => {
+        yearsSet.add(Number(y));
+        if (!agg.perYear[y]) agg.perYear[y] = { monetaire: 0, inKind: 0 };
+        agg.perYear[y].monetaire += r.perYear[y].monetaire;
+        agg.perYear[y].inKind += r.perYear[y].inKind;
+      });
+    });
+
+    const years = Array.from(yearsSet).sort((a, b) => a - b);
+    const groupList = Array.from(groups.entries())
+      .map(([universite, byEntreprise]) => ({
+        universite,
+        rows: Array.from(byEntreprise.entries())
+          .map(([entreprise, agg]) => ({ entreprise, ...agg }))
+          .sort((a, b) => b.montantTotal - a.montantTotal)
+      }))
+      .sort((a, b) => a.universite.localeCompare(b.universite, 'fr'));
+
+    return { groupList, years, totalNb, totalMontant, sansDate };
+  }
+
+  // ---------- Rendering ----------
+  function kpiCard(value, label) {
+    return '<div class="kpi-card"><div class="value">' + escapeHtml(value) + '</div><div class="label">' + escapeHtml(label) + '</div></div>';
+  }
+
+  function renderKpis(pivot) {
+    const nbEntreprises = pivot.groupList.reduce((n, g) => n + g.rows.length, 0);
+    document.getElementById('kpi-row').innerHTML = [
+      kpiCard(pivot.totalNb, 'Thèses CIFRE'),
+      kpiCard(formatMontant(pivot.totalMontant), 'Montant total investi'),
+      kpiCard(pivot.groupList.length, 'Universités'),
+      kpiCard(nbEntreprises, 'Entreprises partenaires')
+    ].join('');
+  }
+
+  function renderWarnings(pivot) {
+    const msgs = [];
+    if (!currentMappings.EstCIFRE) {
+      msgs.push('Le champ "Financement CIFRE (oui/non)" n’est pas mappé : toutes les lignes de la table sont comptées comme CIFRE.');
+    }
+    if (pivot.sansDate > 0) {
+      msgs.push(pivot.sansDate + ' thèse(s) sans date de début : comptée(s) dans les totaux mais absente(s) de la répartition par année.');
+    }
+    document.getElementById('warnings').innerHTML = msgs.map(m => '<div class="warn-banner">⚠ ' + escapeHtml(m) + '</div>').join('');
+  }
+
+  function renderTable(pivot) {
+    // Rebuild the whole wrapper from scratch every time — the widget's first
+    // render always happens before onRecords delivers data (empty state),
+    // so the table element can't be assumed to still be in the DOM here.
+    const wrap = document.querySelector('.table-wrap');
+    if (pivot.groupList.length === 0) {
+      wrap.innerHTML = '<div class="empty-state">Aucune thèse CIFRE à afficher — vérifie le mapping des colonnes (panneau de droite dans Grist).</div>';
+      return;
+    }
+    wrap.innerHTML = '<table class="pivot" id="pivot-table"></table>';
+    const t = document.getElementById('pivot-table');
+    const years = pivot.years;
+
+    const thead = '<thead><tr>' +
+      '<th rowspan="2">Établissement</th>' +
+      '<th rowspan="2">Entreprise</th>' +
+      '<th rowspan="2">Nbre de CIFRE</th>' +
+      '<th rowspan="2">Montant total</th>' +
+      years.map(y => '<th colspan="2">' + y + '</th>').join('') +
+      '</tr><tr>' +
+      years.map(() => '<th>Monétaire</th><th>In-kind</th>').join('') +
+      '</tr></thead>';
+
+    let bodyRows = '';
+    const totalsByYear = {};
+    years.forEach(y => { totalsByYear[y] = { monetaire: 0, inKind: 0 }; });
+
+    pivot.groupList.forEach(g => {
+      g.rows.forEach((row, i) => {
+        years.forEach(y => {
+          if (row.perYear[y]) {
+            totalsByYear[y].monetaire += row.perYear[y].monetaire;
+            totalsByYear[y].inKind += row.perYear[y].inKind;
+          }
+        });
+        bodyRows += '<tr>' +
+          (i === 0 ? '<td rowspan="' + g.rows.length + '">' + escapeHtml(g.universite) + '</td>' : '') +
+          '<td>' + escapeHtml(row.entreprise) + '</td>' +
+          '<td>' + row.nbCIFRE + '</td>' +
+          '<td>' + formatMontant(row.montantTotal) + '</td>' +
+          years.map(y => {
+            const cell = row.perYear[y];
+            return '<td>' + (cell ? formatMontant(Math.round(cell.monetaire)) : '—') + '</td>' +
+                   '<td>' + (cell ? formatMontant(Math.round(cell.inKind)) : '—') + '</td>';
+          }).join('') +
+          '</tr>';
+      });
+    });
+
+    const tfoot = '<tfoot><tr>' +
+      '<td colspan="2">Total</td>' +
+      '<td>' + pivot.totalNb + '</td>' +
+      '<td>' + formatMontant(pivot.totalMontant) + '</td>' +
+      years.map(y => '<td>' + formatMontant(Math.round(totalsByYear[y].monetaire)) + '</td><td>' + formatMontant(Math.round(totalsByYear[y].inKind)) + '</td>').join('') +
+      '</tr></tfoot>';
+
+    t.innerHTML = thead + '<tbody>' + bodyRows + '</tbody>' + tfoot;
+  }
+
+  function renderAll() {
+    const pivot = computePivot(allRecords, currentMappings, currentConfig);
+    window.__lastPivot = pivot; // read by the export button and by tests
+    renderWarnings(pivot);
+    renderKpis(pivot);
+    renderTable(pivot);
+  }
+
+  // ---------- CSV export ----------
+  function csvCell(v) {
+    const s = String(v ?? '');
+    return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  }
+
+  function exportCsv(pivot) {
+    const years = pivot.years;
+    const header = ['Établissement', 'Entreprise', 'Nbre de CIFRE', 'Montant total']
+      .concat(years.flatMap(y => [y + ' monétaire', y + ' in-kind']));
+    const lines = [header];
+    pivot.groupList.forEach(g => g.rows.forEach(row => {
+      lines.push([g.universite, row.entreprise, row.nbCIFRE, Math.round(row.montantTotal)]
+        .concat(years.flatMap(y => row.perYear[y]
+          ? [Math.round(row.perYear[y].monetaire), Math.round(row.perYear[y].inKind)]
+          : ['', ''])));
+    }));
+    const csv = lines.map(l => l.map(csvCell).join(';')).join('\r\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'financement-cifre.csv';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  // ---------- Wiring ----------
+  grist.onRecords(function (records, mappings) {
+    currentMappings = mappings;
+    allRecords = mapRecords(records, mappings);
+    renderAll();
+  });
+
+  loadConfig().then(renderAll);
+
+  document.getElementById('btn-export').addEventListener('click', () => {
+    exportCsv(window.__lastPivot || computePivot(allRecords, currentMappings, currentConfig));
+  });
+
+  const settingsModal = document.getElementById('settings-modal');
+  function openSettings() {
+    document.getElementById('cfg-doctorant').value = currentConfig.montantDoctorant;
+    document.getElementById('cfg-contrat').value = currentConfig.montantContrat;
+    document.getElementById('cfg-encadrant').value = currentConfig.montantEncadrant;
+    document.getElementById('cfg-duree').value = currentConfig.dureeAnnees;
+    settingsModal.hidden = false;
+  }
+  function closeSettings() { settingsModal.hidden = true; }
+  document.getElementById('btn-settings').addEventListener('click', openSettings);
+  document.getElementById('settings-close').addEventListener('click', closeSettings);
+  document.getElementById('settings-cancel').addEventListener('click', closeSettings);
+  settingsModal.addEventListener('click', (e) => { if (e.target === settingsModal) closeSettings(); });
+  document.getElementById('settings-save').addEventListener('click', async () => {
+    const cfg = {
+      montantDoctorant: Number(document.getElementById('cfg-doctorant').value) || DEFAULT_CONFIG.montantDoctorant,
+      montantContrat: Number(document.getElementById('cfg-contrat').value) || DEFAULT_CONFIG.montantContrat,
+      montantEncadrant: Number(document.getElementById('cfg-encadrant').value) || DEFAULT_CONFIG.montantEncadrant,
+      dureeAnnees: Number(document.getElementById('cfg-duree').value) || DEFAULT_CONFIG.dureeAnnees
+    };
+    await saveConfig(cfg);
+    closeSettings();
+    renderAll();
+  });
+</script>
+
+</body>
+</html>
