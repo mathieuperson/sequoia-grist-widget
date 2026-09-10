@@ -307,9 +307,6 @@
         '<div class="info-item"><div class="label">Date de début</div><input type="date" class="editable-input" id="f-date-debut" value="' + gristDateToInputValue(o.DateDebut) + '"></div>' +
         '<div class="info-item"><div class="label">Échéance</div><input type="date" class="editable-input" id="f-echeance" value="' + gristDateToInputValue(o.Echeance) + '"></div>' +
         '<div class="info-item"><div class="label">Montant (€)</div><input type="number" class="editable-input" id="f-montant" value="' + (o.Montant != null ? o.Montant : '') + '"></div>' +
-        '<div class="info-item"><div class="label">Etablissement(s) Cluster</div><div class="value">' + escapeHtml(formatValue(o.EtablissementCluster)) + '</div></div>' +
-        '<div class="info-item"><div class="label">Laboratoire(s) Cluster</div><div class="value">' + escapeHtml(formatValue(o.LaboratoireCluster)) + '</div></div>' +
-        '<div class="info-item"><div class="label">Equipe(s) Cluster</div><div class="value">' + escapeHtml(formatValue(o.EquipeCluster)) + '</div></div>' +
       '</div>' +
       '<div class="section-title">Partenaire(s)</div>' +
       '<div id="ref-partenaires"></div>' +
@@ -317,6 +314,12 @@
       '<div id="ref-contact-partenaire"></div>' +
       '<div class="section-title">Contact(s) Cluster</div>' +
       '<div id="ref-contact-cluster"></div>' +
+      '<div class="section-title">Etablissement(s) Cluster</div>' +
+      '<div id="ref-etablissement"></div>' +
+      '<div class="section-title">Laboratoire(s) Cluster</div>' +
+      '<div id="ref-laboratoire"></div>' +
+      '<div class="section-title">Equipe(s) Cluster</div>' +
+      '<div id="ref-equipe"></div>' +
       '<div class="section-title">Commentaire <span class="save-status" id="save-status"></span></div>' +
       '<textarea class="editable-textarea" id="f-commentaire" placeholder="Aucun commentaire.">' + escapeHtml(o.Commentaire || '') + '</textarea>';
 
@@ -330,6 +333,12 @@
       (labels) => saveRefField(o.id, currentMappings.ContactPartenaire, labels, document.getElementById('save-status')));
     renderRefPicker(document.getElementById('ref-contact-cluster'), labelsOf(o.ContactCluster), 'Contacts',
       (labels) => saveRefField(o.id, currentMappings.ContactCluster, labels, document.getElementById('save-status')));
+    renderRefPicker(document.getElementById('ref-etablissement'), labelsOf(o.EtablissementCluster), 'Structures',
+      (labels) => saveRefField(o.id, currentMappings.EtablissementCluster, labels, document.getElementById('save-status')));
+    renderRefPicker(document.getElementById('ref-laboratoire'), labelsOf(o.LaboratoireCluster), 'Structures',
+      (labels) => saveRefField(o.id, currentMappings.LaboratoireCluster, labels, document.getElementById('save-status')));
+    renderRefPicker(document.getElementById('ref-equipe'), labelsOf(o.EquipeCluster), 'Structures',
+      (labels) => saveRefField(o.id, currentMappings.EquipeCluster, labels, document.getElementById('save-status')));
 
     const statusEl = document.getElementById('save-status');
     const save = createFieldSaver((text) => { statusEl.textContent = text; });
