@@ -17,20 +17,50 @@
     font-weight: 600;
     margin-left: 6px;
   }
-  .comment-box {
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 14px;
-    font-size: 14px;
-    line-height: 1.55;
-    white-space: pre-wrap;
+
+  .name-inputs { display: flex; gap: 8px; flex-wrap: wrap; }
+  .name-input {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid transparent;
+    color: #fff;
+    font-size: 21px;
+    font-weight: 700;
+    padding: 2px 0;
+    min-width: 60px;
+    flex: 1;
   }
-  .comment-box:empty::before {
-    content: "Aucun commentaire.";
-    color: var(--text-muted);
-    font-style: italic;
+  .name-input::placeholder { color: rgba(255,255,255,0.6); }
+  .name-input:hover { border-bottom-color: rgba(255,255,255,0.4); }
+  .name-input:focus { outline: none; border-bottom-color: #fff; }
+
+  .subtitle-input {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid transparent;
+    color: #fff;
+    opacity: 0.9;
+    font-size: 13px;
+    padding: 2px 0;
+    width: 100%;
+    margin-top: 4px;
   }
+  .subtitle-input::placeholder { color: rgba(255,255,255,0.6); }
+  .subtitle-input:hover { border-bottom-color: rgba(255,255,255,0.4); }
+  .subtitle-input:focus { outline: none; border-bottom-color: #fff; }
+
+  .principal-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .principal-toggle input { cursor: pointer; }
 </style>
 </head>
 <body>
@@ -38,9 +68,7 @@
 <div class="layout">
   <aside class="sidebar">
     <div class="sidebar-header">
-      <div class="search-box">
-        <input type="text" id="search" placeholder="Rechercher un contact...">
-      </div>
+      <button class="btn-new" id="btn-new">+ Nouveau contact</button>
     </div>
     <div class="list" id="list">
       <div class="empty-list">Chargement…</div>
@@ -69,31 +97,27 @@
   let currentMappings = null;
   let currentId = null;
 
-  grist.ready({ requiredAccess: 'read table', columns: COLUMNS, allowSelectBy: true });
+  grist.ready({ requiredAccess: 'full', columns: COLUMNS, allowSelectBy: true });
 
   function fullName(c) {
     return [c.Nom, c.Prenom].filter(Boolean).join(' ') || 'Sans nom';
   }
 
-  function matchesQuery(c, query) {
-    if (!query) return true;
-    const haystack = [c.Nom, c.Prenom, c.Fonction, formatValue(c.Structures)]
-      .filter(Boolean).join(' ').toLowerCase();
-    return haystack.includes(query);
+  function sortByName(records) {
+    return [...records].sort((a, b) => fullName(a).localeCompare(fullName(b), 'fr'));
   }
 
   function renderList() {
-    const query = (document.getElementById('search').value || '').trim().toLowerCase();
     const listEl = document.getElementById('list');
-    const filtered = allRecords.filter(c => matchesQuery(c, query));
+    const sorted = sortByName(allRecords);
 
-    if (filtered.length === 0) {
-      listEl.innerHTML = '<div class="empty-list">Aucun contact trouvé.</div>';
+    if (sorted.length === 0) {
+      listEl.innerHTML = '<div class="empty-list">Aucun contact. Cliquez sur "+ Nouveau contact" pour en créer un.</div>';
       return;
     }
 
     listEl.innerHTML = '';
-    filtered.forEach(c => {
+    sorted.forEach(c => {
       const item = document.createElement('div');
       item.className = 'list-item' + (c.id === currentId ? ' active' : '');
 
@@ -120,52 +144,106 @@
     });
   }
 
+  // ---- Autosave (debounced per field) ----
+  const pendingSaves = {};
+  function saveField(recordId, colId, value, statusEl) {
+    if (!colId) return;
+    clearTimeout(pendingSaves[colId]);
+    pendingSaves[colId] = setTimeout(async () => {
+      try {
+        if (statusEl) statusEl.textContent = 'Enregistrement…';
+        await grist.getTable().update({ id: recordId, fields: { [colId]: value } });
+        if (statusEl) statusEl.textContent = 'Enregistré ✓';
+      } catch (err) {
+        console.error(err);
+        if (statusEl) statusEl.textContent = 'Erreur d’enregistrement';
+      }
+    }, 700);
+  }
+
+  function bindInput(id, recordId, colId, statusEl) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('input', () => saveField(recordId, colId, el.value, statusEl));
+  }
+
   function renderFiche(c) {
     const wrap = document.getElementById('fiche-wrap');
     if (!c) {
-      wrap.innerHTML = '<div class="placeholder">Sélectionnez un contact</div>';
+      wrap.innerHTML = '<div class="placeholder">Sélectionnez un contact, ou créez-en un nouveau</div>';
       return;
     }
-
-    const principalBadge = c.ContactPrincipal
-      ? '<span class="badge">★ Contact principal</span>' : '';
-
-    const emailHtml = c.Email
-      ? '<a href="mailto:' + escapeHtml(c.Email) + '">' + escapeHtml(c.Email) + '</a>' : '';
-    const telHtml = c.Telephone
-      ? '<a href="tel:' + escapeHtml(c.Telephone) + '">' + escapeHtml(c.Telephone) + '</a>' : '';
-    const linkedinHtml = c.Linkedin
-      ? '<a href="' + escapeHtml(c.Linkedin) + '" target="_blank" rel="noopener">Profil Linkedin ↗</a>' : '';
 
     wrap.innerHTML =
       '<div class="card">' +
         '<div class="card-header">' +
           '<div class="header-icon">' + initials(fullName(c)) + '</div>' +
           '<div class="header-text">' +
-            '<h1>' + escapeHtml(fullName(c)) + '</h1>' +
-            '<div class="subtitle">' + escapeHtml(c.Fonction || '') + '</div>' +
+            '<div class="name-inputs">' +
+              '<input class="name-input" id="f-prenom" placeholder="Prénom" value="' + escapeHtml(c.Prenom || '') + '">' +
+              '<input class="name-input" id="f-nom" placeholder="Nom" value="' + escapeHtml(c.Nom || '') + '">' +
+            '</div>' +
+            '<input class="subtitle-input" id="f-fonction" placeholder="Fonction" value="' + escapeHtml(c.Fonction || '') + '">' +
           '</div>' +
-          principalBadge +
+          '<label class="principal-toggle">' +
+            '<input type="checkbox" id="f-principal"' + (c.ContactPrincipal ? ' checked' : '') + '>' +
+            '★ Principal' +
+          '</label>' +
         '</div>' +
         '<div class="card-body">' +
           '<div class="tags">' +
             (formatValue(c.Structures) ? '<span class="tag">' + escapeHtml(formatValue(c.Structures)) + '</span>' : '') +
           '</div>' +
           '<div class="info-grid">' +
-            '<div class="info-item"><div class="label">Email</div><div class="value">' + emailHtml + '</div></div>' +
-            '<div class="info-item"><div class="label">Téléphone</div><div class="value">' + telHtml + '</div></div>' +
-            '<div class="info-item"><div class="label">Linkedin</div><div class="value">' + linkedinHtml + '</div></div>' +
+            '<div class="info-item"><div class="label">Email</div><input class="editable-input" id="f-email" type="email" value="' + escapeHtml(c.Email || '') + '"></div>' +
+            '<div class="info-item"><div class="label">Téléphone</div><input class="editable-input" id="f-telephone" value="' + escapeHtml(c.Telephone || '') + '"></div>' +
+            '<div class="info-item"><div class="label">Linkedin</div><input class="editable-input" id="f-linkedin" value="' + escapeHtml(c.Linkedin || '') + '"></div>' +
             '<div class="info-item"><div class="label">Structure(s)</div><div class="value">' + escapeHtml(formatValue(c.Structures)) + '</div></div>' +
           '</div>' +
-          '<div class="section-title">Commentaire</div>' +
-          '<div class="comment-box">' + escapeHtml(c.Commentaire || '') + '</div>' +
+          '<div class="section-title">Commentaire <span class="cr-save-status" id="save-status"></span></div>' +
+          '<textarea class="editable-textarea" id="f-commentaire" placeholder="Aucun commentaire.">' + escapeHtml(c.Commentaire || '') + '</textarea>' +
         '</div>' +
       '</div>';
+
+    const statusEl = document.getElementById('save-status');
+    bindInput('f-prenom', c.id, currentMappings.Prenom, statusEl);
+    bindInput('f-nom', c.id, currentMappings.Nom, statusEl);
+    bindInput('f-fonction', c.id, currentMappings.Fonction, statusEl);
+    bindInput('f-email', c.id, currentMappings.Email, statusEl);
+    bindInput('f-telephone', c.id, currentMappings.Telephone, statusEl);
+    bindInput('f-linkedin', c.id, currentMappings.Linkedin, statusEl);
+    bindInput('f-commentaire', c.id, currentMappings.Commentaire, statusEl);
+
+    const principalEl = document.getElementById('f-principal');
+    if (principalEl) {
+      principalEl.addEventListener('change', async () => {
+        try {
+          await grist.getTable().update({ id: c.id, fields: { [currentMappings.ContactPrincipal]: principalEl.checked } });
+        } catch (err) { console.error(err); }
+      });
+    }
   }
+
+  document.getElementById('btn-new').addEventListener('click', async () => {
+    try {
+      const created = await grist.getTable().create({ fields: {} });
+      const newId = Array.isArray(created) ? created[0].id : created.id;
+      grist.setCursorPos({ rowId: newId }).catch(() => {});
+    } catch (err) {
+      console.error(err);
+    }
+  });
 
   grist.onRecords(function (records, mappings) {
     currentMappings = mappings;
     allRecords = mapRecords(records, mappings);
+    // If the record shown in the fiche fell out of the (possibly filtered)
+    // list — e.g. the linked Structure changed and has no more contacts —
+    // Grist doesn't always re-fire onRecord, so clear it here explicitly.
+    if (currentId !== null && !allRecords.some(c => c.id === currentId)) {
+      currentId = null;
+      renderFiche(null);
+    }
     renderList();
   });
 
@@ -176,8 +254,6 @@
     renderFiche(c);
     renderList();
   });
-
-  document.getElementById('search').addEventListener('input', renderList);
 </script>
 
 </body>

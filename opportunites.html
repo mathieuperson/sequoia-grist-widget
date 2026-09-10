@@ -12,27 +12,20 @@
   .topbar {
     display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 16px;
-    padding: 14px 20px;
+    padding: 12px 20px;
     background: var(--card-bg);
     border-bottom: 1px solid var(--border);
   }
-  .topbar .search-box { width: 280px; }
-  .topbar .search-box input {
-    width: 100%;
-    padding: 8px 12px 8px 30px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    font-size: 13.5px;
-    outline: none;
-    background: var(--bg);
-  }
+  .topbar h1 { font-size: 15px; margin: 0; color: var(--text); }
+  .topbar .btn-new { width: auto; margin-top: 0; padding: 8px 16px; }
 
   .board {
     display: flex;
     gap: 14px;
     padding: 16px 20px;
-    height: calc(100vh - 57px);
+    height: calc(100vh - 53px);
     overflow-x: auto;
     overflow-y: hidden;
     align-items: flex-start;
@@ -41,6 +34,7 @@
   .column {
     background: #eef1ef;
     border-radius: 12px;
+    border-top: 4px solid var(--status-default);
     min-width: 260px;
     max-width: 260px;
     display: flex;
@@ -52,11 +46,20 @@
     padding: 12px 14px 8px;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 8px;
     font-size: 13px;
     font-weight: 700;
-    color: var(--sequoia-green-dark);
+    color: var(--text);
   }
+
+  .column-header .status-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .column-header span.label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .column-count {
     background: #fff;
@@ -115,21 +118,45 @@
   .modal-backdrop[hidden] { display: none; }
   .modal {
     background: #fff; border-radius: 14px; max-width: 480px; width: 90%;
+    max-height: 85vh; overflow-y: auto;
     padding: 24px; box-shadow: 0 10px 30px rgba(0,0,0,0.2);
   }
-  .modal h2 { margin: 0 0 12px; font-size: 19px; }
+  .modal h2 { margin: 0 0 4px; font-size: 19px; }
   .modal .close-btn {
     float: right; border: none; background: none; font-size: 18px;
     cursor: pointer; color: var(--text-muted);
+  }
+  .modal .sujet-input {
+    width: 100%;
+    font-size: 19px;
+    font-weight: 700;
+    border: none;
+    border-bottom: 1px solid transparent;
+    padding: 2px 0;
+    margin-bottom: 4px;
+    font-family: inherit;
+    color: var(--text);
+  }
+  .modal .sujet-input:hover { border-bottom-color: var(--border); }
+  .modal .sujet-input:focus { outline: none; border-bottom-color: var(--sequoia-green); }
+
+  .modal .tags { margin-bottom: 16px; }
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 11px;
+    border-radius: 20px;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: #fff;
   }
 </style>
 </head>
 <body>
 
 <div class="topbar">
-  <div class="search-box">
-    <input type="text" id="search" placeholder="🔍 Rechercher une opportunité...">
-  </div>
+  <h1>Pipeline opportunités</h1>
+  <button class="btn-new" id="btn-new">+ Nouvelle opportunité</button>
 </div>
 
 <div class="board" id="board">
@@ -164,13 +191,6 @@
 
   grist.ready({ requiredAccess: 'full', columns: COLUMNS, allowSelectBy: true });
 
-  function matchesQuery(o, query) {
-    if (!query) return true;
-    const haystack = [o.Sujet, o.Type, o.AxeSequoia, formatValue(o.Partenaires)]
-      .filter(Boolean).join(' ').toLowerCase();
-    return haystack.includes(query);
-  }
-
   function groupByStatus(records) {
     const groups = {};
     records.forEach(o => {
@@ -182,23 +202,24 @@
   }
 
   function renderBoard() {
-    const query = (document.getElementById('search').value || '').trim().toLowerCase();
-    const filtered = allRecords.filter(o => matchesQuery(o, query));
-    const groups = groupByStatus(allRecords); // build/maintain full status list from all data
+    groupByStatus(allRecords); // maintain the full status list from all data
     const board = document.getElementById('board');
 
     if (allRecords.length === 0) {
-      board.innerHTML = '<div class="empty-board">Aucune opportunité.</div>';
+      board.innerHTML = '<div class="empty-board">Aucune opportunité. Cliquez sur "+ Nouvelle opportunité" pour en créer une.</div>';
       return;
     }
 
     board.innerHTML = '';
     STATUS_ORDER.forEach(status => {
-      const cardsForStatus = filtered.filter(o => (o.Statut || 'Sans statut') === status);
+      const cardsForStatus = allRecords.filter(o => (o.Statut || 'Sans statut') === status);
+      const color = statusColor(status);
       const col = document.createElement('div');
       col.className = 'column';
+      col.style.borderTopColor = color;
       col.innerHTML =
-        '<div class="column-header"><span>' + escapeHtml(status) + '</span>' +
+        '<div class="column-header"><span class="status-dot" style="background:' + color + '"></span>' +
+        '<span class="label">' + escapeHtml(status) + '</span>' +
         '<span class="column-count">' + cardsForStatus.length + '</span></div>' +
         '<div class="column-cards" data-status="' + escapeHtml(status) + '"></div>';
       board.appendChild(col);
@@ -254,33 +275,67 @@
     const content = document.getElementById('modal-content');
     content.innerHTML =
       '<button class="close-btn" id="modal-close">✕</button>' +
-      '<h2>' + escapeHtml(o.Sujet || 'Sans sujet') + '</h2>' +
+      '<input class="sujet-input" id="f-sujet" placeholder="Sujet" value="' + escapeHtml(o.Sujet || '') + '">' +
       '<div class="tags">' +
-        (o.Type ? '<span class="tag">' + escapeHtml(o.Type) + '</span>' : '') +
-        (o.AxeSequoia ? '<span class="tag">' + escapeHtml(o.AxeSequoia) + '</span>' : '') +
-        (o.Statut ? '<span class="tag">' + escapeHtml(o.Statut) + '</span>' : '') +
+        '<input class="editable-input" id="f-type" placeholder="Type" value="' + escapeHtml(o.Type || '') + '" style="width:auto;display:inline-block;max-width:120px;">' +
+        '<span class="status-pill" style="background:' + statusColor(o.Statut) + '">' + escapeHtml(o.Statut || 'Sans statut') + '</span>' +
       '</div>' +
       '<div class="info-grid">' +
+        '<div class="info-item"><div class="label">Axe SequoIA</div><input class="editable-input" id="f-axe" value="' + escapeHtml(o.AxeSequoia || '') + '"></div>' +
         '<div class="info-item"><div class="label">Partenaire(s)</div><div class="value">' + escapeHtml(formatValue(o.Partenaires)) + '</div></div>' +
-        '<div class="info-item"><div class="label">Date de début</div><div class="value">' + escapeHtml(formatDate(o.DateDebut)) + '</div></div>' +
-        '<div class="info-item"><div class="label">Échéance</div><div class="value">' + escapeHtml(formatDate(o.Echeance) || formatValue(o.Echeance)) + '</div></div>' +
-        '<div class="info-item"><div class="label">Montant</div><div class="value">' + escapeHtml(formatMontant(o.Montant)) + '</div></div>' +
+        '<div class="info-item"><div class="label">Date de début</div><input type="date" class="editable-input" id="f-date-debut" value="' + gristDateToInputValue(o.DateDebut) + '"></div>' +
+        '<div class="info-item"><div class="label">Échéance</div><input type="date" class="editable-input" id="f-echeance" value="' + gristDateToInputValue(o.Echeance) + '"></div>' +
+        '<div class="info-item"><div class="label">Montant (€)</div><input type="number" class="editable-input" id="f-montant" value="' + (o.Montant != null ? o.Montant : '') + '"></div>' +
         '<div class="info-item"><div class="label">Etablissement(s) Cluster</div><div class="value">' + escapeHtml(formatValue(o.EtablissementCluster)) + '</div></div>' +
         '<div class="info-item"><div class="label">Laboratoire(s) Cluster</div><div class="value">' + escapeHtml(formatValue(o.LaboratoireCluster)) + '</div></div>' +
         '<div class="info-item"><div class="label">Equipe(s) Cluster</div><div class="value">' + escapeHtml(formatValue(o.EquipeCluster)) + '</div></div>' +
         '<div class="info-item"><div class="label">Contact(s) Cluster</div><div class="value">' + escapeHtml(formatValue(o.ContactCluster)) + '</div></div>' +
         '<div class="info-item"><div class="label">Contact(s) partenaire</div><div class="value">' + escapeHtml(formatValue(o.ContactPartenaire)) + '</div></div>' +
       '</div>' +
-      '<div class="section-title">Commentaire</div>' +
-      '<div class="comment-box" style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px;font-size:13.5px;white-space:pre-wrap;">' +
-        (o.Commentaire ? escapeHtml(o.Commentaire) : '<span style="color:var(--text-muted);font-style:italic;">Aucun commentaire.</span>') +
-      '</div>';
+      '<div class="section-title">Commentaire <span class="save-status" id="save-status"></span></div>' +
+      '<textarea class="editable-textarea" id="f-commentaire" placeholder="Aucun commentaire.">' + escapeHtml(o.Commentaire || '') + '</textarea>';
+
     modal.hidden = false;
     document.getElementById('modal-close').addEventListener('click', () => { modal.hidden = true; });
+
+    const statusEl = document.getElementById('save-status');
+    const save = debounce(async (colId, value) => {
+      if (!colId) return;
+      try {
+        statusEl.textContent = 'Enregistrement…';
+        await grist.getTable().update({ id: o.id, fields: { [colId]: value } });
+        statusEl.textContent = 'Enregistré ✓';
+      } catch (err) {
+        statusEl.textContent = 'Erreur d’enregistrement';
+        console.error(err);
+      }
+    }, 700);
+
+    document.getElementById('f-sujet').addEventListener('input', (e) => save(currentMappings.Sujet, e.target.value));
+    document.getElementById('f-type').addEventListener('input', (e) => save(currentMappings.Type, e.target.value));
+    document.getElementById('f-axe').addEventListener('input', (e) => save(currentMappings.AxeSequoia, e.target.value));
+    document.getElementById('f-date-debut').addEventListener('change', (e) => save(currentMappings.DateDebut, inputValueToGristDate(e.target.value)));
+    document.getElementById('f-echeance').addEventListener('change', (e) => save(currentMappings.Echeance, inputValueToGristDate(e.target.value)));
+    document.getElementById('f-montant').addEventListener('input', (e) => save(currentMappings.Montant, e.target.value === '' ? null : Number(e.target.value)));
+    document.getElementById('f-commentaire').addEventListener('input', (e) => save(currentMappings.Commentaire, e.target.value));
   }
 
   document.getElementById('modal').addEventListener('click', (e) => {
     if (e.target.id === 'modal') document.getElementById('modal').hidden = true;
+  });
+
+  document.getElementById('btn-new').addEventListener('click', async () => {
+    try {
+      const fields = {};
+      if (STATUS_ORDER.length > 0 && currentMappings.Statut) fields[currentMappings.Statut] = STATUS_ORDER[0];
+      const created = await grist.getTable().create({ fields });
+      const newId = Array.isArray(created) ? created[0].id : created.id;
+      grist.setCursorPos({ rowId: newId }).catch(() => {});
+      const record = { id: newId, Statut: STATUS_ORDER[0] || '' };
+      openModal(record);
+    } catch (err) {
+      console.error(err);
+    }
   });
 
   grist.onRecords(function (records, mappings) {
@@ -288,8 +343,6 @@
     allRecords = mapRecords(records, mappings);
     renderBoard();
   });
-
-  document.getElementById('search').addEventListener('input', renderBoard);
 </script>
 
 </body>
