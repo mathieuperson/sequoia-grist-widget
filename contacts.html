@@ -61,6 +61,22 @@
     cursor: pointer;
   }
   .principal-toggle input { cursor: pointer; }
+
+  .input-with-action { display: flex; align-items: center; gap: 4px; }
+  .input-with-action .editable-input { flex: 1; }
+  .copy-btn {
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-size: 13px;
+    padding: 3px 5px;
+    border-radius: 6px;
+    line-height: 1;
+    color: var(--text-muted);
+    flex-shrink: 0;
+  }
+  .copy-btn:hover { background: var(--bg); color: var(--text); }
+  .copy-btn.copied { color: var(--sequoia-green); }
 </style>
 </head>
 <body>
@@ -209,16 +225,17 @@
           '</label>' +
         '</div>' +
         '<div class="card-body">' +
-          '<div class="tags">' +
-            (formatValue(c.Structures) ? '<span class="tag">' + escapeHtml(formatValue(c.Structures)) + '</span>' : '') +
-          '</div>' +
           '<div class="info-grid">' +
             '<div class="info-item"><div class="label">Prénom <span style="text-transform:none;">(facultatif)</span></div><input class="editable-input" id="f-prenom" value="' + escapeHtml(c.Prenom || '') + '"></div>' +
-            '<div class="info-item"><div class="label">Email</div><input class="editable-input" id="f-email" type="email" value="' + escapeHtml(c.Email || '') + '"></div>' +
+            '<div class="info-item"><div class="label">Email</div><div class="input-with-action">' +
+              '<input class="editable-input" id="f-email" type="email" value="' + escapeHtml(c.Email || '') + '">' +
+              '<button type="button" class="copy-btn" id="copy-email" title="Copier l\'email">📋</button>' +
+            '</div></div>' +
             '<div class="info-item"><div class="label">Téléphone</div><input class="editable-input" id="f-telephone" value="' + escapeHtml(c.Telephone || '') + '"></div>' +
             '<div class="info-item"><div class="label">Linkedin</div><input class="editable-input" id="f-linkedin" value="' + escapeHtml(c.Linkedin || '') + '"></div>' +
-            '<div class="info-item"><div class="label">Structure(s)</div><div class="value">' + escapeHtml(formatValue(c.Structures)) + '</div></div>' +
           '</div>' +
+          '<div class="section-title">Structure(s)</div>' +
+          '<div id="ref-structures"></div>' +
           '<div class="section-title">Commentaire <span class="cr-save-status" id="save-status"></span></div>' +
           '<textarea class="editable-textarea" id="f-commentaire" placeholder="Aucun commentaire.">' + escapeHtml(c.Commentaire || '') + '</textarea>' +
         '</div>' +
@@ -232,6 +249,30 @@
     bindInput('f-telephone', c.id, currentMappings.Telephone, statusEl);
     bindInput('f-linkedin', c.id, currentMappings.Linkedin, statusEl);
     bindInput('f-commentaire', c.id, currentMappings.Commentaire, statusEl);
+
+    const structuresLabels = formatValue(c.Structures) ? formatValue(c.Structures).split(', ') : [];
+    renderRefPicker(
+      document.getElementById('ref-structures'),
+      structuresLabels,
+      'Structures',
+      (labels) => saveRefField(c.id, currentMappings.Structures, labels, statusEl)
+    );
+
+    const copyBtn = document.getElementById('copy-email');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', async () => {
+        const email = document.getElementById('f-email').value.trim();
+        if (!email) return;
+        try {
+          await navigator.clipboard.writeText(email);
+          copyBtn.textContent = '✓';
+          copyBtn.classList.add('copied');
+          setTimeout(() => { copyBtn.textContent = '📋'; copyBtn.classList.remove('copied'); }, 1200);
+        } catch (err) {
+          console.error(err);
+        }
+      });
+    }
 
     const principalEl = document.getElementById('f-principal');
     if (principalEl) {

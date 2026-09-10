@@ -373,19 +373,21 @@
           '</div>' +
         '</div>' +
         '<div class="card-body">' +
-          '<div class="tags">' +
-            (formatValue(r.Partenaires) ? '<span class="tag">' + escapeHtml(formatValue(r.Partenaires)) + '</span>' : '') +
-          '</div>' +
           '<div class="info-grid">' +
-            '<div class="info-item"><div class="label">Contact(s) partenaire</div><div class="value">' + escapeHtml(formatValue(r.ContactPartenaire)) + '</div></div>' +
-            '<div class="info-item"><div class="label">Contact(s) cluster</div><div class="value">' + escapeHtml(formatValue(r.ContactCluster)) + '</div></div>' +
             '<div class="info-item"><div class="label">Etablissement Cluster</div><div class="value">' + escapeHtml(formatValue(r.EtablissementCluster)) + '</div></div>' +
             '<div class="info-item"><div class="label">Laboratoire Cluster</div><div class="value">' + escapeHtml(formatValue(r.LaboratoireCluster)) + '</div></div>' +
             '<div class="info-item"><div class="label">Equipe Cluster</div><div class="value">' + escapeHtml(formatValue(r.EquipeCluster)) + '</div></div>' +
-            '<div class="info-item"><div class="label">Opportunité(s)</div><div class="value">' + escapeHtml(formatValue(r.Opportunites)) + '</div></div>' +
             '<div class="info-item"><div class="label">Prochaine échéance</div><input type="date" class="editable-input" id="f-echeance" value="' + gristDateToInputValue(r.ProchaineEcheance) + '"></div>' +
             '<div class="info-item"><div class="label">Suites</div><input class="editable-input" id="f-suites" value="' + escapeHtml(r.Suites || '') + '"></div>' +
           '</div>' +
+          '<div class="section-title">Partenaire(s)</div>' +
+          '<div id="ref-partenaires"></div>' +
+          '<div class="section-title">Contact(s) partenaire</div>' +
+          '<div id="ref-contact-partenaire"></div>' +
+          '<div class="section-title">Contact(s) cluster</div>' +
+          '<div id="ref-contact-cluster"></div>' +
+          '<div class="section-title">Opportunité(s)</div>' +
+          '<div id="ref-opportunites"></div>' +
 
           '<div class="section-title">Compte-rendu</div>' +
           '<div class="cr-toolbar">' +
@@ -410,6 +412,16 @@
       '</div>';
 
     const saveField = createFieldSaver(saveStatus);
+
+    const labelsOf = (v) => (formatValue(v) ? formatValue(v).split(', ') : []);
+    renderRefPicker(document.getElementById('ref-partenaires'), labelsOf(r.Partenaires), 'Structures',
+      (labels) => saveRefField(r.id, currentMappings.Partenaires, labels, document.getElementById('cr-save-status')));
+    renderRefPicker(document.getElementById('ref-contact-partenaire'), labelsOf(r.ContactPartenaire), 'Contacts',
+      (labels) => saveRefField(r.id, currentMappings.ContactPartenaire, labels, document.getElementById('cr-save-status')));
+    renderRefPicker(document.getElementById('ref-contact-cluster'), labelsOf(r.ContactCluster), 'Contacts',
+      (labels) => saveRefField(r.id, currentMappings.ContactCluster, labels, document.getElementById('cr-save-status')));
+    renderRefPicker(document.getElementById('ref-opportunites'), labelsOf(r.Opportunites), 'Opportunites',
+      (labels) => saveRefField(r.id, currentMappings.Opportunites, labels, document.getElementById('cr-save-status')));
 
     document.getElementById('f-objet').addEventListener('input', (e) => saveField(r.id, currentMappings.Objet, e.target.value));
     document.getElementById('f-type').addEventListener('input', (e) => saveField(r.id, currentMappings.Type, e.target.value));
