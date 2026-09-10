@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
+    }
+
+    .partner {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .logo {
+      width: 100px;
+      height: 70px;
+      object-fit: contain;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 26px;
+    }
+
+    .tags {
+      margin-top: 12px;
+    }
+
+    .tag {
+      display: inline-block;
+      padding: 5px 10px;
+      margin-right: 6px;
+      border-radius: 6px;
+      background: #eee;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="partner">
+  <img id="logo" class="logo">
+
+  <div>
+    <h1 id="name"></h1>
+    <div id="description"></div>
+
+    <div class="tags">
+      <span class="tag" id="activity"></span>
+      <span class="tag" id="size"></span>
+      <span class="tag" id="axis"></span>
+    </div>
+  </div>
+</div>
+
+<script>
+  grist.ready({
+    requiredAccess: 'read table'
+  });
+
+  grist.onRecord(function(record) {
+    document.getElementById('name').textContent =
+      record.nom_acteur || '';
+
+    document.getElementById('description').textContent =
+      record.description || '';
+
+    document.getElementById('activity').textContent =
+      record.entreprise_activite || '';
+
+    document.getElementById('size').textContent =
+      record.entreprise_taille || '';
+
+    document.getElementById('axis').textContent =
+      record.axe_sequoia || '';
+
+    document.getElementById('logo').src =
+      record.url_logo || '';
+  });
+</script>
+
+</body>
+</html>
