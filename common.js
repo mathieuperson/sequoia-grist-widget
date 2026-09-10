@@ -26,6 +26,27 @@ function initials(name) {
   return String(name).trim().split(/\s+/).slice(0, 2).map(w => w[0].toUpperCase()).join('');
 }
 
+// Debounced per-field autosave. Each colId gets its own timer, so editing
+// field A then field B within the debounce window saves BOTH instead of
+// the second edit cancelling the first's pending save.
+function createFieldSaver(statusSetter) {
+  const timers = {};
+  return function saveField(recordId, colId, value) {
+    if (!colId) return;
+    clearTimeout(timers[colId]);
+    timers[colId] = setTimeout(async () => {
+      try {
+        if (statusSetter) statusSetter('Enregistrement…');
+        await grist.getTable().update({ id: recordId, fields: { [colId]: value } });
+        if (statusSetter) statusSetter('Enregistré ✓');
+      } catch (err) {
+        if (statusSetter) statusSetter('Erreur d’enregistrement');
+        console.error(err);
+      }
+    }, 700);
+  };
+}
+
 function debounce(fn, delay) {
   let timer = null;
   return function (...args) {

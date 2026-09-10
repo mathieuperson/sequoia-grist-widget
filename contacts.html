@@ -18,7 +18,6 @@
     margin-left: 6px;
   }
 
-  .name-inputs { display: flex; gap: 8px; flex-wrap: wrap; }
   .name-input {
     background: transparent;
     border: none;
@@ -27,8 +26,8 @@
     font-size: 21px;
     font-weight: 700;
     padding: 2px 0;
-    min-width: 60px;
-    flex: 1;
+    width: 100%;
+    min-width: 0;
   }
   .name-input::placeholder { color: rgba(255,255,255,0.6); }
   .name-input:hover { border-bottom-color: rgba(255,255,255,0.4); }
@@ -43,6 +42,7 @@
     font-size: 13px;
     padding: 2px 0;
     width: 100%;
+    min-width: 0;
     margin-top: 4px;
   }
   .subtitle-input::placeholder { color: rgba(255,255,255,0.6); }
@@ -78,6 +78,27 @@
   <main class="fiche-wrap" id="fiche-wrap">
     <div class="placeholder">Sélectionnez un contact</div>
   </main>
+</div>
+
+<div class="form-modal-backdrop" id="create-modal" hidden>
+  <div class="form-modal">
+    <button class="form-modal-close" id="create-close">✕</button>
+    <h2 class="form-modal-title">Nouveau contact</h2>
+    <div class="form-modal-grid">
+      <div class="form-field full"><label>Nom</label><input id="new-nom" autofocus></div>
+      <div class="form-field"><label>Prénom (facultatif)</label><input id="new-prenom"></div>
+      <div class="form-field"><label>Fonction</label><input id="new-fonction"></div>
+      <div class="form-field"><label>Email</label><input id="new-email" type="email"></div>
+      <div class="form-field"><label>Téléphone</label><input id="new-telephone"></div>
+      <div class="form-field full"><label>Linkedin</label><input id="new-linkedin"></div>
+      <div class="form-field full"><label>Commentaire</label><textarea id="new-commentaire"></textarea></div>
+      <div class="form-modal-note">La structure associée n'est pas modifiable depuis ce widget : renseignez-la depuis la table Contacts dans Grist si besoin.</div>
+    </div>
+    <div class="form-modal-actions">
+      <button class="btn-secondary" id="create-cancel">Annuler</button>
+      <button class="btn-primary" id="create-submit">Créer</button>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -179,10 +200,7 @@
         '<div class="card-header">' +
           '<div class="header-icon">' + initials(fullName(c)) + '</div>' +
           '<div class="header-text">' +
-            '<div class="name-inputs">' +
-              '<input class="name-input" id="f-prenom" placeholder="Prénom" value="' + escapeHtml(c.Prenom || '') + '">' +
-              '<input class="name-input" id="f-nom" placeholder="Nom" value="' + escapeHtml(c.Nom || '') + '">' +
-            '</div>' +
+            '<input class="name-input" id="f-nom" placeholder="Nom" value="' + escapeHtml(c.Nom || '') + '">' +
             '<input class="subtitle-input" id="f-fonction" placeholder="Fonction" value="' + escapeHtml(c.Fonction || '') + '">' +
           '</div>' +
           '<label class="principal-toggle">' +
@@ -195,6 +213,7 @@
             (formatValue(c.Structures) ? '<span class="tag">' + escapeHtml(formatValue(c.Structures)) + '</span>' : '') +
           '</div>' +
           '<div class="info-grid">' +
+            '<div class="info-item"><div class="label">Prénom <span style="text-transform:none;">(facultatif)</span></div><input class="editable-input" id="f-prenom" value="' + escapeHtml(c.Prenom || '') + '"></div>' +
             '<div class="info-item"><div class="label">Email</div><input class="editable-input" id="f-email" type="email" value="' + escapeHtml(c.Email || '') + '"></div>' +
             '<div class="info-item"><div class="label">Téléphone</div><input class="editable-input" id="f-telephone" value="' + escapeHtml(c.Telephone || '') + '"></div>' +
             '<div class="info-item"><div class="label">Linkedin</div><input class="editable-input" id="f-linkedin" value="' + escapeHtml(c.Linkedin || '') + '"></div>' +
@@ -224,13 +243,42 @@
     }
   }
 
-  document.getElementById('btn-new').addEventListener('click', async () => {
+  const createModal = document.getElementById('create-modal');
+
+  function openCreateModal() {
+    ['new-nom', 'new-prenom', 'new-fonction', 'new-email', 'new-telephone', 'new-linkedin', 'new-commentaire']
+      .forEach(id => { document.getElementById(id).value = ''; });
+    createModal.hidden = false;
+    document.getElementById('new-nom').focus();
+  }
+  function closeCreateModal() { createModal.hidden = true; }
+
+  document.getElementById('btn-new').addEventListener('click', openCreateModal);
+  document.getElementById('create-close').addEventListener('click', closeCreateModal);
+  document.getElementById('create-cancel').addEventListener('click', closeCreateModal);
+  createModal.addEventListener('click', (e) => { if (e.target === createModal) closeCreateModal(); });
+
+  document.getElementById('create-submit').addEventListener('click', async () => {
+    const nom = document.getElementById('new-nom').value.trim();
+    if (!nom) { document.getElementById('new-nom').focus(); return; }
+
+    const fields = {};
+    if (currentMappings.Nom) fields[currentMappings.Nom] = nom;
+    if (currentMappings.Prenom) fields[currentMappings.Prenom] = document.getElementById('new-prenom').value.trim();
+    if (currentMappings.Fonction) fields[currentMappings.Fonction] = document.getElementById('new-fonction').value.trim();
+    if (currentMappings.Email) fields[currentMappings.Email] = document.getElementById('new-email').value.trim();
+    if (currentMappings.Telephone) fields[currentMappings.Telephone] = document.getElementById('new-telephone').value.trim();
+    if (currentMappings.Linkedin) fields[currentMappings.Linkedin] = document.getElementById('new-linkedin').value.trim();
+    if (currentMappings.Commentaire) fields[currentMappings.Commentaire] = document.getElementById('new-commentaire').value.trim();
+
     try {
-      const created = await grist.getTable().create({ fields: {} });
+      const created = await grist.getTable().create({ fields });
       const newId = Array.isArray(created) ? created[0].id : created.id;
+      closeCreateModal();
       grist.setCursorPos({ rowId: newId }).catch(() => {});
     } catch (err) {
       console.error(err);
+      alert('Erreur lors de la création du contact.');
     }
   });
 
@@ -248,11 +296,11 @@
   });
 
   grist.onRecord(function (record, mappings) {
+    // Deliberately not rendering the fiche here: Grist restores the last
+    // cursor position on load, which would otherwise auto-open a contact
+    // (and its attachments-free fields) before the user asked for it. The
+    // list-click handler is the only thing that opens the fiche.
     currentMappings = mappings;
-    const c = mapRecord(record, mappings);
-    currentId = c ? c.id : null;
-    renderFiche(c);
-    renderList();
   });
 </script>
 
