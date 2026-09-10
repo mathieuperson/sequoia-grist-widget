@@ -2,9 +2,9 @@
   --sequoia-green: #1f6b3f;
   --sequoia-green-dark: #144a2b;
   --sequoia-green-light: #eaf4ee;
-  --pilier-core: #7c3aed;      /* violet — Core AI / IA fondamentale */
-  --pilier-secu: #2563eb;      /* bleu — IA & sécurité */
-  --pilier-env: #1f6b3f;       /* vert — IA & environnement */
+  --pilier-core: #8c62b3;      /* violet — Core AI / IA fondamentale (logo Cluster SequoIA) */
+  --pilier-secu: #4fa5d8;      /* bleu — IA & sécurité (logo Cluster SequoIA) */
+  --pilier-env: #4cae8c;       /* vert — IA & environnement (logo Cluster SequoIA) */
   --cluster-gradient: linear-gradient(135deg, var(--pilier-core) 0%, var(--pilier-secu) 55%, var(--pilier-env) 100%);
   --bg: #f4f6f5;
   --card-bg: #ffffff;
