@@ -153,6 +153,7 @@
   const COLUMNS = [
     { name: 'Nom', title: 'Nom', optional: false },
     { name: 'Prenom', title: 'Prénom', optional: true },
+    { name: 'NomComplet', title: 'Nom Complet', optional: true },
     { name: 'Fonction', title: 'Fonction', optional: true },
     { name: 'Structures', title: 'Structure(s)', optional: true },
     { name: 'Email', title: 'Email', optional: true },
@@ -174,8 +175,15 @@
     return [c.Nom, c.Prenom].filter(Boolean).join(' ') || 'Sans nom';
   }
 
+  // Prefer the "Nom Complet" formula column when mapped — it's the
+  // authoritative display name; Nom+Prénom is only a fallback for docs
+  // that don't map it.
+  function displayName(c) {
+    return (c.NomComplet && String(c.NomComplet).trim()) || fullName(c);
+  }
+
   function sortByName(records) {
-    return [...records].sort((a, b) => fullName(a).localeCompare(fullName(b), 'fr'));
+    return [...records].sort((a, b) => displayName(a).localeCompare(displayName(b), 'fr'));
   }
 
   function renderList() {
@@ -194,12 +202,12 @@
 
       const avatar = document.createElement('div');
       avatar.className = 'avatar';
-      avatar.textContent = initials(fullName(c));
+      avatar.textContent = initials(displayName(c));
 
       const info = document.createElement('div');
       info.style.overflow = 'hidden';
       info.innerHTML =
-        '<div class="name">' + escapeHtml(fullName(c)) + '</div>' +
+        '<div class="name">' + escapeHtml(displayName(c)) + '</div>' +
         '<div class="sub">' + escapeHtml(c.Fonction || '') + '</div>';
 
       item.appendChild(avatar);
@@ -270,9 +278,9 @@
     wrap.innerHTML =
       '<div class="card">' +
         '<div class="card-header">' +
-          '<div class="header-icon">' + initials(fullName(c)) + '</div>' +
+          '<div class="header-icon">' + initials(displayName(c)) + '</div>' +
           '<div class="header-text">' +
-            '<h1>' + escapeHtml(fullName(c)) + '</h1>' +
+            '<h1>' + escapeHtml(displayName(c)) + '</h1>' +
             (c.Fonction ? '<div class="subtitle">' + escapeHtml(c.Fonction) + '</div>' : '') +
           '</div>' +
           '<div class="header-actions">' +
@@ -308,7 +316,7 @@
     wrap.innerHTML =
       '<div class="card">' +
         '<div class="card-header">' +
-          '<div class="header-icon">' + initials(fullName(c)) + '</div>' +
+          '<div class="header-icon">' + initials(displayName(c)) + '</div>' +
           '<div class="header-text">' +
             '<input class="name-input" id="f-nom" placeholder="Nom" value="' + escapeHtml(c.Nom || '') + '">' +
             '<input class="subtitle-input" id="f-fonction" placeholder="Fonction" value="' + escapeHtml(c.Fonction || '') + '">' +
