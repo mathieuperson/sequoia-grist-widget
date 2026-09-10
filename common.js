@@ -40,6 +40,13 @@ function formatValue(value) {
   return String(value);
 }
 
+function formatMontant(value) {
+  if (value === null || value === undefined || value === '') return '';
+  const n = Number(value);
+  if (isNaN(n)) return String(value);
+  return n.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+}
+
 function formatDate(value) {
   if (!value) return '';
   // Grist Date/DateTime columns come through as seconds-since-epoch.

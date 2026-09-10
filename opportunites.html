@@ -142,12 +142,20 @@
 
 <script>
   const COLUMNS = [
-    { name: 'Type', optional: true },
     { name: 'Sujet', optional: false },
+    { name: 'Type', optional: true },
+    { name: 'Partenaires', title: 'Partenaire(s)', optional: true },
+    { name: 'EtablissementCluster', title: 'Etablissement(s) Cluster', optional: true },
+    { name: 'LaboratoireCluster', title: 'Laboratoire(s) Cluster', optional: true },
+    { name: 'EquipeCluster', title: 'Equipe(s) Cluster', optional: true },
     { name: 'AxeSequoia', title: 'Axe SequoIA', optional: true },
     { name: 'Statut', optional: false },
+    { name: 'ContactCluster', title: 'Contact(s) Cluster', optional: true },
+    { name: 'ContactPartenaire', title: 'Contact(s) partenaire', optional: true },
     { name: 'DateDebut', title: 'Date de début', optional: true },
-    { name: 'Structures', title: 'Structure(s)', optional: true }
+    { name: 'Echeance', title: 'Echéance', optional: true },
+    { name: 'Montant', title: 'Montant (€)', optional: true },
+    { name: 'Commentaire', optional: true }
   ];
 
   let allRecords = [];
@@ -158,7 +166,7 @@
 
   function matchesQuery(o, query) {
     if (!query) return true;
-    const haystack = [o.Sujet, o.Type, o.AxeSequoia, formatValue(o.Structures)]
+    const haystack = [o.Sujet, o.Type, o.AxeSequoia, formatValue(o.Partenaires)]
       .filter(Boolean).join(' ').toLowerCase();
     return haystack.includes(query);
   }
@@ -228,7 +236,7 @@
         (o.Type ? '<span class="opp-tag">' + escapeHtml(o.Type) + '</span>' : '') +
         (o.AxeSequoia ? '<span class="opp-tag">' + escapeHtml(o.AxeSequoia) + '</span>' : '') +
       '</div>' +
-      '<div class="opp-date">' + escapeHtml(formatDate(o.DateDebut)) + '</div>';
+      '<div class="opp-date">' + [formatDate(o.DateDebut), formatMontant(o.Montant)].filter(Boolean).join(' · ') + '</div>';
 
     card.addEventListener('dragstart', (e) => {
       e.dataTransfer.setData('text/plain', String(o.id));
@@ -253,8 +261,19 @@
         (o.Statut ? '<span class="tag">' + escapeHtml(o.Statut) + '</span>' : '') +
       '</div>' +
       '<div class="info-grid">' +
+        '<div class="info-item"><div class="label">Partenaire(s)</div><div class="value">' + escapeHtml(formatValue(o.Partenaires)) + '</div></div>' +
         '<div class="info-item"><div class="label">Date de début</div><div class="value">' + escapeHtml(formatDate(o.DateDebut)) + '</div></div>' +
-        '<div class="info-item"><div class="label">Structure(s)</div><div class="value">' + escapeHtml(formatValue(o.Structures)) + '</div></div>' +
+        '<div class="info-item"><div class="label">Échéance</div><div class="value">' + escapeHtml(formatDate(o.Echeance) || formatValue(o.Echeance)) + '</div></div>' +
+        '<div class="info-item"><div class="label">Montant</div><div class="value">' + escapeHtml(formatMontant(o.Montant)) + '</div></div>' +
+        '<div class="info-item"><div class="label">Etablissement(s) Cluster</div><div class="value">' + escapeHtml(formatValue(o.EtablissementCluster)) + '</div></div>' +
+        '<div class="info-item"><div class="label">Laboratoire(s) Cluster</div><div class="value">' + escapeHtml(formatValue(o.LaboratoireCluster)) + '</div></div>' +
+        '<div class="info-item"><div class="label">Equipe(s) Cluster</div><div class="value">' + escapeHtml(formatValue(o.EquipeCluster)) + '</div></div>' +
+        '<div class="info-item"><div class="label">Contact(s) Cluster</div><div class="value">' + escapeHtml(formatValue(o.ContactCluster)) + '</div></div>' +
+        '<div class="info-item"><div class="label">Contact(s) partenaire</div><div class="value">' + escapeHtml(formatValue(o.ContactPartenaire)) + '</div></div>' +
+      '</div>' +
+      '<div class="section-title">Commentaire</div>' +
+      '<div class="comment-box" style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:12px;font-size:13.5px;white-space:pre-wrap;">' +
+        (o.Commentaire ? escapeHtml(o.Commentaire) : '<span style="color:var(--text-muted);font-style:italic;">Aucun commentaire.</span>') +
       '</div>';
     modal.hidden = false;
     document.getElementById('modal-close').addEventListener('click', () => { modal.hidden = true; });

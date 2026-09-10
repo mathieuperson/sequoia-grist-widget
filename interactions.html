@@ -127,11 +127,15 @@
     { name: 'Partenaires', title: 'Partenaire(s)', optional: true },
     { name: 'Objet', optional: false },
     { name: 'ContactPartenaire', title: 'Contact(s) partenaire', optional: true },
+    { name: 'EtablissementCluster', title: 'Etablissement Cluster', optional: true },
+    { name: 'LaboratoireCluster', title: 'Laboratoire Cluster', optional: true },
+    { name: 'EquipeCluster', title: 'Equipe Cluster', optional: true },
     { name: 'ContactCluster', title: 'Contact(s) cluster', optional: true },
     { name: 'ProchaineEcheance', title: 'Prochaine échéance', optional: true },
     { name: 'Suites', optional: true },
+    { name: 'Opportunites', title: 'Opportunité(s)', optional: true },
     { name: 'CR', title: 'Compte-rendu', optional: true },
-    { name: 'PJ', title: 'Pièces jointes', optional: true }
+    { name: 'PJ', title: 'Pièce-jointe', optional: true }
   ];
 
   let allRecords = [];
@@ -330,6 +334,10 @@
           '<div class="info-grid">' +
             '<div class="info-item"><div class="label">Contact(s) partenaire</div><div class="value">' + escapeHtml(formatValue(r.ContactPartenaire)) + '</div></div>' +
             '<div class="info-item"><div class="label">Contact(s) cluster</div><div class="value">' + escapeHtml(formatValue(r.ContactCluster)) + '</div></div>' +
+            '<div class="info-item"><div class="label">Etablissement Cluster</div><div class="value">' + escapeHtml(formatValue(r.EtablissementCluster)) + '</div></div>' +
+            '<div class="info-item"><div class="label">Laboratoire Cluster</div><div class="value">' + escapeHtml(formatValue(r.LaboratoireCluster)) + '</div></div>' +
+            '<div class="info-item"><div class="label">Equipe Cluster</div><div class="value">' + escapeHtml(formatValue(r.EquipeCluster)) + '</div></div>' +
+            '<div class="info-item"><div class="label">Opportunité(s)</div><div class="value">' + escapeHtml(formatValue(r.Opportunites)) + '</div></div>' +
             '<div class="info-item"><div class="label">Prochaine échéance</div><div class="value">' + escapeHtml(formatDate(r.ProchaineEcheance) || formatValue(r.ProchaineEcheance)) + '</div></div>' +
             '<div class="info-item"><div class="label">Suites</div><div class="value">' + escapeHtml(r.Suites || '') + '</div></div>' +
           '</div>' +
