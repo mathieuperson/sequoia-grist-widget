@@ -25,7 +25,9 @@
   .cr-toolbar {
     display: flex;
     align-items: center;
+    flex-wrap: wrap;
     gap: 4px;
+    row-gap: 6px;
     background: var(--bg);
     border: 1px solid var(--border);
     border-bottom: none;
@@ -41,9 +43,11 @@
     font-size: 13px;
     font-weight: 600;
     color: var(--text);
+    white-space: nowrap;
+    flex-shrink: 0;
   }
   .cr-toolbar button:hover { background: #fff; }
-  .cr-toolbar .spacer { flex: 1; }
+  .cr-toolbar .spacer { flex: 1 1 12px; min-width: 8px; }
   .cr-toolbar .mode-btn.active { background: var(--sequoia-green); color: #fff; }
   .cr-save-status { font-size: 11px; color: var(--text-muted); padding-right: 4px; }
 
@@ -240,7 +244,7 @@
 
   function selectRecord(r) {
     current = r;
-    crMode = 'edit';
+    crMode = r && r.CR ? 'preview' : 'edit';
     renderFiche(r);
     renderList();
   }
