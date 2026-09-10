@@ -9,7 +9,7 @@
 <style>
   .list-item .name { font-weight: 600; }
 
-  .header-text h1 { overflow: visible; white-space: normal; }
+  .header-text h1 { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 
   .header-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; margin-top: 2px; }
 
@@ -259,7 +259,6 @@
     const wrap = document.getElementById('fiche-wrap');
 
     const rows = [
-      viewItem('Prénom', c.Prenom ? escapeHtml(c.Prenom) : ''),
       viewItem('Email', c.Email ? '<a href="mailto:' + escapeHtml(c.Email) + '">' + escapeHtml(c.Email) + '</a>' : ''),
       viewItem('Téléphone', c.Telephone ? '<a href="tel:' + escapeHtml(c.Telephone) + '">' + escapeHtml(c.Telephone) + '</a>' : ''),
       viewItem('Linkedin', c.Linkedin ? '<a href="' + escapeHtml(c.Linkedin) + '" target="_blank" rel="noopener">Profil ↗</a>' : '')
