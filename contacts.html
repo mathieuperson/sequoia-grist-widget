@@ -8,15 +8,39 @@
 <script src="./common.js"></script>
 <style>
   .list-item .name { font-weight: 600; }
-  .principal-badge {
-    background: var(--sequoia-green-light);
-    color: var(--sequoia-green-dark);
-    border-radius: 20px;
-    padding: 2px 10px;
-    font-size: 11px;
+
+  .header-text h1 { overflow: visible; white-space: normal; }
+
+  .header-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+  .edit-toggle-btn {
+    border: none;
+    background: rgba(255,255,255,0.22);
+    color: #fff;
     font-weight: 600;
-    margin-left: 6px;
+    font-size: 12px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
   }
+  .edit-toggle-btn:hover { background: rgba(255,255,255,0.32); }
+
+  .close-fiche-btn {
+    border: none;
+    background: rgba(255,255,255,0.22);
+    color: #fff;
+    width: 26px;
+    height: 26px;
+    min-width: 26px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .close-fiche-btn:hover { background: #dc2626; }
 
   .name-input {
     background: transparent;
@@ -49,18 +73,17 @@
   .subtitle-input:hover { border-bottom-color: rgba(255,255,255,0.4); }
   .subtitle-input:focus { outline: none; border-bottom-color: #fff; }
 
-  .principal-toggle {
+  .principal-row {
     display: flex;
     align-items: center;
     gap: 6px;
-    margin-left: auto;
-    color: #fff;
-    font-size: 12px;
+    margin-bottom: 16px;
+    font-size: 13px;
     font-weight: 600;
-    white-space: nowrap;
-    cursor: pointer;
+    color: var(--sequoia-green-dark);
   }
-  .principal-toggle input { cursor: pointer; }
+  .principal-row input { cursor: pointer; }
+  .principal-row label { cursor: pointer; }
 
   .input-with-action { display: flex; align-items: center; gap: 4px; }
   .input-with-action .editable-input { flex: 1; }
@@ -77,6 +100,14 @@
   }
   .copy-btn:hover { background: var(--bg); color: var(--text); }
   .copy-btn.copied { color: var(--sequoia-green); }
+
+  .empty-hint {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 13px;
+    font-style: italic;
+    padding: 20px 0;
+  }
 </style>
 </head>
 <body>
@@ -133,6 +164,8 @@
   let allRecords = [];
   let currentMappings = null;
   let currentId = null;
+  let currentRecord = null;
+  let editMode = false;
 
   grist.ready({ requiredAccess: 'full', columns: COLUMNS, allowSelectBy: true });
 
@@ -173,6 +206,7 @@
       item.addEventListener('click', () => {
         grist.setCursorPos({ rowId: c.id }).catch(() => {});
         currentId = c.id;
+        editMode = false;
         renderFiche(c);
         renderList();
       });
@@ -204,12 +238,74 @@
     el.addEventListener('input', () => saveField(recordId, colId, el.value, statusEl));
   }
 
+  function viewItem(label, valueHtml) {
+    if (!valueHtml) return '';
+    return '<div class="info-item"><div class="label">' + label + '</div><div class="value">' + valueHtml + '</div></div>';
+  }
+
   function renderFiche(c) {
+    currentRecord = c;
     const wrap = document.getElementById('fiche-wrap');
     if (!c) {
       wrap.innerHTML = '<div class="placeholder">Sélectionnez un contact, ou créez-en un nouveau</div>';
       return;
     }
+
+    if (editMode) renderEditMode(c); else renderViewMode(c);
+  }
+
+  function renderViewMode(c) {
+    const wrap = document.getElementById('fiche-wrap');
+
+    const rows = [
+      viewItem('Prénom', c.Prenom ? escapeHtml(c.Prenom) : ''),
+      viewItem('Email', c.Email ? '<a href="mailto:' + escapeHtml(c.Email) + '">' + escapeHtml(c.Email) + '</a>' : ''),
+      viewItem('Téléphone', c.Telephone ? '<a href="tel:' + escapeHtml(c.Telephone) + '">' + escapeHtml(c.Telephone) + '</a>' : ''),
+      viewItem('Linkedin', c.Linkedin ? '<a href="' + escapeHtml(c.Linkedin) + '" target="_blank" rel="noopener">Profil ↗</a>' : '')
+    ].join('');
+
+    const structuresText = formatValue(c.Structures);
+    const hasComment = !!(c.Commentaire && c.Commentaire.trim());
+    const nothingElse = !rows && !structuresText && !hasComment;
+
+    wrap.innerHTML =
+      '<div class="card">' +
+        '<div class="card-header">' +
+          '<div class="header-icon">' + initials(fullName(c)) + '</div>' +
+          '<div class="header-text">' +
+            '<h1>' + escapeHtml(fullName(c)) + '</h1>' +
+            (c.Fonction ? '<div class="subtitle">' + escapeHtml(c.Fonction) + '</div>' : '') +
+          '</div>' +
+          '<div class="header-actions">' +
+            '<button class="edit-toggle-btn" id="toggle-edit">✏️ Modifier</button>' +
+            '<button class="close-fiche-btn" id="close-fiche" title="Fermer">✕</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="card-body">' +
+          (c.ContactPrincipal ? '<div class="badge" style="background:var(--sequoia-green-light);color:var(--sequoia-green-dark);margin-bottom:16px;">★ Contact principal</div>' : '') +
+          (rows ? '<div class="info-grid">' + rows + '</div>' : '') +
+          (structuresText ? '<div class="section-title">Structure(s)</div><div class="tags"><span class="tag">' + escapeHtml(structuresText) + '</span></div>' : '') +
+          (hasComment ? '<div class="section-title">Commentaire</div><div class="value" style="white-space:pre-wrap;">' + escapeHtml(c.Commentaire) + '</div>' : '') +
+          (nothingElse ? '<div class="empty-hint">Aucune information renseignée. Cliquez sur "✏️ Modifier" pour compléter la fiche.</div>' : '') +
+        '</div>' +
+      '</div>';
+
+    document.getElementById('toggle-edit').addEventListener('click', () => {
+      editMode = true;
+      renderFiche(currentRecord);
+    });
+    document.getElementById('close-fiche').addEventListener('click', closeFiche);
+  }
+
+  function closeFiche() {
+    currentId = null;
+    editMode = false;
+    renderFiche(null);
+    renderList();
+  }
+
+  function renderEditMode(c) {
+    const wrap = document.getElementById('fiche-wrap');
 
     wrap.innerHTML =
       '<div class="card">' +
@@ -219,12 +315,16 @@
             '<input class="name-input" id="f-nom" placeholder="Nom" value="' + escapeHtml(c.Nom || '') + '">' +
             '<input class="subtitle-input" id="f-fonction" placeholder="Fonction" value="' + escapeHtml(c.Fonction || '') + '">' +
           '</div>' +
-          '<label class="principal-toggle">' +
-            '<input type="checkbox" id="f-principal"' + (c.ContactPrincipal ? ' checked' : '') + '>' +
-            '★ Principal' +
-          '</label>' +
+          '<div class="header-actions">' +
+            '<button class="edit-toggle-btn" id="toggle-edit">✓ Terminé</button>' +
+            '<button class="close-fiche-btn" id="close-fiche" title="Fermer">✕</button>' +
+          '</div>' +
         '</div>' +
         '<div class="card-body">' +
+          '<div class="principal-row">' +
+            '<input type="checkbox" id="f-principal"' + (c.ContactPrincipal ? ' checked' : '') + '>' +
+            '<label for="f-principal">★ Contact principal</label>' +
+          '</div>' +
           '<div class="info-grid">' +
             '<div class="info-item"><div class="label">Prénom <span style="text-transform:none;">(facultatif)</span></div><input class="editable-input" id="f-prenom" value="' + escapeHtml(c.Prenom || '') + '"></div>' +
             '<div class="info-item"><div class="label">Email</div><div class="input-with-action">' +
@@ -282,6 +382,12 @@
         } catch (err) { console.error(err); }
       });
     }
+
+    document.getElementById('toggle-edit').addEventListener('click', () => {
+      editMode = false;
+      renderFiche(currentRecord);
+    });
+    document.getElementById('close-fiche').addEventListener('click', closeFiche);
   }
 
   const createModal = document.getElementById('create-modal');
