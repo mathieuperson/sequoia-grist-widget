@@ -685,15 +685,18 @@
     createModal.hidden = false;
     document.getElementById('new-objet').focus();
 
-    // Pull Type values from the *whole* Interactions table, not just the
-    // records currently loaded in this (possibly Structure-filtered)
-    // widget instance — otherwise the list is empty whenever the selected
-    // Structure has no interactions of its own yet.
+    // Prefer the column's real Grist-defined Choice list (includes values
+    // like a just-added "Webinaire" that no existing record uses yet).
+    // Fall back to scanning the *whole* Interactions table for distinct
+    // values actually in use if Type isn't a Choice column.
     try {
       const tableId = await grist.getTable().getTableId();
-      const data = await fetchTableCached(tableId);
-      const typeValues = Array.from(new Set((data[currentMappings.Type] || []).filter(Boolean)))
-        .sort((a, b) => String(a).localeCompare(String(b), 'fr'));
+      let typeValues = await fetchColumnChoices(tableId, currentMappings.Type);
+      if (!typeValues) {
+        const data = await fetchTableCached(tableId);
+        typeValues = Array.from(new Set((data[currentMappings.Type] || []).filter(Boolean)));
+      }
+      typeValues = [...typeValues].sort((a, b) => String(a).localeCompare(String(b), 'fr'));
       typeSelect.innerHTML = '<option value="">—</option>' +
         typeValues.map(t => '<option value="' + escapeHtml(t) + '">' + escapeHtml(t) + '</option>').join('');
     } catch (err) {
