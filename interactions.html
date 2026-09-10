@@ -417,10 +417,21 @@
     const saveField = createFieldSaver(saveStatus);
 
     const labelsOf = (v) => (formatValue(v) ? formatValue(v).split(', ') : []);
+    const structureLinkCandidates = ['Structures', 'Structure', 'Structure_s_', 'structures'];
+
+    function renderContactPartenairePicker(partenaireLabels) {
+      renderRefPicker(
+        document.getElementById('ref-contact-partenaire'),
+        labelsOf(r.ContactPartenaire),
+        'Contacts',
+        (labels) => saveRefField(r.id, currentMappings.ContactPartenaire, labels, document.getElementById('cr-save-status')),
+        { linkCandidates: structureLinkCandidates, parentTableId: 'Structures', parentLabels: partenaireLabels }
+      );
+    }
+
     renderRefPicker(document.getElementById('ref-partenaires'), labelsOf(r.Partenaires), 'Structures',
-      (labels) => saveRefField(r.id, currentMappings.Partenaires, labels, document.getElementById('cr-save-status')));
-    renderRefPicker(document.getElementById('ref-contact-partenaire'), labelsOf(r.ContactPartenaire), 'Contacts',
-      (labels) => saveRefField(r.id, currentMappings.ContactPartenaire, labels, document.getElementById('cr-save-status')));
+      (labels) => { saveRefField(r.id, currentMappings.Partenaires, labels, document.getElementById('cr-save-status')); renderContactPartenairePicker(labels); });
+    renderContactPartenairePicker(labelsOf(r.Partenaires));
     renderRefPicker(document.getElementById('ref-contact-cluster'), labelsOf(r.ContactCluster), 'Contacts',
       (labels) => saveRefField(r.id, currentMappings.ContactCluster, labels, document.getElementById('cr-save-status')));
     renderRefPicker(document.getElementById('ref-opportunites'), labelsOf(r.Opportunites), 'Opportunites',

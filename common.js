@@ -223,10 +223,61 @@ async function fetchReferenceOptions(tableId) {
     .sort((a, b) => a.label.localeCompare(b.label, 'fr'));
 }
 
+function findColumnByCandidates(tableData, candidates) {
+  const cols = Object.keys(tableData).filter(k => k !== 'id' && k !== 'manualSort');
+  const lower = candidates.map(c => c.toLowerCase());
+  return cols.find(c => lower.includes(c.toLowerCase())) ||
+    cols.find(c => lower.some(lc => c.toLowerCase().includes(lc))) ||
+    null;
+}
+
+// Best-effort: narrows `tableId`'s options down to rows whose own reference
+// column (guessed among `linkCandidates`) points to one of `parentLabels`
+// (resolved to row ids via `parentTableId`'s display column). Falls back to
+// the unfiltered option list whenever a step of the guess comes up empty,
+// so a wrong guess never hides genuinely valid choices.
+async function fetchReferenceOptionsFilteredBy(tableId, linkCandidates, parentTableId, parentLabels) {
+  const allOptions = await fetchReferenceOptions(tableId);
+  if (!parentLabels || parentLabels.length === 0) return allOptions;
+
+  try {
+    const parentData = await fetchTableCached(parentTableId);
+    const parentDisplayCol = guessDisplayColumn(parentData);
+    const parentIds = parentLabels
+      .map(label => {
+        const idx = (parentData[parentDisplayCol] || []).indexOf(label);
+        return idx >= 0 ? parentData.id[idx] : null;
+      })
+      .filter(id => id !== null);
+    if (parentIds.length === 0) return allOptions;
+
+    const data = await fetchTableCached(tableId);
+    const linkCol = findColumnByCandidates(data, linkCandidates);
+    if (!linkCol) return allOptions;
+
+    const ids = data.id || [];
+    const linkValues = data[linkCol] || [];
+    const matchingIds = new Set();
+    ids.forEach((rowId, i) => {
+      const v = linkValues[i];
+      const refIds = Array.isArray(v) ? v.filter(x => typeof x === 'number') : (typeof v === 'number' ? [v] : []);
+      if (refIds.some(id => parentIds.includes(id))) matchingIds.add(rowId);
+    });
+
+    const filtered = allOptions.filter(o => matchingIds.has(o.id));
+    return filtered.length > 0 ? filtered : allOptions;
+  } catch (err) {
+    console.error('fetchReferenceOptionsFilteredBy failed for', tableId, err);
+    return allOptions;
+  }
+}
+
 // Renders an add/remove chip picker with autocomplete into `container`.
 // `currentLabels` is the initial list of display strings already linked.
 // `onChange(labels)` is called with the full updated list on every add/remove.
-async function renderRefPicker(container, currentLabels, targetTableId, onChange) {
+// Optional `filterConfig` = { linkCandidates, parentTableId, parentLabels }
+// narrows the suggestions to rows linked to the given parent (best-effort).
+async function renderRefPicker(container, currentLabels, targetTableId, onChange, filterConfig) {
   const datalistId = 'dl-' + Math.random().toString(36).slice(2);
   let labels = (currentLabels || []).filter(Boolean);
   let options = [];
@@ -269,7 +320,9 @@ async function renderRefPicker(container, currentLabels, targetTableId, onChange
   paint();
 
   try {
-    options = await fetchReferenceOptions(targetTableId);
+    options = filterConfig
+      ? await fetchReferenceOptionsFilteredBy(targetTableId, filterConfig.linkCandidates, filterConfig.parentTableId, filterConfig.parentLabels)
+      : await fetchReferenceOptions(targetTableId);
     paint();
   } catch (err) {
     console.error('fetchReferenceOptions failed for', targetTableId, err);
