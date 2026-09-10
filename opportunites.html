@@ -162,7 +162,7 @@
   let currentMappings = null;
   const STATUS_ORDER = []; // preserves first-seen order across renders
 
-  grist.ready({ requiredAccess: 'full', columns: COLUMNS });
+  grist.ready({ requiredAccess: 'full', columns: COLUMNS, allowSelectBy: true });
 
   function matchesQuery(o, query) {
     if (!query) return true;

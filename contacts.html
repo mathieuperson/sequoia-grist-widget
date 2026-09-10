@@ -69,7 +69,7 @@
   let currentMappings = null;
   let currentId = null;
 
-  grist.ready({ requiredAccess: 'read table', columns: COLUMNS });
+  grist.ready({ requiredAccess: 'read table', columns: COLUMNS, allowSelectBy: true });
 
   function fullName(c) {
     return [c.Nom, c.Prenom].filter(Boolean).join(' ') || 'Sans nom';

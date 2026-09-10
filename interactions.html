@@ -143,7 +143,7 @@
   let current = null; // currently displayed mapped record
   let crMode = 'edit'; // 'edit' | 'preview'
 
-  grist.ready({ requiredAccess: 'full', columns: COLUMNS });
+  grist.ready({ requiredAccess: 'full', columns: COLUMNS, allowSelectBy: true });
 
   function matchesQuery(r, query) {
     if (!query) return true;
