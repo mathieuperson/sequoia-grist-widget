@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Fiche contact</title>
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<link rel="stylesheet" href="./common.css">
+<script src="./common.js"></script>
+<style>
+  .list-item .name { font-weight: 600; }
+  .principal-badge {
+    background: var(--sequoia-green-light);
+    color: var(--sequoia-green-dark);
+    border-radius: 20px;
+    padding: 2px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-left: 6px;
+  }
+  .comment-box {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px;
+    font-size: 14px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+  }
+  .comment-box:empty::before {
+    content: "Aucun commentaire.";
+    color: var(--text-muted);
+    font-style: italic;
+  }
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="search-box">
+        <input type="text" id="search" placeholder="Rechercher un contact...">
+      </div>
+    </div>
+    <div class="list" id="list">
+      <div class="empty-list">Chargement…</div>
+    </div>
+  </aside>
+
+  <main class="fiche-wrap" id="fiche-wrap">
+    <div class="placeholder">Sélectionnez un contact</div>
+  </main>
+</div>
+
+<script>
+  const COLUMNS = [
+    { name: 'Nom', title: 'Nom', optional: false },
+    { name: 'Prenom', title: 'Prénom', optional: true },
+    { name: 'Fonction', title: 'Fonction', optional: true },
+    { name: 'Structures', title: 'Structure(s)', optional: true },
+    { name: 'Email', title: 'Email', optional: true },
+    { name: 'Telephone', title: 'Téléphone', optional: true },
+    { name: 'Linkedin', title: 'Linkedin', optional: true },
+    { name: 'ContactPrincipal', title: 'Contact principal', optional: true },
+    { name: 'Commentaire', title: 'Commentaire', optional: true }
+  ];
+
+  let allRecords = [];
+  let currentMappings = null;
+  let currentId = null;
+
+  grist.ready({ requiredAccess: 'read table', columns: COLUMNS });
+
+  function fullName(c) {
+    return [c.Nom, c.Prenom].filter(Boolean).join(' ') || 'Sans nom';
+  }
+
+  function matchesQuery(c, query) {
+    if (!query) return true;
+    const haystack = [c.Nom, c.Prenom, c.Fonction, formatValue(c.Structures)]
+      .filter(Boolean).join(' ').toLowerCase();
+    return haystack.includes(query);
+  }
+
+  function renderList() {
+    const query = (document.getElementById('search').value || '').trim().toLowerCase();
+    const listEl = document.getElementById('list');
+    const filtered = allRecords.filter(c => matchesQuery(c, query));
+
+    if (filtered.length === 0) {
+      listEl.innerHTML = '<div class="empty-list">Aucun contact trouvé.</div>';
+      return;
+    }
+
+    listEl.innerHTML = '';
+    filtered.forEach(c => {
+      const item = document.createElement('div');
+      item.className = 'list-item' + (c.id === currentId ? ' active' : '');
+
+      const avatar = document.createElement('div');
+      avatar.className = 'avatar';
+      avatar.textContent = initials(fullName(c));
+
+      const info = document.createElement('div');
+      info.style.overflow = 'hidden';
+      info.innerHTML =
+        '<div class="name">' + escapeHtml(fullName(c)) + '</div>' +
+        '<div class="sub">' + escapeHtml(c.Fonction || '') + '</div>';
+
+      item.appendChild(avatar);
+      item.appendChild(info);
+      item.addEventListener('click', () => {
+        grist.setCursorPos({ rowId: c.id }).catch(() => {});
+        currentId = c.id;
+        renderFiche(c);
+        renderList();
+      });
+
+      listEl.appendChild(item);
+    });
+  }
+
+  function renderFiche(c) {
+    const wrap = document.getElementById('fiche-wrap');
+    if (!c) {
+      wrap.innerHTML = '<div class="placeholder">Sélectionnez un contact</div>';
+      return;
+    }
+
+    const principalBadge = c.ContactPrincipal
+      ? '<span class="badge">★ Contact principal</span>' : '';
+
+    const emailHtml = c.Email
+      ? '<a href="mailto:' + escapeHtml(c.Email) + '">' + escapeHtml(c.Email) + '</a>' : '';
+    const telHtml = c.Telephone
+      ? '<a href="tel:' + escapeHtml(c.Telephone) + '">' + escapeHtml(c.Telephone) + '</a>' : '';
+    const linkedinHtml = c.Linkedin
+      ? '<a href="' + escapeHtml(c.Linkedin) + '" target="_blank" rel="noopener">Profil Linkedin ↗</a>' : '';
+
+    wrap.innerHTML =
+      '<div class="card">' +
+        '<div class="card-header">' +
+          '<div class="header-icon">' + initials(fullName(c)) + '</div>' +
+          '<div class="header-text">' +
+            '<h1>' + escapeHtml(fullName(c)) + '</h1>' +
+            '<div class="subtitle">' + escapeHtml(c.Fonction || '') + '</div>' +
+          '</div>' +
+          principalBadge +
+        '</div>' +
+        '<div class="card-body">' +
+          '<div class="tags">' +
+            (formatValue(c.Structures) ? '<span class="tag">' + escapeHtml(formatValue(c.Structures)) + '</span>' : '') +
+          '</div>' +
+          '<div class="info-grid">' +
+            '<div class="info-item"><div class="label">Email</div><div class="value">' + emailHtml + '</div></div>' +
+            '<div class="info-item"><div class="label">Téléphone</div><div class="value">' + telHtml + '</div></div>' +
+            '<div class="info-item"><div class="label">Linkedin</div><div class="value">' + linkedinHtml + '</div></div>' +
+            '<div class="info-item"><div class="label">Structure(s)</div><div class="value">' + escapeHtml(formatValue(c.Structures)) + '</div></div>' +
+          '</div>' +
+          '<div class="section-title">Commentaire</div>' +
+          '<div class="comment-box">' + escapeHtml(c.Commentaire || '') + '</div>' +
+        '</div>' +
+      '</div>';
+  }
+
+  grist.onRecords(function (records, mappings) {
+    currentMappings = mappings;
+    allRecords = mapRecords(records, mappings);
+    renderList();
+  });
+
+  grist.onRecord(function (record, mappings) {
+    currentMappings = mappings;
+    const c = mapRecord(record, mappings);
+    currentId = c ? c.id : null;
+    renderFiche(c);
+    renderList();
+  });
+
+  document.getElementById('search').addEventListener('input', renderList);
+</script>
+
+</body>
+</html>
