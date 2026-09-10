@@ -532,17 +532,28 @@
     return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
   }
 
+  // Values actually seen across loaded records for a column — a Choice
+  // column can carry values that were typed/imported before being added to
+  // its formally configured "choices" list (Grist still accepts them, just
+  // flags them), so the real Grist list alone can under-cover what's live.
+  function distinctUsedValues(colId) {
+    return Array.from(new Set(allRecords.map(r => pilierText(r[colId])).filter(Boolean)));
+  }
+
   // Replaces a plain-value <select> (rendered synchronously with just the
-  // current value) with the full Choice list once fetched — same
-  // "paint now, fill in later" pattern used by the ref-pickers elsewhere.
+  // current value) with the union of Grist's configured Choice list and the
+  // values actually in use, once fetched — same "paint now, fill in later"
+  // pattern used by the ref-pickers elsewhere.
   function populateChoiceSelect(id, colId, currentValue) {
     fetchColumnChoices(colId).then(choices => {
-      if (!choices) return; // not a Choice column, or fetch failed: keep the plain fallback
       const el = document.getElementById(id);
       if (!el) return;
-      const all = (currentValue && !choices.includes(currentValue)) ? [...choices, currentValue] : choices;
+      const merged = Array.from(new Set([...(choices || []), ...distinctUsedValues(colId)]));
+      if (currentValue && !merged.includes(currentValue)) merged.push(currentValue);
+      if (merged.length === 0) return; // nothing beyond the current value: keep the plain fallback
+      merged.sort((a, b) => a.localeCompare(b, 'fr'));
       el.innerHTML = '<option value="">—</option>' +
-        all.map(c => '<option value="' + escAttr(c) + '"' + (c === currentValue ? ' selected' : '') + '>' + escAttr(c) + '</option>').join('');
+        merged.map(c => '<option value="' + escAttr(c) + '"' + (c === currentValue ? ' selected' : '') + '>' + escAttr(c) + '</option>').join('');
     });
   }
 

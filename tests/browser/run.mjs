@@ -161,13 +161,18 @@ async function testIndexChoiceSelects(browser) {
           'entreprise_taille', 'recherche_structure', 'recherche_equipe_activite', 'recherche_equipe_labo',
           'axe_sequoia', 'pilier_sequoia', 'url_site_web'],
         data: {
-          id: [1],
-          nom_acteur: ['Quarkslab'], description: ['R&D / reverse / logiciels'],
-          type_acteur: ['Economique'], acteur_categorie: ['Partenaire'],
-          entreprise_activite: ['Cybersécurité'], entreprise_taille: ['PME'],
-          recherche_structure: [''], recherche_equipe_activite: [''], recherche_equipe_labo: [''],
-          axe_sequoia: ['IA & cybersécurité'], pilier_sequoia: ['IA & sécurité'],
-          url_site_web: ['https://www.quarkslab.com']
+          id: [1, 2],
+          nom_acteur: ['Quarkslab', 'ProspectCo'], description: ['R&D / reverse / logiciels', ''],
+          type_acteur: ['Economique', 'Economique'],
+          // "Prospect" is used by another record but deliberately NOT in the
+          // column's formally configured choices below — reproduces the
+          // reported bug (a Choice column carrying values typed before being
+          // added to "Modifier les choix"; Grist still accepts them).
+          acteur_categorie: ['Partenaire', 'Prospect'],
+          entreprise_activite: ['Cybersécurité', ''], entreprise_taille: ['PME', ''],
+          recherche_structure: ['', ''], recherche_equipe_activite: ['', ''], recherche_equipe_labo: ['', ''],
+          axe_sequoia: ['IA & cybersécurité', ''], pilier_sequoia: ['IA & sécurité', ''],
+          url_site_web: ['https://www.quarkslab.com', '']
         }
       }
     },
@@ -175,7 +180,7 @@ async function testIndexChoiceSelects(browser) {
     columnsMeta: {
       Structures: [
         choiceCol('type_acteur', ['Economique', 'Recherche', 'Institutionnel']),
-        choiceCol('acteur_categorie', ['Partenaire', 'Prospect']),
+        choiceCol('acteur_categorie', ['Partenaire']), // "Prospect" intentionally missing here
         choiceCol('entreprise_activite', ['Cybersécurité', 'IA', 'Data']),
         choiceCol('entreprise_taille', ['PME', 'ETI', 'GE'])
       ]
@@ -197,6 +202,12 @@ async function testIndexChoiceSelects(browser) {
     'Taille propose ETI et GE même si la fiche actuelle est PME');
   ok(await page.locator('#f-entreprise-taille').inputValue() === 'PME',
     'la valeur actuelle (PME) reste sélectionnée après le peuplement async');
+
+  // Regression: "Prospect" is used by another record but absent from the
+  // column's formally configured Choice list — must still show up (union).
+  const categorieOptions = await page.locator('#f-acteur-categorie option').allTextContents();
+  ok(categorieOptions.includes('Prospect'),
+    'Catégorie propose aussi "Prospect" (valeur utilisée mais absente de la liste de choix Grist)');
 
   // Change Taille -> ETI and verify the write (saveField debounces 700ms)
   await page.selectOption('#f-entreprise-taille', 'ETI');
@@ -250,7 +261,7 @@ async function testContactsCreateFlow(browser) {
         colIds: ['Nom', 'Prenom', 'NomComplet', 'Fonction', 'Structures', 'Email', 'Telephone', 'Linkedin', 'ContactPrincipal', 'Commentaire'],
         data: { id: [] }
       },
-      Structures: { colIds: ['nom_acteur'], data: { id: [], nom_acteur: [] } }
+      Structures: { colIds: ['nom_acteur'], data: { id: [100], nom_acteur: ['Neverhack'] } }
     }
   };
   const { page, context, consoleErrors } = await openWidget(browser, 'contacts.html', cfg);
@@ -264,7 +275,19 @@ async function testContactsCreateFlow(browser) {
   ok((await page.evaluate(() => window.__mockCalls.filter(c => c.fn === 'create').length)) === 0,
     'la création est bloquée sans Nom');
 
+  // Structure is also required (regression: a contact created without one
+  // never showed up in any Structure-filtered Contacts widget)
   await page.fill('#new-nom', 'Doyen');
+  await page.click('#create-submit');
+  await page.waitForTimeout(50);
+  ok((await page.evaluate(() => window.__mockCalls.filter(c => c.fn === 'create').length)) === 0,
+    'la création est bloquée sans structure');
+  ok(await page.locator('#new-structure-hint').evaluate(el => el.classList.contains('error')),
+    'le message d\'aide passe en rouge quand la structure manque');
+
+  await page.fill('#new-ref-structures .ref-input', 'Neverhack');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(50);
   await page.fill('#new-prenom', 'Guillaume');
   await page.fill('#new-email', 'guillaume.doyen@example.com');
   await page.click('#create-submit');
@@ -276,6 +299,8 @@ async function testContactsCreateFlow(browser) {
     const fields = createCalls[0].arg.fields;
     ok(fields.Nom === 'Doyen' && fields.Prenom === 'Guillaume', 'Nom et Prénom sont bien envoyés');
     ok(!('NomComplet' in fields), 'NomComplet (colonne formule Grist) n\'est pas écrit — Grist la calcule seul');
+    ok(Array.isArray(fields.Structures) && fields.Structures[0] === 'L' && fields.Structures.includes(100),
+      'Structures est écrit comme ["L", 100] (Neverhack)');
   }
   ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
   await context.close();
