@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Fiche interaction</title>
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+<link rel="stylesheet" href="./common.css">
+<script src="./common.js"></script>
+<style>
+  .list-item .date { font-size: 11px; color: var(--text-muted); min-width: 58px; }
+  .type-pill {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 10px;
+    background: var(--sequoia-green-light);
+    color: var(--sequoia-green-dark);
+    font-size: 10.5px;
+    font-weight: 600;
+    margin-top: 2px;
+  }
+
+  /* ---- CR markdown editor ---- */
+  .cr-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    padding: 6px;
+  }
+  .cr-toolbar button {
+    border: none;
+    background: transparent;
+    padding: 5px 9px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .cr-toolbar button:hover { background: #fff; }
+  .cr-toolbar .spacer { flex: 1; }
+  .cr-toolbar .mode-btn.active { background: var(--sequoia-green); color: #fff; }
+  .cr-save-status { font-size: 11px; color: var(--text-muted); padding-right: 4px; }
+
+  .cr-editor {
+    width: 100%;
+    min-height: 220px;
+    border: 1px solid var(--border);
+    border-radius: 0 0 8px 8px;
+    padding: 14px;
+    font-family: ui-monospace, "SF Mono", Consolas, monospace;
+    font-size: 13.5px;
+    line-height: 1.6;
+    resize: vertical;
+    outline: none;
+  }
+  .cr-editor:focus { border-color: var(--sequoia-green); }
+
+  .cr-preview {
+    border: 1px solid var(--border);
+    border-radius: 0 0 8px 8px;
+    padding: 14px 16px;
+    min-height: 220px;
+    font-size: 14px;
+    line-height: 1.6;
+  }
+  .cr-preview img { max-width: 100%; border-radius: 6px; margin: 6px 0; }
+  .cr-preview:empty::before { content: "Aucun compte-rendu."; color: var(--text-muted); font-style: italic; }
+  .cr-preview p:first-child { margin-top: 0; }
+
+  /* ---- Attachments ---- */
+  .pj-dropzone {
+    border: 2px dashed var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+  .pj-dropzone.dragover { border-color: var(--sequoia-green); background: var(--sequoia-green-light); }
+  .pj-list { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
+  .pj-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+  .pj-item .pj-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pj-item a { color: var(--sequoia-green-dark); text-decoration: none; font-weight: 500; }
+  .pj-item a:hover { text-decoration: underline; }
+  .pj-item .pj-remove { color: var(--danger); cursor: pointer; font-size: 13px; background: none; border: none; }
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="search-box">
+        <input type="text" id="search" placeholder="Rechercher une interaction...">
+      </div>
+    </div>
+    <div class="list" id="list">
+      <div class="empty-list">Chargement…</div>
+    </div>
+  </aside>
+
+  <main class="fiche-wrap" id="fiche-wrap">
+    <div class="placeholder">Sélectionnez une interaction</div>
+  </main>
+</div>
+
+<script>
+  const COLUMNS = [
+    { name: 'Date', optional: true },
+    { name: 'Type', optional: true },
+    { name: 'Partenaires', title: 'Partenaire(s)', optional: true },
+    { name: 'Objet', optional: false },
+    { name: 'ContactPartenaire', title: 'Contact(s) partenaire', optional: true },
+    { name: 'EtablissementCluster', title: 'Etablissement Cluster', optional: true },
+    { name: 'LaboratoireCluster', title: 'Laboratoire Cluster', optional: true },
+    { name: 'EquipeCluster', title: 'Equipe Cluster', optional: true },
+    { name: 'ContactCluster', title: 'Contact(s) cluster', optional: true },
+    { name: 'ProchaineEcheance', title: 'Prochaine échéance', optional: true },
+    { name: 'Suites', optional: true },
+    { name: 'Opportunites', title: 'Opportunité(s)', optional: true },
+    { name: 'CR', title: 'Compte-rendu', optional: true },
+    { name: 'PJ', title: 'Pièce-jointe', optional: true }
+  ];
+
+  let allRecords = [];
+  let currentMappings = null;
+  let current = null; // currently displayed mapped record
+  let crMode = 'edit'; // 'edit' | 'preview'
+
+  grist.ready({ requiredAccess: 'full', columns: COLUMNS });
+
+  function matchesQuery(r, query) {
+    if (!query) return true;
+    const haystack = [r.Objet, r.Type, formatValue(r.Partenaires), r.Suites]
+      .filter(Boolean).join(' ').toLowerCase();
+    return haystack.includes(query);
+  }
+
+  function sortByDateDesc(records) {
+    return [...records].sort((a, b) => {
+      const da = typeof a.Date === 'number' ? a.Date : 0;
+      const db = typeof b.Date === 'number' ? b.Date : 0;
+      return db - da;
+    });
+  }
+
+  function renderList() {
+    const query = (document.getElementById('search').value || '').trim().toLowerCase();
+    const listEl = document.getElementById('list');
+    const filtered = sortByDateDesc(allRecords.filter(r => matchesQuery(r, query)));
+
+    if (filtered.length === 0) {
+      listEl.innerHTML = '<div class="empty-list">Aucune interaction trouvée.</div>';
+      return;
+    }
+
+    listEl.innerHTML = '';
+    filtered.forEach(r => {
+      const item = document.createElement('div');
+      item.className = 'list-item' + (current && r.id === current.id ? ' active' : '');
+
+      const dateEl = document.createElement('div');
+      dateEl.className = 'date';
+      dateEl.textContent = formatDate(r.Date);
+
+      const info = document.createElement('div');
+      info.style.overflow = 'hidden';
+      info.innerHTML =
+        '<div class="name">' + escapeHtml(r.Objet || 'Sans objet') + '</div>' +
+        (r.Type ? '<span class="type-pill">' + escapeHtml(r.Type) + '</span>' : '');
+
+      item.appendChild(dateEl);
+      item.appendChild(info);
+      item.addEventListener('click', () => {
+        grist.setCursorPos({ rowId: r.id }).catch(() => {});
+        selectRecord(r);
+      });
+
+      listEl.appendChild(item);
+    });
+  }
+
+  function selectRecord(r) {
+    current = r;
+    crMode = 'edit';
+    renderFiche(r);
+    renderList();
+  }
+
+  function saveStatus(text) {
+    const el = document.getElementById('cr-save-status');
+    if (el) el.textContent = text;
+  }
+
+  const saveCR = debounce(async function (recordId, text) {
+    try {
+      saveStatus('Enregistrement…');
+      await grist.getTable().update({ id: recordId, fields: { [currentMappings.CR]: text } });
+      saveStatus('Enregistré ✓');
+    } catch (err) {
+      saveStatus('Erreur d’enregistrement');
+      console.error(err);
+    }
+  }, 800);
+
+  function insertAtCursor(textarea, before, after, placeholder) {
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selected = textarea.value.slice(start, end) || placeholder;
+    const newValue = textarea.value.slice(0, start) + before + selected + after + textarea.value.slice(end);
+    textarea.value = newValue;
+    const cursor = start + before.length + selected.length + after.length;
+    textarea.focus();
+    textarea.setSelectionRange(cursor, cursor);
+    textarea.dispatchEvent(new Event('input'));
+  }
+
+  async function renderPreview(text, previewEl) {
+    const rawHtml = marked.parse(text || '');
+    previewEl.innerHTML = DOMPurify.sanitize(rawHtml);
+    const imgs = previewEl.querySelectorAll('img[src^="grist-att:"]');
+    for (const img of imgs) {
+      const id = img.getAttribute('src').replace('grist-att:', '');
+      try {
+        img.src = await getAttachmentDownloadUrl(id);
+      } catch (err) {
+        img.alt = 'Image indisponible';
+      }
+    }
+  }
+
+  async function renderPjList(r, container) {
+    const ids = attachmentIdsFromValue(r.PJ);
+    if (ids.length === 0) {
+      container.innerHTML = '<div class="empty-list" style="padding:8px 0;">Aucune pièce jointe.</div>';
+      return;
+    }
+    container.innerHTML = '<div class="empty-list" style="padding:8px 0;">Chargement…</div>';
+    const metas = await Promise.all(ids.map(id => getAttachmentMeta(id).catch(() => ({ id, fileName: 'Fichier #' + id }))));
+    container.innerHTML = '';
+    metas.forEach(meta => {
+      const row = document.createElement('div');
+      row.className = 'pj-item';
+      row.innerHTML =
+        '<span>📎</span>' +
+        '<span class="pj-name">' + escapeHtml(meta.fileName) + '</span>' +
+        '<a href="#" data-id="' + meta.id + '" class="pj-download">Télécharger</a>' +
+        '<button class="pj-remove" data-id="' + meta.id + '" title="Retirer">✕</button>';
+      container.appendChild(row);
+    });
+
+    container.querySelectorAll('.pj-download').forEach(a => {
+      a.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const url = await getAttachmentDownloadUrl(a.dataset.id);
+        window.open(url, '_blank');
+      });
+    });
+    container.querySelectorAll('.pj-remove').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const remaining = ids.filter(id => String(id) !== String(btn.dataset.id));
+        await grist.getTable().update({ id: r.id, fields: { [currentMappings.PJ]: ['L', ...remaining] } });
+        r.PJ = ['L', ...remaining];
+        renderPjList(r, container);
+      });
+    });
+  }
+
+  function setupDropzone(zone, input, r, listContainer) {
+    const handleFiles = async (files) => {
+      if (!files || files.length === 0) return;
+      zone.textContent = 'Envoi en cours…';
+      try {
+        const newIds = await uploadAttachments(Array.from(files));
+        const existing = attachmentIdsFromValue(r.PJ);
+        const all = [...existing, ...newIds];
+        await grist.getTable().update({ id: r.id, fields: { [currentMappings.PJ]: ['L', ...all] } });
+        r.PJ = ['L', ...all];
+        renderPjList(r, listContainer);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        zone.textContent = 'Glissez un fichier ici, ou cliquez pour parcourir';
+      }
+    };
+
+    zone.addEventListener('click', () => input.click());
+    input.addEventListener('change', () => handleFiles(input.files));
+    zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('dragover'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+    zone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      zone.classList.remove('dragover');
+      handleFiles(e.dataTransfer.files);
+    });
+  }
+
+  function renderFiche(r) {
+    const wrap = document.getElementById('fiche-wrap');
+    if (!r) {
+      wrap.innerHTML = '<div class="placeholder">Sélectionnez une interaction</div>';
+      return;
+    }
+
+    wrap.innerHTML =
+      '<div class="card">' +
+        '<div class="card-header">' +
+          '<div class="header-icon">📅</div>' +
+          '<div class="header-text">' +
+            '<h1>' + escapeHtml(r.Objet || 'Sans objet') + '</h1>' +
+            '<div class="subtitle">' + [formatDate(r.Date), r.Type].filter(Boolean).join(' · ') + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="card-body">' +
+          '<div class="tags">' +
+            (formatValue(r.Partenaires) ? '<span class="tag">' + escapeHtml(formatValue(r.Partenaires)) + '</span>' : '') +
+          '</div>' +
+          '<div class="info-grid">' +
+            '<div class="info-item"><div class="label">Contact(s) partenaire</div><div class="value">' + escapeHtml(formatValue(r.ContactPartenaire)) + '</div></div>' +
+            '<div class="info-item"><div class="label">Contact(s) cluster</div><div class="value">' + escapeHtml(formatValue(r.ContactCluster)) + '</div></div>' +
+            '<div class="info-item"><div class="label">Etablissement Cluster</div><div class="value">' + escapeHtml(formatValue(r.EtablissementCluster)) + '</div></div>' +
+            '<div class="info-item"><div class="label">Laboratoire Cluster</div><div class="value">' + escapeHtml(formatValue(r.LaboratoireCluster)) + '</div></div>' +
+            '<div class="info-item"><div class="label">Equipe Cluster</div><div class="value">' + escapeHtml(formatValue(r.EquipeCluster)) + '</div></div>' +
+            '<div class="info-item"><div class="label">Opportunité(s)</div><div class="value">' + escapeHtml(formatValue(r.Opportunites)) + '</div></div>' +
+            '<div class="info-item"><div class="label">Prochaine échéance</div><div class="value">' + escapeHtml(formatDate(r.ProchaineEcheance) || formatValue(r.ProchaineEcheance)) + '</div></div>' +
+            '<div class="info-item"><div class="label">Suites</div><div class="value">' + escapeHtml(r.Suites || '') + '</div></div>' +
+          '</div>' +
+
+          '<div class="section-title">Compte-rendu</div>' +
+          '<div class="cr-toolbar">' +
+            '<button data-md="**" data-ph="gras" title="Gras"><b>G</b></button>' +
+            '<button data-md="_" data-ph="italique" title="Italique"><i>I</i></button>' +
+            '<button data-block="## " title="Titre">H2</button>' +
+            '<button data-block="- " title="Liste">• Liste</button>' +
+            '<button data-link title="Lien">🔗</button>' +
+            '<span class="spacer"></span>' +
+            '<span class="cr-save-status" id="cr-save-status"></span>' +
+            '<button class="mode-btn" id="mode-edit" title="Édition">Éditer</button>' +
+            '<button class="mode-btn" id="mode-preview" title="Aperçu">Aperçu</button>' +
+          '</div>' +
+          '<textarea class="cr-editor" id="cr-editor" placeholder="Rédigez le compte-rendu en markdown… (collez une image directement)"></textarea>' +
+          '<div class="cr-preview" id="cr-preview" hidden></div>' +
+
+          '<div class="section-title">Pièces jointes</div>' +
+          '<div class="pj-dropzone" id="pj-dropzone">Glissez un fichier ici, ou cliquez pour parcourir</div>' +
+          '<input type="file" id="pj-input" multiple hidden>' +
+          '<div class="pj-list" id="pj-list"></div>' +
+        '</div>' +
+      '</div>';
+
+    const editor = document.getElementById('cr-editor');
+    const preview = document.getElementById('cr-preview');
+    editor.value = r.CR || '';
+
+    document.querySelectorAll('.cr-toolbar button[data-md]').forEach(btn => {
+      btn.addEventListener('click', () => insertAtCursor(editor, btn.dataset.md, btn.dataset.md, btn.dataset.ph));
+    });
+    document.querySelectorAll('.cr-toolbar button[data-block]').forEach(btn => {
+      btn.addEventListener('click', () => insertAtCursor(editor, btn.dataset.block, '', 'texte'));
+    });
+    const linkBtn = document.querySelector('.cr-toolbar button[data-link]');
+    if (linkBtn) linkBtn.addEventListener('click', () => insertAtCursor(editor, '[', '](https://)', 'texte du lien'));
+
+    editor.addEventListener('input', () => saveCR(r.id, editor.value));
+
+    editor.addEventListener('paste', async (e) => {
+      const items = e.clipboardData && e.clipboardData.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.type && item.type.startsWith('image/')) {
+          e.preventDefault();
+          const file = item.getAsFile();
+          try {
+            const [id] = await uploadAttachments([file]);
+            insertAtCursor(editor, '', '', '![image](grist-att:' + id + ')');
+            saveCR(r.id, editor.value);
+          } catch (err) {
+            console.error(err);
+          }
+          return;
+        }
+      }
+    });
+
+    function setMode(mode) {
+      crMode = mode;
+      document.getElementById('mode-edit').classList.toggle('active', mode === 'edit');
+      document.getElementById('mode-preview').classList.toggle('active', mode === 'preview');
+      editor.hidden = mode !== 'edit';
+      preview.hidden = mode !== 'preview';
+      if (mode === 'preview') renderPreview(editor.value, preview);
+    }
+    document.getElementById('mode-edit').addEventListener('click', () => setMode('edit'));
+    document.getElementById('mode-preview').addEventListener('click', () => setMode('preview'));
+    setMode(crMode);
+
+    const pjList = document.getElementById('pj-list');
+    renderPjList(r, pjList);
+    setupDropzone(document.getElementById('pj-dropzone'), document.getElementById('pj-input'), r, pjList);
+  }
+
+  grist.onRecords(function (records, mappings) {
+    currentMappings = mappings;
+    allRecords = mapRecords(records, mappings);
+    renderList();
+  });
+
+  grist.onRecord(function (record, mappings) {
+    currentMappings = mappings;
+    const r = mapRecord(record, mappings);
+    selectRecord(r);
+  });
+
+  document.getElementById('search').addEventListener('input', renderList);
+</script>
+
+</body>
+</html>
