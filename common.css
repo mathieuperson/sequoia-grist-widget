@@ -374,6 +374,7 @@ body {
 .ref-chip button:hover { opacity: 1; }
 
 .ref-input { font-size: 12.5px; }
+.ref-input-error { border-color: var(--danger) !important; }
 
 .save-status, .cr-save-status {
   font-size: 11px;

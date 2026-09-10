@@ -423,7 +423,7 @@
     }
 
     renderRefPicker(document.getElementById('ref-partenaires'), labelsOf(o.Partenaires), 'Structures',
-      (labels) => { saveRefField(o.id, currentMappings.Partenaires, labels, document.getElementById('save-status')); renderContactPartenairePicker(labels); });
+      (labels) => { saveRefField(o.id, currentMappings.Partenaires, labels, document.getElementById('save-status')); renderContactPartenairePicker(chipLabels(labels)); });
     renderContactPartenairePicker(labelsOf(o.Partenaires));
     renderRefPicker(document.getElementById('ref-contact-cluster'), labelsOf(o.ContactCluster), 'Contacts',
       (labels) => saveRefField(o.id, currentMappings.ContactCluster, labels, document.getElementById('save-status')));

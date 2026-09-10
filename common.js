@@ -273,20 +273,27 @@ async function fetchReferenceOptionsFilteredBy(tableId, linkCandidates, parentTa
 }
 
 // Renders an add/remove chip picker with autocomplete into `container`.
-// `currentLabels` is the initial list of display strings already linked.
-// `onChange(labels)` is called with the full updated list on every add/remove.
-// Optional `filterConfig` = { linkCandidates, parentTableId, parentLabels }
-// narrows the suggestions to rows linked to the given parent (best-effort).
+// `currentLabels` is the initial list of display strings already linked
+// (these come straight from Grist's own resolved record, so they're kept
+// as-is — no need to re-resolve them to an id to round-trip correctly).
+// `onChange(chips)` is called with the full updated chip list — each chip
+// is `{id, label}` when picked from a suggestion (real row id, always
+// resolves correctly) or a plain string for a pre-existing/untouched
+// entry — on every add/remove. Optional `filterConfig` =
+// { linkCandidates, parentTableId, parentLabels } narrows the suggestions
+// to rows linked to the given parent (best-effort).
 async function renderRefPicker(container, currentLabels, targetTableId, onChange, filterConfig) {
   const datalistId = 'dl-' + Math.random().toString(36).slice(2);
-  let labels = (currentLabels || []).filter(Boolean);
+  let chips = (currentLabels || []).filter(Boolean); // strings (pre-existing) or {id,label} (added this session)
   let options = [];
+
+  function chipLabel(c) { return (c && typeof c === 'object') ? c.label : c; }
 
   function paint() {
     container.innerHTML =
       '<div class="ref-chips">' +
-        labels.map((l, i) =>
-          '<span class="ref-chip">' + escapeHtml(l) +
+        chips.map((c, i) =>
+          '<span class="ref-chip">' + escapeHtml(chipLabel(c)) +
           '<button type="button" data-i="' + i + '" title="Retirer">✕</button></span>'
         ).join('') +
       '</div>' +
@@ -297,21 +304,32 @@ async function renderRefPicker(container, currentLabels, targetTableId, onChange
 
     container.querySelectorAll('.ref-chip button').forEach(btn => {
       btn.addEventListener('click', () => {
-        labels.splice(Number(btn.dataset.i), 1);
+        chips.splice(Number(btn.dataset.i), 1);
         paint();
-        onChange([...labels]);
+        onChange([...chips]);
       });
     });
 
     const input = container.querySelector('.ref-input');
     function tryAdd() {
       const val = input.value.trim();
-      if (val && !labels.includes(val)) {
-        labels.push(val);
-        input.value = '';
-        paint();
-        onChange([...labels]);
+      if (!val) return;
+      if (chips.some(c => chipLabel(c).toLowerCase() === val.toLowerCase())) { input.value = ''; return; }
+
+      // Only add rows that actually exist in the target table (matched by
+      // suggestion), so we always write a real row id — never a typed
+      // string Grist might fail to resolve (that's what caused
+      // "InvalidTypedValue" before).
+      const match = options.find(o => o.label.toLowerCase() === val.toLowerCase());
+      if (!match) {
+        input.classList.add('ref-input-error');
+        setTimeout(() => input.classList.remove('ref-input-error'), 900);
+        return;
       }
+      chips.push({ id: match.id, label: match.label });
+      input.value = '';
+      paint();
+      onChange([...chips]);
     }
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); tryAdd(); } });
     input.addEventListener('change', tryAdd); // fires when picking a datalist suggestion
@@ -329,12 +347,25 @@ async function renderRefPicker(container, currentLabels, targetTableId, onChange
   }
 }
 
-async function saveRefField(recordId, colId, labels, statusEl) {
+// A picker's onChange hands back "chips" that may mix plain label strings
+// (pre-existing) and {id,label} objects (added this session) — use this
+// wherever only the display text is needed (e.g. as another picker's
+// filterConfig.parentLabels).
+function chipLabels(chips) {
+  return (chips || []).map(c => (c && typeof c === 'object') ? c.label : c);
+}
+
+async function saveRefField(recordId, colId, chips, statusEl) {
   if (!colId) return;
   try {
     if (statusEl) statusEl.textContent = 'Enregistrement…';
+    // A chip picked from a suggestion carries its real row id (always
+    // resolves correctly); a pre-existing/untouched chip is still the
+    // plain label Grist itself resolved it to, which round-trips fine via
+    // parseStrings since it's the same resolution Grist already vouched for.
+    const values = (chips || []).map(c => (c && typeof c === 'object' && c.id != null) ? c.id : c);
     await grist.getTable().update(
-      { id: recordId, fields: { [colId]: ['L', ...labels] } },
+      { id: recordId, fields: { [colId]: ['L', ...values] } },
       { parseStrings: true }
     );
     if (statusEl) statusEl.textContent = 'Enregistré ✓';
