@@ -150,6 +150,30 @@
     font-weight: 600;
     color: #fff;
   }
+
+  .modal-title-row { display: flex; align-items: flex-start; gap: 10px; }
+  .modal-title-row h2 { flex: 1; }
+  .edit-toggle-btn {
+    border: none;
+    background: var(--sequoia-green-light);
+    color: var(--sequoia-green-dark);
+    font-weight: 600;
+    font-size: 12px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .edit-toggle-btn:hover { background: var(--sequoia-green); color: #fff; }
+
+  .empty-hint {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 13px;
+    font-style: italic;
+    padding: 12px 0 4px;
+  }
 </style>
 </head>
 <body>
@@ -292,41 +316,99 @@
     return card;
   }
 
+  let oppEditMode = false;
+
+  function refViewBlock(label, labels) {
+    if (!labels || labels.length === 0) return '';
+    return '<div class="section-title">' + label + '</div><div class="tags">' +
+      labels.map(l => '<span class="tag">' + escapeHtml(l) + '</span>').join('') +
+      '</div>';
+  }
+
   function openModal(o) {
+    oppEditMode = false;
+    renderModal(o);
+  }
+
+  function renderModal(o) {
     const modal = document.getElementById('modal');
     const content = document.getElementById('modal-content');
+    const labelsOf = (v) => (formatValue(v) ? formatValue(v).split(', ') : []);
+
+    const titleHtml = oppEditMode
+      ? '<input class="sujet-input" id="f-sujet" placeholder="Sujet" value="' + escapeHtml(o.Sujet || '') + '">'
+      : '<h2>' + escapeHtml(o.Sujet || 'Sans sujet') + '</h2>';
+
+    let bodyHtml;
+    if (oppEditMode) {
+      bodyHtml =
+        '<div class="tags">' +
+          '<input class="editable-input" id="f-type" placeholder="Type" value="' + escapeHtml(o.Type || '') + '" style="width:auto;display:inline-block;max-width:120px;">' +
+          '<span class="status-pill" style="background:' + statusColor(o.Statut) + '">' + escapeHtml(o.Statut || 'Sans statut') + '</span>' +
+        '</div>' +
+        '<div class="info-grid">' +
+          '<div class="info-item"><div class="label">Axe SequoIA</div><input class="editable-input" id="f-axe" value="' + escapeHtml(o.AxeSequoia || '') + '"></div>' +
+          '<div class="info-item"><div class="label">Date de début</div><input type="date" class="editable-input" id="f-date-debut" value="' + gristDateToInputValue(o.DateDebut) + '"></div>' +
+          '<div class="info-item"><div class="label">Échéance</div><input type="date" class="editable-input" id="f-echeance" value="' + gristDateToInputValue(o.Echeance) + '"></div>' +
+          '<div class="info-item"><div class="label">Montant (€)</div><input type="number" class="editable-input" id="f-montant" value="' + (o.Montant != null ? o.Montant : '') + '"></div>' +
+        '</div>' +
+        '<div class="section-title">Partenaire(s)</div>' +
+        '<div id="ref-partenaires"></div>' +
+        '<div class="section-title">Contact(s) partenaire</div>' +
+        '<div id="ref-contact-partenaire"></div>' +
+        '<div class="section-title">Contact(s) Cluster</div>' +
+        '<div id="ref-contact-cluster"></div>' +
+        '<div class="section-title">Etablissement(s) Cluster</div>' +
+        '<div id="ref-etablissement"></div>' +
+        '<div class="section-title">Laboratoire(s) Cluster</div>' +
+        '<div id="ref-laboratoire"></div>' +
+        '<div class="section-title">Equipe(s) Cluster</div>' +
+        '<div id="ref-equipe"></div>' +
+        '<div class="section-title">Commentaire <span class="save-status" id="save-status"></span></div>' +
+        '<textarea class="editable-textarea" id="f-commentaire" placeholder="Aucun commentaire.">' + escapeHtml(o.Commentaire || '') + '</textarea>';
+    } else {
+      const tagsRow =
+        (o.Type ? '<span class="tag">' + escapeHtml(o.Type) + '</span>' : '') +
+        '<span class="status-pill" style="background:' + statusColor(o.Statut) + '">' + escapeHtml(o.Statut || 'Sans statut') + '</span>' +
+        (o.AxeSequoia ? '<span class="tag">' + escapeHtml(o.AxeSequoia) + '</span>' : '');
+      const rows = [
+        o.DateDebut ? '<div class="info-item"><div class="label">Date de début</div><div class="value">' + escapeHtml(formatDate(o.DateDebut)) + '</div></div>' : '',
+        o.Echeance ? '<div class="info-item"><div class="label">Échéance</div><div class="value">' + escapeHtml(formatDate(o.Echeance)) + '</div></div>' : '',
+        o.Montant != null ? '<div class="info-item"><div class="label">Montant</div><div class="value">' + escapeHtml(formatMontant(o.Montant)) + '</div></div>' : ''
+      ].join('');
+      const refBlocks =
+        refViewBlock('Partenaire(s)', labelsOf(o.Partenaires)) +
+        refViewBlock('Contact(s) partenaire', labelsOf(o.ContactPartenaire)) +
+        refViewBlock('Contact(s) Cluster', labelsOf(o.ContactCluster)) +
+        refViewBlock('Etablissement(s) Cluster', labelsOf(o.EtablissementCluster)) +
+        refViewBlock('Laboratoire(s) Cluster', labelsOf(o.LaboratoireCluster)) +
+        refViewBlock('Equipe(s) Cluster', labelsOf(o.EquipeCluster));
+      const hasComment = !!(o.Commentaire && o.Commentaire.trim());
+      const nothingElse = !rows && !refBlocks && !hasComment;
+      bodyHtml =
+        '<div class="tags">' + tagsRow + '</div>' +
+        (rows ? '<div class="info-grid">' + rows + '</div>' : '') +
+        refBlocks +
+        (hasComment ? '<div class="section-title">Commentaire</div><div class="value" style="white-space:pre-wrap;">' + escapeHtml(o.Commentaire) + '</div>' : '') +
+        (nothingElse ? '<div class="empty-hint">Aucune autre information renseignée. Cliquez sur "✏️ Modifier" pour compléter la fiche.</div>' : '');
+    }
+
     content.innerHTML =
       '<button class="close-btn" id="modal-close">✕</button>' +
-      '<input class="sujet-input" id="f-sujet" placeholder="Sujet" value="' + escapeHtml(o.Sujet || '') + '">' +
-      '<div class="tags">' +
-        '<input class="editable-input" id="f-type" placeholder="Type" value="' + escapeHtml(o.Type || '') + '" style="width:auto;display:inline-block;max-width:120px;">' +
-        '<span class="status-pill" style="background:' + statusColor(o.Statut) + '">' + escapeHtml(o.Statut || 'Sans statut') + '</span>' +
+      '<div class="modal-title-row">' + titleHtml +
+        '<button class="edit-toggle-btn" id="toggle-edit">' + (oppEditMode ? '✓ Terminé' : '✏️ Modifier') + '</button>' +
       '</div>' +
-      '<div class="info-grid">' +
-        '<div class="info-item"><div class="label">Axe SequoIA</div><input class="editable-input" id="f-axe" value="' + escapeHtml(o.AxeSequoia || '') + '"></div>' +
-        '<div class="info-item"><div class="label">Date de début</div><input type="date" class="editable-input" id="f-date-debut" value="' + gristDateToInputValue(o.DateDebut) + '"></div>' +
-        '<div class="info-item"><div class="label">Échéance</div><input type="date" class="editable-input" id="f-echeance" value="' + gristDateToInputValue(o.Echeance) + '"></div>' +
-        '<div class="info-item"><div class="label">Montant (€)</div><input type="number" class="editable-input" id="f-montant" value="' + (o.Montant != null ? o.Montant : '') + '"></div>' +
-      '</div>' +
-      '<div class="section-title">Partenaire(s)</div>' +
-      '<div id="ref-partenaires"></div>' +
-      '<div class="section-title">Contact(s) partenaire</div>' +
-      '<div id="ref-contact-partenaire"></div>' +
-      '<div class="section-title">Contact(s) Cluster</div>' +
-      '<div id="ref-contact-cluster"></div>' +
-      '<div class="section-title">Etablissement(s) Cluster</div>' +
-      '<div id="ref-etablissement"></div>' +
-      '<div class="section-title">Laboratoire(s) Cluster</div>' +
-      '<div id="ref-laboratoire"></div>' +
-      '<div class="section-title">Equipe(s) Cluster</div>' +
-      '<div id="ref-equipe"></div>' +
-      '<div class="section-title">Commentaire <span class="save-status" id="save-status"></span></div>' +
-      '<textarea class="editable-textarea" id="f-commentaire" placeholder="Aucun commentaire.">' + escapeHtml(o.Commentaire || '') + '</textarea>';
+      bodyHtml;
 
     modal.hidden = false;
     document.getElementById('modal-close').addEventListener('click', () => { modal.hidden = true; });
+    document.getElementById('toggle-edit').addEventListener('click', () => {
+      oppEditMode = !oppEditMode;
+      renderModal(o);
+    });
 
-    const labelsOf = (v) => (formatValue(v) ? formatValue(v).split(', ') : []);
+    if (!oppEditMode) return;
+
     const structureLinkCandidates = ['Structures', 'Structure', 'Structure_s_', 'structures'];
 
     function renderContactPartenairePicker(partenaireLabels) {

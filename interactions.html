@@ -83,6 +83,45 @@
   .header-subrow input:hover { border-bottom-color: rgba(255,255,255,0.4); }
   .header-subrow input:focus { outline: none; border-bottom-color: #fff; }
 
+  .header-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+  .edit-toggle-btn {
+    border: none;
+    background: rgba(255,255,255,0.22);
+    color: #fff;
+    font-weight: 600;
+    font-size: 12px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .edit-toggle-btn:hover { background: rgba(255,255,255,0.32); }
+
+  .close-fiche-btn {
+    border: none;
+    background: rgba(255,255,255,0.22);
+    color: #fff;
+    width: 26px;
+    height: 26px;
+    min-width: 26px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .close-fiche-btn:hover { background: #dc2626; }
+
+  .empty-hint {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 13px;
+    font-style: italic;
+    padding: 12px 0 20px;
+  }
+
   .cr-editor {
     width: 100%;
     min-height: 220px;
@@ -196,6 +235,7 @@
   let currentMappings = null;
   let current = null; // currently displayed mapped record
   let crMode = 'edit'; // 'edit' | 'preview'
+  let editMode = false; // whether the "other fields" section is in edit mode
 
   grist.ready({ requiredAccess: 'full', columns: COLUMNS, allowSelectBy: true });
 
@@ -245,7 +285,15 @@
   function selectRecord(r) {
     current = r;
     crMode = r && r.CR ? 'preview' : 'edit';
+    editMode = false;
     renderFiche(r);
+    renderList();
+  }
+
+  function closeFiche() {
+    current = null;
+    editMode = false;
+    renderFiche(null);
     renderList();
   }
 
@@ -357,6 +405,13 @@
     });
   }
 
+  function refViewBlock(label, labels) {
+    if (!labels || labels.length === 0) return '';
+    return '<div class="section-title">' + label + '</div><div class="tags">' +
+      labels.map(l => '<span class="tag">' + escapeHtml(l) + '</span>').join('') +
+      '</div>';
+  }
+
   function renderFiche(r) {
     const wrap = document.getElementById('fiche-wrap');
     if (!r) {
@@ -364,37 +419,71 @@
       return;
     }
 
+    const labelsOf = (v) => (formatValue(v) ? formatValue(v).split(', ') : []);
+
+    const headerHtml = editMode
+      ? '<input class="objet-input" id="f-objet" placeholder="Objet" value="' + escapeHtml(r.Objet || '') + '">' +
+        '<div class="header-subrow">' +
+          '<input type="date" id="f-date" value="' + gristDateToInputValue(r.Date) + '">' +
+          '<input type="text" id="f-type" placeholder="Type" value="' + escapeHtml(r.Type || '') + '">' +
+        '</div>'
+      : '<h1>' + escapeHtml(r.Objet || 'Sans objet') + '</h1>' +
+        ([formatDate(r.Date), r.Type].filter(Boolean).length
+          ? '<div class="subtitle">' + escapeHtml([formatDate(r.Date), r.Type].filter(Boolean).join(' · ')) + '</div>' : '');
+
+    let metaHtml;
+    if (editMode) {
+      metaHtml =
+        '<div class="info-grid">' +
+          '<div class="info-item"><div class="label">Prochaine échéance</div><input type="date" class="editable-input" id="f-echeance" value="' + gristDateToInputValue(r.ProchaineEcheance) + '"></div>' +
+          '<div class="info-item"><div class="label">Suites</div><input class="editable-input" id="f-suites" value="' + escapeHtml(r.Suites || '') + '"></div>' +
+        '</div>' +
+        '<div class="section-title">Partenaire(s)</div>' +
+        '<div id="ref-partenaires"></div>' +
+        '<div class="section-title">Contact(s) partenaire</div>' +
+        '<div id="ref-contact-partenaire"></div>' +
+        '<div class="section-title">Contact(s) cluster</div>' +
+        '<div id="ref-contact-cluster"></div>' +
+        '<div class="section-title">Etablissement Cluster</div>' +
+        '<div id="ref-etablissement"></div>' +
+        '<div class="section-title">Laboratoire Cluster</div>' +
+        '<div id="ref-laboratoire"></div>' +
+        '<div class="section-title">Equipe Cluster</div>' +
+        '<div id="ref-equipe"></div>' +
+        '<div class="section-title">Opportunité(s)</div>' +
+        '<div id="ref-opportunites"></div>';
+    } else {
+      const rows = [
+        r.ProchaineEcheance ? '<div class="info-item"><div class="label">Prochaine échéance</div><div class="value">' + escapeHtml(formatDate(r.ProchaineEcheance)) + '</div></div>' : '',
+        r.Suites ? '<div class="info-item"><div class="label">Suites</div><div class="value">' + escapeHtml(r.Suites) + '</div></div>' : ''
+      ].join('');
+      const refBlocks =
+        refViewBlock('Partenaire(s)', labelsOf(r.Partenaires)) +
+        refViewBlock('Contact(s) partenaire', labelsOf(r.ContactPartenaire)) +
+        refViewBlock('Contact(s) cluster', labelsOf(r.ContactCluster)) +
+        refViewBlock('Etablissement Cluster', labelsOf(r.EtablissementCluster)) +
+        refViewBlock('Laboratoire Cluster', labelsOf(r.LaboratoireCluster)) +
+        refViewBlock('Equipe Cluster', labelsOf(r.EquipeCluster)) +
+        refViewBlock('Opportunité(s)', labelsOf(r.Opportunites));
+      const nothingElse = !rows && !refBlocks;
+      metaHtml =
+        (rows ? '<div class="info-grid">' + rows + '</div>' : '') +
+        refBlocks +
+        (nothingElse ? '<div class="empty-hint">Aucune autre information renseignée. Cliquez sur "✏️ Modifier" pour compléter la fiche.</div>' : '');
+    }
+
     wrap.innerHTML =
       '<div class="card">' +
         '<div class="card-header">' +
           '<div class="header-icon">📅</div>' +
-          '<div class="header-text">' +
-            '<input class="objet-input" id="f-objet" placeholder="Objet" value="' + escapeHtml(r.Objet || '') + '">' +
-            '<div class="header-subrow">' +
-              '<input type="date" id="f-date" value="' + gristDateToInputValue(r.Date) + '">' +
-              '<input type="text" id="f-type" placeholder="Type" value="' + escapeHtml(r.Type || '') + '">' +
-            '</div>' +
+          '<div class="header-text">' + headerHtml + '</div>' +
+          '<div class="header-actions">' +
+            '<button class="edit-toggle-btn" id="toggle-edit">' + (editMode ? '✓ Terminé' : '✏️ Modifier') + '</button>' +
+            '<button class="close-fiche-btn" id="close-fiche" title="Fermer">✕</button>' +
           '</div>' +
         '</div>' +
         '<div class="card-body">' +
-          '<div class="info-grid">' +
-            '<div class="info-item"><div class="label">Prochaine échéance</div><input type="date" class="editable-input" id="f-echeance" value="' + gristDateToInputValue(r.ProchaineEcheance) + '"></div>' +
-            '<div class="info-item"><div class="label">Suites</div><input class="editable-input" id="f-suites" value="' + escapeHtml(r.Suites || '') + '"></div>' +
-          '</div>' +
-          '<div class="section-title">Partenaire(s)</div>' +
-          '<div id="ref-partenaires"></div>' +
-          '<div class="section-title">Contact(s) partenaire</div>' +
-          '<div id="ref-contact-partenaire"></div>' +
-          '<div class="section-title">Contact(s) cluster</div>' +
-          '<div id="ref-contact-cluster"></div>' +
-          '<div class="section-title">Etablissement Cluster</div>' +
-          '<div id="ref-etablissement"></div>' +
-          '<div class="section-title">Laboratoire Cluster</div>' +
-          '<div id="ref-laboratoire"></div>' +
-          '<div class="section-title">Equipe Cluster</div>' +
-          '<div id="ref-equipe"></div>' +
-          '<div class="section-title">Opportunité(s)</div>' +
-          '<div id="ref-opportunites"></div>' +
+          metaHtml +
 
           '<div class="section-title">Compte-rendu</div>' +
           '<div class="cr-toolbar">' +
@@ -418,40 +507,48 @@
         '</div>' +
       '</div>';
 
-    const saveField = createFieldSaver(saveStatus);
+    document.getElementById('toggle-edit').addEventListener('click', () => {
+      const editorEl = document.getElementById('cr-editor');
+      if (editorEl) r.CR = editorEl.value; // carry over any unsaved-but-pending CR edit across the re-render
+      editMode = !editMode;
+      renderFiche(r);
+    });
+    document.getElementById('close-fiche').addEventListener('click', closeFiche);
 
-    const labelsOf = (v) => (formatValue(v) ? formatValue(v).split(', ') : []);
-    const structureLinkCandidates = ['Structures', 'Structure', 'Structure_s_', 'structures'];
+    if (editMode) {
+      const saveField = createFieldSaver(saveStatus);
+      const structureLinkCandidates = ['Structures', 'Structure', 'Structure_s_', 'structures'];
 
-    function renderContactPartenairePicker(partenaireLabels) {
-      renderRefPicker(
-        document.getElementById('ref-contact-partenaire'),
-        labelsOf(r.ContactPartenaire),
-        'Contacts',
-        (labels) => saveRefField(r.id, currentMappings.ContactPartenaire, labels, document.getElementById('cr-save-status')),
-        { linkCandidates: structureLinkCandidates, parentTableId: 'Structures', parentLabels: partenaireLabels }
-      );
+      function renderContactPartenairePicker(partenaireLabels) {
+        renderRefPicker(
+          document.getElementById('ref-contact-partenaire'),
+          labelsOf(r.ContactPartenaire),
+          'Contacts',
+          (labels) => saveRefField(r.id, currentMappings.ContactPartenaire, labels, document.getElementById('cr-save-status')),
+          { linkCandidates: structureLinkCandidates, parentTableId: 'Structures', parentLabels: partenaireLabels }
+        );
+      }
+
+      renderRefPicker(document.getElementById('ref-partenaires'), labelsOf(r.Partenaires), 'Structures',
+        (labels) => { saveRefField(r.id, currentMappings.Partenaires, labels, document.getElementById('cr-save-status')); renderContactPartenairePicker(labels); });
+      renderContactPartenairePicker(labelsOf(r.Partenaires));
+      renderRefPicker(document.getElementById('ref-contact-cluster'), labelsOf(r.ContactCluster), 'Contacts',
+        (labels) => saveRefField(r.id, currentMappings.ContactCluster, labels, document.getElementById('cr-save-status')));
+      renderRefPicker(document.getElementById('ref-opportunites'), labelsOf(r.Opportunites), 'Opportunites',
+        (labels) => saveRefField(r.id, currentMappings.Opportunites, labels, document.getElementById('cr-save-status')));
+      renderRefPicker(document.getElementById('ref-etablissement'), labelsOf(r.EtablissementCluster), 'Structures',
+        (labels) => saveRefField(r.id, currentMappings.EtablissementCluster, labels, document.getElementById('cr-save-status')));
+      renderRefPicker(document.getElementById('ref-laboratoire'), labelsOf(r.LaboratoireCluster), 'Structures',
+        (labels) => saveRefField(r.id, currentMappings.LaboratoireCluster, labels, document.getElementById('cr-save-status')));
+      renderRefPicker(document.getElementById('ref-equipe'), labelsOf(r.EquipeCluster), 'Structures',
+        (labels) => saveRefField(r.id, currentMappings.EquipeCluster, labels, document.getElementById('cr-save-status')));
+
+      document.getElementById('f-objet').addEventListener('input', (e) => saveField(r.id, currentMappings.Objet, e.target.value));
+      document.getElementById('f-type').addEventListener('input', (e) => saveField(r.id, currentMappings.Type, e.target.value));
+      document.getElementById('f-date').addEventListener('change', (e) => saveField(r.id, currentMappings.Date, inputValueToGristDate(e.target.value)));
+      document.getElementById('f-echeance').addEventListener('change', (e) => saveField(r.id, currentMappings.ProchaineEcheance, inputValueToGristDate(e.target.value)));
+      document.getElementById('f-suites').addEventListener('input', (e) => saveField(r.id, currentMappings.Suites, e.target.value));
     }
-
-    renderRefPicker(document.getElementById('ref-partenaires'), labelsOf(r.Partenaires), 'Structures',
-      (labels) => { saveRefField(r.id, currentMappings.Partenaires, labels, document.getElementById('cr-save-status')); renderContactPartenairePicker(labels); });
-    renderContactPartenairePicker(labelsOf(r.Partenaires));
-    renderRefPicker(document.getElementById('ref-contact-cluster'), labelsOf(r.ContactCluster), 'Contacts',
-      (labels) => saveRefField(r.id, currentMappings.ContactCluster, labels, document.getElementById('cr-save-status')));
-    renderRefPicker(document.getElementById('ref-opportunites'), labelsOf(r.Opportunites), 'Opportunites',
-      (labels) => saveRefField(r.id, currentMappings.Opportunites, labels, document.getElementById('cr-save-status')));
-    renderRefPicker(document.getElementById('ref-etablissement'), labelsOf(r.EtablissementCluster), 'Structures',
-      (labels) => saveRefField(r.id, currentMappings.EtablissementCluster, labels, document.getElementById('cr-save-status')));
-    renderRefPicker(document.getElementById('ref-laboratoire'), labelsOf(r.LaboratoireCluster), 'Structures',
-      (labels) => saveRefField(r.id, currentMappings.LaboratoireCluster, labels, document.getElementById('cr-save-status')));
-    renderRefPicker(document.getElementById('ref-equipe'), labelsOf(r.EquipeCluster), 'Structures',
-      (labels) => saveRefField(r.id, currentMappings.EquipeCluster, labels, document.getElementById('cr-save-status')));
-
-    document.getElementById('f-objet').addEventListener('input', (e) => saveField(r.id, currentMappings.Objet, e.target.value));
-    document.getElementById('f-type').addEventListener('input', (e) => saveField(r.id, currentMappings.Type, e.target.value));
-    document.getElementById('f-date').addEventListener('change', (e) => saveField(r.id, currentMappings.Date, inputValueToGristDate(e.target.value)));
-    document.getElementById('f-echeance').addEventListener('change', (e) => saveField(r.id, currentMappings.ProchaineEcheance, inputValueToGristDate(e.target.value)));
-    document.getElementById('f-suites').addEventListener('input', (e) => saveField(r.id, currentMappings.Suites, e.target.value));
 
     const editor = document.getElementById('cr-editor');
     const preview = document.getElementById('cr-preview');
