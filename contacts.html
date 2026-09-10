@@ -11,18 +11,19 @@
 
   .header-text h1 { overflow: visible; white-space: normal; }
 
-  .header-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .header-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; margin-top: 2px; }
 
   .edit-toggle-btn {
     border: none;
     background: rgba(255,255,255,0.22);
     color: #fff;
-    font-weight: 600;
-    font-size: 12px;
-    padding: 6px 12px;
-    border-radius: 20px;
+    width: 26px;
+    height: 26px;
+    min-width: 26px;
+    border-radius: 50%;
     cursor: pointer;
-    white-space: nowrap;
+    font-size: 13px;
+    line-height: 1;
     flex-shrink: 0;
   }
   .edit-toggle-btn:hover { background: rgba(255,255,255,0.32); }
@@ -264,9 +265,8 @@
       viewItem('Linkedin', c.Linkedin ? '<a href="' + escapeHtml(c.Linkedin) + '" target="_blank" rel="noopener">Profil ↗</a>' : '')
     ].join('');
 
-    const structuresText = formatValue(c.Structures);
     const hasComment = !!(c.Commentaire && c.Commentaire.trim());
-    const nothingElse = !rows && !structuresText && !hasComment;
+    const nothingElse = !rows && !hasComment;
 
     wrap.innerHTML =
       '<div class="card">' +
@@ -277,14 +277,13 @@
             (c.Fonction ? '<div class="subtitle">' + escapeHtml(c.Fonction) + '</div>' : '') +
           '</div>' +
           '<div class="header-actions">' +
-            '<button class="edit-toggle-btn" id="toggle-edit">✏️ Modifier</button>' +
+            '<button class="edit-toggle-btn" id="toggle-edit" title="Modifier">✏️</button>' +
             '<button class="close-fiche-btn" id="close-fiche" title="Fermer">✕</button>' +
           '</div>' +
         '</div>' +
         '<div class="card-body">' +
           (c.ContactPrincipal ? '<div class="badge" style="background:var(--sequoia-green-light);color:var(--sequoia-green-dark);margin-bottom:16px;">★ Contact principal</div>' : '') +
           (rows ? '<div class="info-grid">' + rows + '</div>' : '') +
-          (structuresText ? '<div class="section-title">Structure(s)</div><div class="tags"><span class="tag">' + escapeHtml(structuresText) + '</span></div>' : '') +
           (hasComment ? '<div class="section-title">Commentaire</div><div class="value" style="white-space:pre-wrap;">' + escapeHtml(c.Commentaire) + '</div>' : '') +
           (nothingElse ? '<div class="empty-hint">Aucune information renseignée. Cliquez sur "✏️ Modifier" pour compléter la fiche.</div>' : '') +
         '</div>' +
@@ -316,7 +315,7 @@
             '<input class="subtitle-input" id="f-fonction" placeholder="Fonction" value="' + escapeHtml(c.Fonction || '') + '">' +
           '</div>' +
           '<div class="header-actions">' +
-            '<button class="edit-toggle-btn" id="toggle-edit">✓ Terminé</button>' +
+            '<button class="edit-toggle-btn" id="toggle-edit" title="Terminé">✓</button>' +
             '<button class="close-fiche-btn" id="close-fiche" title="Fermer">✕</button>' +
           '</div>' +
         '</div>' +

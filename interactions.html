@@ -83,18 +83,19 @@
   .header-subrow input:hover { border-bottom-color: rgba(255,255,255,0.4); }
   .header-subrow input:focus { outline: none; border-bottom-color: #fff; }
 
-  .header-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .header-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; margin-top: 2px; }
 
   .edit-toggle-btn {
     border: none;
     background: rgba(255,255,255,0.22);
     color: #fff;
-    font-weight: 600;
-    font-size: 12px;
-    padding: 6px 12px;
-    border-radius: 20px;
+    width: 26px;
+    height: 26px;
+    min-width: 26px;
+    border-radius: 50%;
     cursor: pointer;
-    white-space: nowrap;
+    font-size: 13px;
+    line-height: 1;
     flex-shrink: 0;
   }
   .edit-toggle-btn:hover { background: rgba(255,255,255,0.32); }
@@ -478,7 +479,7 @@
           '<div class="header-icon">📅</div>' +
           '<div class="header-text">' + headerHtml + '</div>' +
           '<div class="header-actions">' +
-            '<button class="edit-toggle-btn" id="toggle-edit">' + (editMode ? '✓ Terminé' : '✏️ Modifier') + '</button>' +
+            '<button class="edit-toggle-btn" id="toggle-edit" title="' + (editMode ? 'Terminé' : 'Modifier') + '">' + (editMode ? '✓' : '✏️') + '</button>' +
             '<button class="close-fiche-btn" id="close-fiche" title="Fermer">✕</button>' +
           '</div>' +
         '</div>' +
@@ -545,8 +546,8 @@
 
       document.getElementById('f-objet').addEventListener('input', (e) => saveField(r.id, currentMappings.Objet, e.target.value));
       document.getElementById('f-type').addEventListener('input', (e) => saveField(r.id, currentMappings.Type, e.target.value));
-      document.getElementById('f-date').addEventListener('change', (e) => saveField(r.id, currentMappings.Date, inputValueToGristDate(e.target.value)));
-      document.getElementById('f-echeance').addEventListener('change', (e) => saveField(r.id, currentMappings.ProchaineEcheance, inputValueToGristDate(e.target.value)));
+      document.getElementById('f-date').addEventListener('input', (e) => saveField(r.id, currentMappings.Date, inputValueToGristDate(e.target.value)));
+      document.getElementById('f-echeance').addEventListener('input', (e) => saveField(r.id, currentMappings.ProchaineEcheance, inputValueToGristDate(e.target.value)));
       document.getElementById('f-suites').addEventListener('input', (e) => saveField(r.id, currentMappings.Suites, e.target.value));
     }
 
