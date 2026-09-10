@@ -226,10 +226,46 @@
     background: var(--cluster-gradient);
     padding: 28px 28px 22px;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 20px;
     color: #fff;
   }
+
+  .header-text { min-width: 0; flex: 1; }
+  .header-text h1 { overflow: visible; white-space: normal; }
+
+  .header-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; margin-top: 2px; }
+
+  .edit-toggle-btn, .close-fiche-btn {
+    border: none;
+    background: rgba(255,255,255,0.22);
+    color: #fff;
+    width: 26px;
+    height: 26px;
+    min-width: 26px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 13px;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+  .edit-toggle-btn:hover { background: rgba(255,255,255,0.32); }
+  .close-fiche-btn:hover { background: #dc2626; }
+
+  .name-input {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid transparent;
+    color: #fff;
+    font-size: 21px;
+    font-weight: 700;
+    padding: 2px 0;
+    width: 100%;
+    min-width: 0;
+  }
+  .name-input::placeholder { color: rgba(255,255,255,0.6); }
+  .name-input:hover { border-bottom-color: rgba(255,255,255,0.4); }
+  .name-input:focus { outline: none; border-bottom-color: #fff; }
 
   .logo-frame {
     width: 84px;
@@ -333,6 +369,33 @@
   }
   .info-item .value a:hover { text-decoration: underline; }
 
+  .editable-input, .editable-textarea {
+    width: 100%;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    font: inherit;
+    color: var(--text);
+    padding: 6px 8px;
+    border-radius: 6px;
+  }
+  .editable-input:focus, .editable-textarea:focus {
+    outline: none;
+    border-color: var(--sequoia-green);
+    background: #fff;
+  }
+  .editable-textarea { min-height: 70px; resize: vertical; margin-bottom: 18px; }
+
+  .save-status { font-size: 11px; color: var(--text-muted); font-weight: 400; }
+
+  .section-title {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-muted);
+    margin: 0 0 8px;
+    font-weight: 600;
+  }
+
   .placeholder {
     display: flex;
     align-items: center;
@@ -396,14 +459,37 @@
 <script>
   let allRecords = [];
   let currentRecord = null;
+  let editMode = false;
 
   const FILTER_FIELDS = ['type_acteur', 'entreprise_activite', 'entreprise_taille', 'pilier_sequoia'];
   const activeFilters = { type_acteur: '', entreprise_activite: '', entreprise_taille: '', pilier_sequoia: '' };
 
   grist.ready({
-    requiredAccess: 'read table',
+    requiredAccess: 'full',
     allowSelectBy: true
   });
+
+  // ---- Autosave (debounced per field) ----
+  const pendingSaves = {};
+  function saveField(recordId, colId, value, statusEl) {
+    clearTimeout(pendingSaves[colId]);
+    pendingSaves[colId] = setTimeout(async () => {
+      try {
+        if (statusEl) statusEl.textContent = 'Enregistrement…';
+        await grist.getTable().update({ id: recordId, fields: { [colId]: value } });
+        if (statusEl) statusEl.textContent = 'Enregistré ✓';
+      } catch (err) {
+        console.error(err);
+        if (statusEl) statusEl.textContent = 'Erreur d’enregistrement';
+      }
+    }, 700);
+  }
+
+  function bindInput(id, recordId, colId, statusEl) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('input', () => saveField(recordId, colId, el.value, statusEl));
+  }
 
   // Grist can hand back a Choice/Reference value either as a plain string
   // or as an encoded list (["L", "value", ...]) — normalize to text first.
@@ -512,6 +598,7 @@
       item.appendChild(info);
       item.addEventListener('click', () => {
         grist.setCursorPos({ rowId: record.id }).catch(() => {});
+        editMode = false;
         renderFiche(record);
         currentRecord = record;
         renderList();
@@ -522,11 +609,25 @@
   }
 
   function renderFiche(record) {
+    currentRecord = record;
     const wrap = document.getElementById('fiche-wrap');
     if (!record) {
       wrap.innerHTML = '<div class="placeholder">Sélectionnez un partenaire</div>';
       return;
     }
+
+    if (editMode) renderEditMode(record); else renderViewMode(record);
+  }
+
+  function closeFiche() {
+    currentRecord = null;
+    editMode = false;
+    renderFiche(null);
+    renderList();
+  }
+
+  function renderViewMode(record) {
+    const wrap = document.getElementById('fiche-wrap');
 
     const logoHtml = record.url_logo
       ? '<img src="' + record.url_logo + '" alt="logo" onerror="this.parentElement.innerHTML=\'<span class=&quot;fallback&quot;>' + initials(record.nom_acteur) + '</span>\'">'
@@ -558,6 +659,10 @@
             '<h1>' + (record.nom_acteur || 'Sans nom') + '</h1>' +
             '<div class="category">' + [record.type_acteur, record.acteur_categorie].filter(Boolean).join(' · ') + '</div>' +
           '</div>' +
+          '<div class="header-actions">' +
+            '<button class="edit-toggle-btn" id="toggle-edit" title="Modifier">✏️</button>' +
+            '<button class="close-fiche-btn" id="close-fiche" title="Fermer">✕</button>' +
+          '</div>' +
         '</div>' +
         '<div class="card-body">' +
           '<div class="description">' + (record.description || '') + '</div>' +
@@ -574,6 +679,70 @@
           '</div>' +
         '</div>' +
       '</div>';
+
+    document.getElementById('toggle-edit').addEventListener('click', () => {
+      editMode = true;
+      renderFiche(record);
+    });
+    document.getElementById('close-fiche').addEventListener('click', closeFiche);
+  }
+
+  function renderEditMode(record) {
+    const wrap = document.getElementById('fiche-wrap');
+
+    const logoHtml = record.url_logo
+      ? '<img src="' + record.url_logo + '" alt="logo" onerror="this.parentElement.innerHTML=\'<span class=&quot;fallback&quot;>' + initials(record.nom_acteur) + '</span>\'">'
+      : '<span class="fallback">' + initials(record.nom_acteur) + '</span>';
+
+    wrap.innerHTML =
+      '<div class="card">' +
+        '<div class="card-header">' +
+          '<div class="logo-frame">' + logoHtml + '</div>' +
+          '<div class="header-text">' +
+            '<input class="name-input" id="f-nom" placeholder="Nom" value="' + (record.nom_acteur || '') + '">' +
+          '</div>' +
+          '<div class="header-actions">' +
+            '<button class="edit-toggle-btn" id="toggle-edit" title="Terminé">✓</button>' +
+            '<button class="close-fiche-btn" id="close-fiche" title="Fermer">✕</button>' +
+          '</div>' +
+        '</div>' +
+        '<div class="card-body">' +
+          '<div class="section-title">Description <span class="save-status" id="save-status"></span></div>' +
+          '<textarea class="editable-textarea" id="f-description" placeholder="Aucune description.">' + (record.description || '') + '</textarea>' +
+          '<div class="info-grid">' +
+            '<div class="info-item"><div class="label">Type d\'acteur</div><input class="editable-input" id="f-type-acteur" value="' + (record.type_acteur || '') + '"></div>' +
+            '<div class="info-item"><div class="label">Catégorie</div><input class="editable-input" id="f-acteur-categorie" value="' + (record.acteur_categorie || '') + '"></div>' +
+            '<div class="info-item"><div class="label">Activité</div><input class="editable-input" id="f-entreprise-activite" value="' + (record.entreprise_activite || '') + '"></div>' +
+            '<div class="info-item"><div class="label">Taille</div><input class="editable-input" id="f-entreprise-taille" value="' + (record.entreprise_taille || '') + '"></div>' +
+            '<div class="info-item"><div class="label">Structure de recherche</div><input class="editable-input" id="f-recherche-structure" value="' + (record.recherche_structure || '') + '"></div>' +
+            '<div class="info-item"><div class="label">Équipe / activité</div><input class="editable-input" id="f-recherche-equipe-activite" value="' + (record.recherche_equipe_activite || '') + '"></div>' +
+            '<div class="info-item"><div class="label">Laboratoire</div><input class="editable-input" id="f-recherche-equipe-labo" value="' + (record.recherche_equipe_labo || '') + '"></div>' +
+            '<div class="info-item"><div class="label">Axe Sequoia</div><input class="editable-input" id="f-axe-sequoia" value="' + pilierText(record.axe_sequoia) + '"></div>' +
+            '<div class="info-item"><div class="label">Pilier Sequoia</div><input class="editable-input" id="f-pilier-sequoia" value="' + pilierText(record.pilier_sequoia) + '"></div>' +
+            '<div class="info-item"><div class="label">Site web</div><input class="editable-input" id="f-url-site-web" value="' + (record.url_site_web || '') + '"></div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    const statusEl = document.getElementById('save-status');
+    bindInput('f-nom', record.id, 'nom_acteur', statusEl);
+    bindInput('f-description', record.id, 'description', statusEl);
+    bindInput('f-type-acteur', record.id, 'type_acteur', statusEl);
+    bindInput('f-acteur-categorie', record.id, 'acteur_categorie', statusEl);
+    bindInput('f-entreprise-activite', record.id, 'entreprise_activite', statusEl);
+    bindInput('f-entreprise-taille', record.id, 'entreprise_taille', statusEl);
+    bindInput('f-recherche-structure', record.id, 'recherche_structure', statusEl);
+    bindInput('f-recherche-equipe-activite', record.id, 'recherche_equipe_activite', statusEl);
+    bindInput('f-recherche-equipe-labo', record.id, 'recherche_equipe_labo', statusEl);
+    bindInput('f-axe-sequoia', record.id, 'axe_sequoia', statusEl);
+    bindInput('f-pilier-sequoia', record.id, 'pilier_sequoia', statusEl);
+    bindInput('f-url-site-web', record.id, 'url_site_web', statusEl);
+
+    document.getElementById('toggle-edit').addEventListener('click', () => {
+      editMode = false;
+      renderFiche(record);
+    });
+    document.getElementById('close-fiche').addEventListener('click', closeFiche);
   }
 
   grist.onRecords(function(records) {
@@ -583,7 +752,13 @@
   });
 
   grist.onRecord(function(record) {
+    // While actively editing the same record, don't rebuild the form on
+    // every autosave echo — that would drop focus/cursor position (or
+    // worse, an in-flight keystroke) each time a field round-trips.
+    const sameRecordBeingEdited = editMode && currentRecord && record && currentRecord.id === record.id;
     currentRecord = record;
+    if (sameRecordBeingEdited) return;
+    editMode = false;
     renderFiche(record);
     renderList();
   });

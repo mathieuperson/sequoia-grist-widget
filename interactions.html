@@ -47,8 +47,8 @@
     flex-shrink: 0;
   }
   .cr-toolbar button:hover { background: #fff; }
+  .cr-toolbar button.active { background: var(--sequoia-green); color: #fff; }
   .cr-toolbar .spacer { flex: 1 1 12px; min-width: 8px; }
-  .cr-toolbar .mode-btn.active { background: var(--sequoia-green); color: #fff; }
   .cr-save-status { font-size: 11px; color: var(--text-muted); padding-right: 4px; }
 
   .objet-input {
@@ -123,31 +123,31 @@
     padding: 12px 0 20px;
   }
 
-  .cr-editor {
+  .cr-editable {
     width: 100%;
-    min-height: 220px;
-    border: 1px solid var(--border);
-    border-radius: 0 0 8px 8px;
-    padding: 14px;
-    font-family: ui-monospace, "SF Mono", Consolas, monospace;
-    font-size: 13.5px;
-    line-height: 1.6;
-    resize: vertical;
-    outline: none;
-  }
-  .cr-editor:focus { border-color: var(--sequoia-green); }
-
-  .cr-preview {
+    min-height: 160px;
+    max-height: 420px;
+    overflow-y: auto;
     border: 1px solid var(--border);
     border-radius: 0 0 8px 8px;
     padding: 14px 16px;
-    min-height: 220px;
     font-size: 14px;
     line-height: 1.6;
+    outline: none;
   }
-  .cr-preview img { max-width: 100%; border-radius: 6px; margin: 6px 0; }
-  .cr-preview:empty::before { content: "Aucun compte-rendu."; color: var(--text-muted); font-style: italic; }
-  .cr-preview p:first-child { margin-top: 0; }
+  .cr-editable:focus { border-color: var(--sequoia-green); }
+  .cr-editable img { max-width: 100%; border-radius: 6px; margin: 6px 0; }
+  .cr-editable p:first-child, .cr-editable h1:first-child, .cr-editable h2:first-child, .cr-editable h3:first-child { margin-top: 0; }
+  .cr-editable:empty::before { content: attr(data-placeholder); color: var(--text-muted); font-style: italic; }
+  /* Cap heading sizes so a "Titre" line stays proportionate instead of
+     taking over the whole card (also applies to legacy Markdown content
+     that used to render with the browser's default, much larger H1/H2). */
+  .cr-editable h1, .cr-editable h2, .cr-editable h3 {
+    font-size: 15px;
+    font-weight: 700;
+    margin: 10px 0 4px;
+  }
+  .cr-editable ul, .cr-editable ol { padding-left: 20px; margin: 6px 0; }
 
   /* ---- Attachments ---- */
   .pj-dropzone {
@@ -201,7 +201,7 @@
     <div class="form-modal-grid">
       <div class="form-field full"><label>Objet</label><input id="new-objet" autofocus></div>
       <div class="form-field"><label>Date</label><input id="new-date" type="date"></div>
-      <div class="form-field"><label>Type</label><input id="new-type"></div>
+      <div class="form-field"><label>Type</label><select id="new-type"></select></div>
       <div class="form-field"><label>Prochaine échéance</label><input id="new-echeance" type="date"></div>
       <div class="form-field"><label>Suites</label><input id="new-suites"></div>
       <div class="form-field full"><label>Compte-rendu</label><textarea id="new-cr"></textarea></div>
@@ -235,7 +235,6 @@
   let allRecords = [];
   let currentMappings = null;
   let current = null; // currently displayed mapped record
-  let crMode = 'edit'; // 'edit' | 'preview'
   let editMode = false; // whether the "other fields" section is in edit mode
 
   grist.ready({ requiredAccess: 'full', columns: COLUMNS, allowSelectBy: true });
@@ -285,7 +284,6 @@
 
   function selectRecord(r) {
     current = r;
-    crMode = r && r.CR ? 'preview' : 'edit';
     editMode = false;
     renderFiche(r);
     renderList();
@@ -303,10 +301,10 @@
     if (el) el.textContent = text;
   }
 
-  const saveCR = debounce(async function (recordId, text) {
+  const saveCR = debounce(async function (recordId, html) {
     try {
       saveStatus('Enregistrement…');
-      await grist.getTable().update({ id: recordId, fields: { [currentMappings.CR]: text } });
+      await grist.getTable().update({ id: recordId, fields: { [currentMappings.CR]: html } });
       saveStatus('Enregistré ✓');
     } catch (err) {
       saveStatus('Erreur d’enregistrement');
@@ -314,30 +312,52 @@
     }
   }, 800);
 
-  function insertAtCursor(textarea, before, after, placeholder) {
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const selected = textarea.value.slice(start, end) || placeholder;
-    const newValue = textarea.value.slice(0, start) + before + selected + after + textarea.value.slice(end);
-    textarea.value = newValue;
-    const cursor = start + before.length + selected.length + after.length;
-    textarea.focus();
-    textarea.setSelectionRange(cursor, cursor);
-    textarea.dispatchEvent(new Event('input'));
+  // ---- WYSIWYG compte-rendu ----
+  // Stored format is sanitized HTML. Images keep a stable data-att-id
+  // reference instead of a live download URL (those URLs carry a
+  // short-lived auth token) — resolved to a real src only for display,
+  // and stripped back to the stable form before saving.
+
+  function looksLikeHtml(text) {
+    return /<[a-z][\s\S]*>/i.test(text || '');
   }
 
-  async function renderPreview(text, previewEl) {
-    const rawHtml = marked.parse(text || '');
-    previewEl.innerHTML = DOMPurify.sanitize(rawHtml);
-    const imgs = previewEl.querySelectorAll('img[src^="grist-att:"]');
+  // Normalizes any stored CR value (legacy plain Markdown, or current
+  // HTML) into sanitized HTML with img[data-att-id] placeholders.
+  function normalizeCrToHtml(raw) {
+    if (!raw) return '';
+    const html = looksLikeHtml(raw) ? raw : marked.parse(raw);
+    const clean = DOMPurify.sanitize(html, { ADD_ATTR: ['data-att-id'] });
+    const tmp = document.createElement('div');
+    tmp.innerHTML = clean;
+    tmp.querySelectorAll('img[src^="grist-att:"]').forEach(img => {
+      img.setAttribute('data-att-id', img.getAttribute('src').replace('grist-att:', ''));
+      img.removeAttribute('src');
+    });
+    return tmp.innerHTML;
+  }
+
+  // Resolves img[data-att-id] elements inside `container` to a live,
+  // freshly-authenticated download URL for display.
+  async function resolveImagesIn(container) {
+    const imgs = container.querySelectorAll('img[data-att-id]');
     for (const img of imgs) {
-      const id = img.getAttribute('src').replace('grist-att:', '');
       try {
-        img.src = await getAttachmentDownloadUrl(id);
+        img.src = await getAttachmentDownloadUrl(img.getAttribute('data-att-id'));
       } catch (err) {
         img.alt = 'Image indisponible';
       }
     }
+  }
+
+  // Serializes the editable div's current content back to the stable
+  // storage form (img src stripped, data-att-id kept) — never save a
+  // live, soon-to-expire download URL.
+  function serializeCrForSave(container) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = container.innerHTML;
+    tmp.querySelectorAll('img[data-att-id]').forEach(img => img.removeAttribute('src'));
+    return DOMPurify.sanitize(tmp.innerHTML, { ADD_ATTR: ['data-att-id'] });
   }
 
   async function renderPjList(r, container) {
@@ -488,18 +508,15 @@
 
           '<div class="section-title">Compte-rendu</div>' +
           '<div class="cr-toolbar">' +
-            '<button data-md="**" data-ph="gras" title="Gras"><b>G</b></button>' +
-            '<button data-md="_" data-ph="italique" title="Italique"><i>I</i></button>' +
-            '<button data-block="## " title="Titre">H2</button>' +
-            '<button data-block="- " title="Liste">• Liste</button>' +
-            '<button data-link title="Lien">🔗</button>' +
+            '<button type="button" data-cmd="bold" title="Gras"><b>G</b></button>' +
+            '<button type="button" data-cmd="italic" title="Italique"><i>I</i></button>' +
+            '<button type="button" data-cmd="heading" title="Titre">H</button>' +
+            '<button type="button" data-cmd="list" title="Liste">• Liste</button>' +
+            '<button type="button" data-cmd="link" title="Lien">🔗</button>' +
             '<span class="spacer"></span>' +
             '<span class="cr-save-status" id="cr-save-status"></span>' +
-            '<button class="mode-btn" id="mode-edit" title="Édition">Éditer</button>' +
-            '<button class="mode-btn" id="mode-preview" title="Aperçu">Aperçu</button>' +
           '</div>' +
-          '<textarea class="cr-editor" id="cr-editor" placeholder="Rédigez le compte-rendu en markdown… (collez une image directement)"></textarea>' +
-          '<div class="cr-preview" id="cr-preview" hidden></div>' +
+          '<div class="cr-editable" id="cr-editor" contenteditable="true" data-placeholder="Rédigez le compte-rendu… (collez une image directement)"></div>' +
 
           '<div class="section-title">Pièces jointes</div>' +
           '<div class="pj-dropzone" id="pj-dropzone">Glissez un fichier ici, ou cliquez pour parcourir</div>' +
@@ -510,7 +527,7 @@
 
     document.getElementById('toggle-edit').addEventListener('click', () => {
       const editorEl = document.getElementById('cr-editor');
-      if (editorEl) r.CR = editorEl.value; // carry over any unsaved-but-pending CR edit across the re-render
+      if (editorEl) r.CR = serializeCrForSave(editorEl); // carry over any unsaved-but-pending CR edit across the re-render
       editMode = !editMode;
       renderFiche(r);
     });
@@ -552,19 +569,28 @@
     }
 
     const editor = document.getElementById('cr-editor');
-    const preview = document.getElementById('cr-preview');
-    editor.value = r.CR || '';
+    editor.innerHTML = normalizeCrToHtml(r.CR);
+    resolveImagesIn(editor);
 
-    document.querySelectorAll('.cr-toolbar button[data-md]').forEach(btn => {
-      btn.addEventListener('click', () => insertAtCursor(editor, btn.dataset.md, btn.dataset.md, btn.dataset.ph));
+    function exec(cmd) {
+      editor.focus();
+      if (cmd === 'heading') document.execCommand('formatBlock', false, 'H3');
+      else if (cmd === 'list') document.execCommand('insertUnorderedList');
+      else if (cmd === 'link') {
+        const url = prompt('URL du lien :', 'https://');
+        if (url) document.execCommand('createLink', false, url);
+      } else {
+        document.execCommand(cmd);
+      }
+      saveCR(r.id, serializeCrForSave(editor));
+    }
+    document.querySelectorAll('.cr-toolbar button[data-cmd]').forEach(btn => {
+      // mousedown + preventDefault keeps the current text selection alive
+      // (a plain click would blur the editor first and lose it).
+      btn.addEventListener('mousedown', (e) => { e.preventDefault(); exec(btn.dataset.cmd); });
     });
-    document.querySelectorAll('.cr-toolbar button[data-block]').forEach(btn => {
-      btn.addEventListener('click', () => insertAtCursor(editor, btn.dataset.block, '', 'texte'));
-    });
-    const linkBtn = document.querySelector('.cr-toolbar button[data-link]');
-    if (linkBtn) linkBtn.addEventListener('click', () => insertAtCursor(editor, '[', '](https://)', 'texte du lien'));
 
-    editor.addEventListener('input', () => saveCR(r.id, editor.value));
+    editor.addEventListener('input', () => saveCR(r.id, serializeCrForSave(editor)));
 
     editor.addEventListener('paste', async (e) => {
       const items = e.clipboardData && e.clipboardData.items;
@@ -573,29 +599,33 @@
         if (item.type && item.type.startsWith('image/')) {
           e.preventDefault();
           const file = item.getAsFile();
+          const placeholder = document.createElement('span');
+          placeholder.textContent = 'Téléversement de l’image…';
+          placeholder.style.color = 'var(--text-muted)';
+          const sel = window.getSelection();
+          if (sel && sel.rangeCount) {
+            const range = sel.getRangeAt(0);
+            range.deleteContents();
+            range.insertNode(placeholder);
+            range.collapse(false);
+          } else {
+            editor.appendChild(placeholder);
+          }
           try {
             const [id] = await uploadAttachments([file]);
-            insertAtCursor(editor, '', '', '![image](grist-att:' + id + ')');
-            saveCR(r.id, editor.value);
+            const img = document.createElement('img');
+            img.setAttribute('data-att-id', id);
+            img.src = await getAttachmentDownloadUrl(id);
+            placeholder.replaceWith(img);
           } catch (err) {
+            placeholder.textContent = 'Échec du téléversement de l’image.';
             console.error(err);
           }
+          saveCR(r.id, serializeCrForSave(editor));
           return;
         }
       }
     });
-
-    function setMode(mode) {
-      crMode = mode;
-      document.getElementById('mode-edit').classList.toggle('active', mode === 'edit');
-      document.getElementById('mode-preview').classList.toggle('active', mode === 'preview');
-      editor.hidden = mode !== 'edit';
-      preview.hidden = mode !== 'preview';
-      if (mode === 'preview') renderPreview(editor.value, preview);
-    }
-    document.getElementById('mode-edit').addEventListener('click', () => setMode('edit'));
-    document.getElementById('mode-preview').addEventListener('click', () => setMode('preview'));
-    setMode(crMode);
 
     const pjList = document.getElementById('pj-list');
     renderPjList(r, pjList);
@@ -627,8 +657,14 @@
   const createModal = document.getElementById('create-modal');
 
   function openCreateModal() {
-    ['new-objet', 'new-date', 'new-type', 'new-echeance', 'new-suites', 'new-cr']
+    ['new-objet', 'new-date', 'new-echeance', 'new-suites', 'new-cr']
       .forEach(id => { document.getElementById(id).value = ''; });
+
+    const typeValues = Array.from(new Set(allRecords.map(r => r.Type).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'fr'));
+    const typeSelect = document.getElementById('new-type');
+    typeSelect.innerHTML = '<option value="">—</option>' +
+      typeValues.map(t => '<option value="' + escapeHtml(t) + '">' + escapeHtml(t) + '</option>').join('');
+
     createModal.hidden = false;
     document.getElementById('new-objet').focus();
   }
