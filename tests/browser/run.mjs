@@ -594,6 +594,15 @@ async function testCifreDashboardLabAndKEuros(browser) {
   const kpiText = await page.locator('.kpi-row').textContent();
   ok(kpiText.includes('k€'), 'le KPI "Montant total investi" est aussi affiché en k€');
 
+  // Chart: group by Laboratoire
+  await page.click('#view-chart');
+  await page.waitForTimeout(100);
+  await page.click('#groupby-toggle button[data-value="laboratoire"]');
+  await page.waitForTimeout(100);
+  const labLegend = await page.locator('#chart-legend').textContent();
+  ok(labLegend.includes('IRISA') && labLegend.includes('Lab-STICC'),
+    'regrouper par Laboratoire : la légende liste les laboratoires (IRISA, Lab-STICC)');
+
   ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
   await context.close();
 }
