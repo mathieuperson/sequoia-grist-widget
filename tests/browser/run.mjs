@@ -421,26 +421,43 @@ async function testCifreDashboard(browser) {
   const optionCalls = await page.evaluate(() => window.__mockCalls.filter(c => c.fn === 'setOption'));
   ok(optionCalls.length >= 1, 'la config est persistée via grist.setOption (survivra à un rechargement)');
 
-  // ---- Filters ----
-  const entrepriseOptions = await page.locator('#filter-entreprise option').allTextContents();
-  ok(entrepriseOptions.includes('Orange') && entrepriseOptions.includes('Neverhack'),
+  // ---- Filters (multi-select checkbox dropdown) ----
+  await page.click('#msf-entreprise .ms-filter-btn');
+  await page.waitForTimeout(50);
+  const entrepriseOptions = await page.locator('#msf-entreprise .ms-option').allTextContents();
+  ok(entrepriseOptions.some(t => t.includes('Orange')) && entrepriseOptions.some(t => t.includes('Neverhack')),
     'le filtre Entreprise liste toutes les entreprises présentes');
-  await page.selectOption('#filter-entreprise', 'Neverhack');
+  await page.click('#msf-entreprise .ms-option:has-text("Neverhack") input');
   await page.waitForTimeout(50);
   const filteredPivot = await page.evaluate(() => window.__lastPivot);
   ok(filteredPivot.totalNb === 1 && filteredPivot.groupList[0].rows[0].entreprise === 'Neverhack',
-    'filtrer par Entreprise=Neverhack ne garde que sa thèse (1, pas 3)');
+    'cocher Entreprise=Neverhack ne garde que sa thèse (1, pas 3)');
+  ok((await page.locator('#msf-entreprise .ms-count').textContent()).includes('1 sélectionnée'),
+    'le bouton affiche "1 sélectionnée"');
   ok(!(await page.locator('#filter-reset').isHidden()), 'le bouton Réinitialiser apparaît quand un filtre est actif');
   await page.click('#filter-reset');
   await page.waitForTimeout(50);
   const resetPivot = await page.evaluate(() => window.__lastPivot);
   ok(resetPivot.totalNb === 3, 'Réinitialiser restaure les 3 thèses');
 
+  // Real multi-selection: check TWO values together, not just one.
+  await page.click('#msf-entreprise .ms-filter-btn');
+  await page.waitForTimeout(50);
+  await page.click('#msf-entreprise .ms-option:has-text("Orange") input');
+  await page.click('#msf-entreprise .ms-option:has-text("Neverhack") input');
+  await page.waitForTimeout(50);
+  const multiPivot = await page.evaluate(() => window.__lastPivot);
+  ok(multiPivot.totalNb === 3, 'cocher Orange + Neverhack ensemble garde les 3 thèses (multi-sélection réelle)');
+  await page.click('#filter-reset');
+  await page.waitForTimeout(50);
+
   // ---- Chart view ----
   await page.click('#view-chart');
   await page.waitForTimeout(100);
   ok(await page.locator('#chart-view').isVisible(), 'la vue Graphique s\'affiche');
   ok((await page.locator('#chart-svg path').count()) > 0, 'le graphique dessine des barres (SVG <path>)');
+  ok((await page.locator('#chart-svg circle').count()) > 0,
+    'un marqueur de total (point) est dessiné au sommet des barres empilées');
   let legendText = await page.locator('#chart-legend').textContent();
   ok(legendText.includes('Monétaire') && legendText.includes('In-kind'),
     'légende par défaut (Aucun regroupement, Montant) : Monétaire / In-kind');
