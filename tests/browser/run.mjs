@@ -434,6 +434,22 @@ async function testCifreDashboard(browser) {
   const entrepriseOptions = await page.locator('#msf-entreprise .ms-option').allTextContents();
   ok(entrepriseOptions.some(t => t.includes('Orange')) && entrepriseOptions.some(t => t.includes('Neverhack')),
     'le filtre Entreprise liste toutes les entreprises présentes');
+
+  // Regression: typing in the search box must actually hide non-matching
+  // rows — .ms-option's own `display: flex` was silently beating the
+  // browser's default `[hidden] { display: none }`, so nothing visually
+  // filtered even though the JS correctly set `hidden` on the labels.
+  await page.fill('#msf-entreprise .ms-search', 'Never');
+  await page.waitForTimeout(30);
+  ok(await page.locator('#msf-entreprise .ms-option:visible').count() === 1,
+    'taper dans la recherche masque bien les options non correspondantes (une seule visible)');
+  ok((await page.locator('#msf-entreprise .ms-option:visible').first().textContent()).includes('Neverhack'),
+    'la seule option visible est celle qui correspond à la recherche (Neverhack)');
+  await page.fill('#msf-entreprise .ms-search', '');
+  await page.waitForTimeout(30);
+  ok(await page.locator('#msf-entreprise .ms-option:visible').count() === entrepriseOptions.length,
+    'vider la recherche réaffiche toutes les options');
+
   await page.click('#msf-entreprise .ms-option:has-text("Neverhack") input');
   await page.waitForTimeout(50);
   const filteredPivot = await page.evaluate(() => window.__lastPivot);
