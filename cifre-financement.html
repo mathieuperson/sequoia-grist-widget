@@ -311,10 +311,15 @@
     const v = raw.toLowerCase();
     if (NEGATIVE_MARKERS.includes(v)) return false;
     if (POSITIVE_MARKERS.includes(v)) return true;
-    // Split on whitespace/+//,, so "CIFRE", "CIFRE + ANR" and a ChoiceList
-    // rendered as "CIFRE, PARTENAIRE" all match on the "cifre" token.
-    const tokens = v.split(/[\s,+/]+/).map(s => s.trim()).filter(Boolean);
-    return tokens.includes('cifre');
+    // Substring match rather than exact-token matching: robust to every
+    // separator/spacing variant a real "Type de financement" column can
+    // throw at it ("CIFRE", "CIFRE + ANR", "CIFRE, PARTENAIRE", "CIFRE-UE"…)
+    // without having to special-case each one. A value would need to
+    // literally spell out "cifre" while NOT being CIFRE-related to produce
+    // a false positive — not a real risk for this specific a word — and a
+    // genuine "non/hors/pas CIFRE" is still caught by the negative-marker
+    // check above when that's the *whole* value.
+    return v.includes('cifre');
   }
 
   function computeRow(t, cfg) {
@@ -613,8 +618,8 @@
     // unexpected label) jumps out immediately.
     if (currentMappings.EstCIFRE && excluded && excluded.size > 0) {
       const top = Array.from(excluded.entries()).sort((a, b) => b[1] - a[1]);
-      const shown = top.slice(0, 8).map(([v, n]) => v + ' (' + n + ')').join(', ');
-      const rest = top.length > 8 ? ', +' + (top.length - 8) + ' autre(s) valeur(s)' : '';
+      const shown = top.slice(0, 20).map(([v, n]) => v + ' (' + n + ')').join(', ');
+      const rest = top.length > 20 ? ', +' + (top.length - 20) + ' autre(s) valeur(s)' : '';
       const totalExcluded = top.reduce((s, [, n]) => s + n, 0);
       msgs.push(totalExcluded + ' ligne(s) exclue(s) (pas comptées comme CIFRE) — valeurs : ' + shown + rest + '.');
     }

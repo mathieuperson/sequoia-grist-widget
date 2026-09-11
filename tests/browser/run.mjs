@@ -485,20 +485,23 @@ async function testCifreDashboardTypeFinancementColumn(browser) {
       Theses: {
         colIds: ['Universite', 'Entreprise', 'DateDebut', 'TypeFinancement', 'DureeAnnees', 'MontantTotal'],
         data: {
-          id: [1, 2, 3, 4, 5, 6],
-          Universite: ['Rennes', 'Rennes', 'Rennes', 'Rennes', 'Rennes', 'Rennes'],
-          Entreprise: ['Orange', 'Thales', 'InterDigital', 'Orange', 'Thales', 'Naval Group'],
-          DateDebut: Array(6).fill(epoch(2023, 9, 1)),
+          id: [1, 2, 3, 4, 5, 6, 7],
+          Universite: ['Rennes', 'Rennes', 'Rennes', 'Rennes', 'Rennes', 'Rennes', 'Rennes'],
+          Entreprise: ['Orange', 'Thales', 'InterDigital', 'Orange', 'Thales', 'Naval Group', 'Safran'],
+          DateDebut: Array(7).fill(epoch(2023, 9, 1)),
           // A real "Type de financement" category column: CIFRE is only ONE
           // of many values (EUROPEEN, CDD STANDARD, a combo...). The old
           // "anything that isn't a negative marker counts as CIFRE" logic
-          // would have wrongly counted all rows instead of just the 3 that
-          // are actually CIFRE — this is the reported 56-vs-64 root cause.
-          // Row 6's blank value is the follow-up off-by-one (65 vs 64): a
-          // blank Type de financement must NOT be assumed to be CIFRE.
-          TypeFinancement: ['CIFRE', 'CDD STANDARD', 'CIFRE', 'EUROPEEN', 'CIFRE + ANR', ''],
-          DureeAnnees: Array(6).fill(null),
-          MontantTotal: Array(6).fill(null)
+          // would have wrongly counted all rows instead of just the ones
+          // that are actually CIFRE — this is the reported 56-vs-64 root
+          // cause. Row 6's blank value is the follow-up off-by-one (65 vs
+          // 64): a blank Type de financement must NOT be assumed to be
+          // CIFRE. Row 7 ("CIFRE-INDUSTRIE", no space/separator before the
+          // suffix) is the substring-match regression: an exact-token
+          // splitter would have missed it.
+          TypeFinancement: ['CIFRE', 'CDD STANDARD', 'CIFRE', 'EUROPEEN', 'CIFRE + ANR', '', 'CIFRE-INDUSTRIE'],
+          DureeAnnees: Array(7).fill(null),
+          MontantTotal: Array(7).fill(null)
         }
       }
     },
@@ -512,11 +515,11 @@ async function testCifreDashboardTypeFinancementColumn(browser) {
   await page.waitForTimeout(100);
   const pivot = await page.evaluate(() => window.__lastPivot);
 
-  ok(pivot.totalNb === 3,
-    '"Type de financement" mappé : seules les 3 lignes valant CIFRE / "CIFRE + ANR" comptent (pas EUROPEEN, CDD STANDARD, ni la ligne vide)');
+  ok(pivot.totalNb === 4,
+    '"Type de financement" mappé : les 4 lignes contenant "cifre" comptent (CIFRE, CIFRE + ANR, CIFRE-INDUSTRIE), pas EUROPEEN/CDD STANDARD/la ligne vide');
   const diagText = await page.locator('#diag-line').textContent();
-  ok(diagText.includes('6 ligne(s) reçue(s) de Grist') && diagText.includes('3 comptée(s) comme CIFRE'),
-    'le diagnostic confirme 6 lignes reçues mais seulement 3 réellement CIFRE (dont 1 avec Type de financement vide, exclue)');
+  ok(diagText.includes('7 ligne(s) reçue(s) de Grist') && diagText.includes('4 comptée(s) comme CIFRE'),
+    'le diagnostic confirme 7 lignes reçues mais seulement 4 réellement CIFRE (dont 1 avec Type de financement vide, exclue)');
 
   // Transparency banner: the excluded raw values must be visible on-page,
   // not just inferred from the totals — this is what turns "je n'ai pas le
