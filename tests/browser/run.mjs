@@ -839,6 +839,46 @@ async function testCrmTableManquante(browser) {
   await context.close();
 }
 
+async function testCifreDashboardNumericYear(browser) {
+  console.log('\n=== cifre-financement.html : régression "Année" en colonne Numeric (pas une vraie Date Grist) ===');
+  const cfg = {
+    widgetTableId: 'Theses',
+    baseUrl: 'https://mock.grist.local/api/docs/mockdoc',
+    tables: {
+      Theses: {
+        colIds: ['Universite', 'Entreprise', 'Annee_debut', 'EstCIFRE', 'DureeAnnees', 'MontantTotal'],
+        data: {
+          id: [1, 2],
+          Universite: ['IMT Atlantique', 'IMT Atlantique'],
+          Entreprise: ['Orange Labs', 'Canon CRF'],
+          // A bare Numeric "Année" column holding the calendar year (2022,
+          // 2023) — not a real Grist Date (epoch seconds). Reproduces the
+          // reported "1970/1971/1972" bug.
+          Annee_debut: [2022, 2023],
+          EstCIFRE: ['Oui', 'Oui'],
+          DureeAnnees: [null, null],
+          MontantTotal: [null, null]
+        }
+      }
+    },
+    mappings: {
+      Universite: 'Universite', Entreprise: 'Entreprise', DateDebut: 'Annee_debut',
+      EstCIFRE: 'EstCIFRE', DureeAnnees: 'DureeAnnees', MontantTotal: 'MontantTotal'
+    }
+  };
+
+  const { page, context, consoleErrors } = await openWidget(browser, 'cifre-financement.html', cfg);
+  await page.waitForTimeout(100);
+  const pivot = await page.evaluate(() => window.__lastPivot);
+
+  ok(JSON.stringify(pivot.years) === JSON.stringify([2022, 2023, 2024, 2025]),
+    'les années sont 2022-2025 (pas 1970/1971/1972) quand "Année" est une colonne Numeric');
+  ok(pivot.sansDate === 0, 'aucune thèse n\'est comptée "sans date" — la valeur Numeric est bien reconnue comme année');
+
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
 // PLAYWRIGHT_CHROMIUM_PATH lets a sandboxed/offline environment point at a
 // pre-installed browser (no network access to download one); omit it to use
 // Playwright's own managed install (after `npx playwright install chromium`).
