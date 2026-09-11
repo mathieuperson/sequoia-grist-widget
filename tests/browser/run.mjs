@@ -468,18 +468,20 @@ async function testCifreDashboardTypeFinancementColumn(browser) {
       Theses: {
         colIds: ['Universite', 'Entreprise', 'DateDebut', 'TypeFinancement', 'DureeAnnees', 'MontantTotal'],
         data: {
-          id: [1, 2, 3, 4, 5],
-          Universite: ['Rennes', 'Rennes', 'Rennes', 'Rennes', 'Rennes'],
-          Entreprise: ['Orange', 'Thales', 'InterDigital', 'Orange', 'Thales'],
-          DateDebut: [epoch(2023, 9, 1), epoch(2023, 9, 1), epoch(2023, 9, 1), epoch(2023, 9, 1), epoch(2023, 9, 1)],
+          id: [1, 2, 3, 4, 5, 6],
+          Universite: ['Rennes', 'Rennes', 'Rennes', 'Rennes', 'Rennes', 'Rennes'],
+          Entreprise: ['Orange', 'Thales', 'InterDigital', 'Orange', 'Thales', 'Naval Group'],
+          DateDebut: Array(6).fill(epoch(2023, 9, 1)),
           // A real "Type de financement" category column: CIFRE is only ONE
           // of many values (EUROPEEN, CDD STANDARD, a combo...). The old
           // "anything that isn't a negative marker counts as CIFRE" logic
-          // would have wrongly counted all 5 rows instead of just the 3 that
+          // would have wrongly counted all rows instead of just the 3 that
           // are actually CIFRE — this is the reported 56-vs-64 root cause.
-          TypeFinancement: ['CIFRE', 'CDD STANDARD', 'CIFRE', 'EUROPEEN', 'CIFRE + ANR'],
-          DureeAnnees: [null, null, null, null, null],
-          MontantTotal: [null, null, null, null, null]
+          // Row 6's blank value is the follow-up off-by-one (65 vs 64): a
+          // blank Type de financement must NOT be assumed to be CIFRE.
+          TypeFinancement: ['CIFRE', 'CDD STANDARD', 'CIFRE', 'EUROPEEN', 'CIFRE + ANR', ''],
+          DureeAnnees: Array(6).fill(null),
+          MontantTotal: Array(6).fill(null)
         }
       }
     },
@@ -494,10 +496,10 @@ async function testCifreDashboardTypeFinancementColumn(browser) {
   const pivot = await page.evaluate(() => window.__lastPivot);
 
   ok(pivot.totalNb === 3,
-    '"Type de financement" mappé : seules les 3 lignes valant CIFRE / "CIFRE + ANR" comptent (pas EUROPEEN ni CDD STANDARD)');
+    '"Type de financement" mappé : seules les 3 lignes valant CIFRE / "CIFRE + ANR" comptent (pas EUROPEEN, CDD STANDARD, ni la ligne vide)');
   const diagText = await page.locator('#diag-line').textContent();
-  ok(diagText.includes('5 ligne(s) reçue(s) de Grist') && diagText.includes('3 comptée(s) comme CIFRE'),
-    'le diagnostic confirme 5 lignes reçues mais seulement 3 réellement CIFRE');
+  ok(diagText.includes('6 ligne(s) reçue(s) de Grist') && diagText.includes('3 comptée(s) comme CIFRE'),
+    'le diagnostic confirme 6 lignes reçues mais seulement 3 réellement CIFRE (dont 1 avec Type de financement vide, exclue)');
 
   ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
   await context.close();
