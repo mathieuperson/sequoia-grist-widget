@@ -80,6 +80,17 @@ Innovation → Économique → Association — volontairement distincte des coul
 utilisé pour la couleur des points : un acteur pourra bientôt être rattaché à plusieurs piliers, ce qui rendrait
 une couleur de point unique par pilier trompeuse.
 
+Une bascule **Carte / Statistiques** dans la barre d'outils donne accès à un tableau de bord (5 graphiques en
+barres horizontales, avec bulle au survol) : nombre d'acteurs par Type d'acteur, par Pilier SequoIA, par Axe
+SequoIA, par secteur d'activité et par taille d'entreprise — plafonnés aux 7 valeurs les plus fréquentes +
+"Autres". Un acteur qui porte plusieurs valeurs (ChoiceList, ex. deux piliers) compte dans chacune de ses barres.
+Les graphiques Type d'acteur et Pilier SequoIA reprennent respectivement la palette des marqueurs et les couleurs
+de badge de pilier, pour rester cohérents avec la carte. **Les graphiques suivent tous les filtres du panneau de
+gauche** (recherche, prospects, Type/Catégorie/Activité/Taille/Pilier/Axe) : changer un filtre recalcule aussitôt
+les 5 graphiques, sans réglage séparé. Par défaut, les prospects sont exclus (case "Afficher les prospects"
+décochée) — carte, liste et statistiques ne portent donc que sur les partenaires et cibles qualifiées, sauf à
+cocher la case.
+
 Leaflet et Leaflet.markercluster sont vendorisés dans `vendor/` (pas de CDN), comme le reste du projet.
 
 ## Mise en place dans Grist
