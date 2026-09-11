@@ -28,6 +28,11 @@ automatiquement) et le dépôt de pièces jointes. Les enregistrements créés s
 ouverte, donc jamais orphelins. Chaque champ s'enregistre seul, avec un retour visible ("Enregistrement…" /
 "Enregistré ✓").
 
+Une structure apparaît dans sa fiche dès qu'une ligne la référence, **quelle que soit la colonne** : une
+interaction saisie depuis la fiche d'un partenaire mais qui cite un laboratoire en « Laboratoire Cluster »
+remonte aussi sur la fiche de ce laboratoire, avec une pastille indiquant par quel champ elle est rattachée.
+Les colonnes de référence sont découvertes à la lecture du type Grist (`Ref:Structures` / `RefList:Structures`).
+
 Particularité technique : un widget Grist n'est mappé que sur **une** table (ici Structures). Les trois autres
 tables sont lues via `docApi.fetchTable` et écrites via `docApi.applyUserActions`, et leurs colonnes sont
 **résolues par leur nom** (accents, tirets bas et variantes ignorés : `Nom_Complet`, `Compte_rendu`,

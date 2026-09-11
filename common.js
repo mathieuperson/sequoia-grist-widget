@@ -246,6 +246,43 @@ async function fetchColumnChoices(tableId, colId) {
   }
 }
 
+// Column metadata (id, type, label) of a table, from the REST /columns
+// endpoint. A reference column's type carries its target table:
+// "Ref:Structures", "RefList:Contacts". Returns [] on any failure so
+// callers fall back to whatever they know statically.
+const _colMetaCache = {};
+async function fetchColumnMeta(tableId) {
+  if (tableId in _colMetaCache) return _colMetaCache[tableId];
+  try {
+    const { token, baseUrl } = await grist.docApi.getAccessToken({ readOnly: true });
+    const res = await fetch(`${baseUrl}/tables/${encodeURIComponent(tableId)}/columns?auth=${encodeURIComponent(token)}`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    const cols = (data.columns || []).map(c => ({
+      id: c.id,
+      type: (c.fields && c.fields.type) || '',
+      label: (c.fields && c.fields.label) || c.id
+    }));
+    _colMetaCache[tableId] = cols;
+    return cols;
+  } catch (err) {
+    console.error('fetchColumnMeta failed for', tableId, err);
+    _colMetaCache[tableId] = [];
+    return [];
+  }
+}
+
+// Every column of a table that points at `targetTableId`. A CRM row can be
+// attached to a structure through more than one column (Partenaire(s), but
+// also Etablissement / Laboratoire / Equipe Cluster), and a fiche that only
+// looked at one of them would hide real history.
+function refColumnsTo(columnMeta, targetTableId) {
+  if (!targetTableId) return [];
+  return (columnMeta || [])
+    .filter(c => c.type === 'Ref:' + targetTableId || c.type === 'RefList:' + targetTableId)
+    .map(c => c.id);
+}
+
 async function getAttachmentDownloadUrl(id) {
   const { token, baseUrl } = await grist.docApi.getAccessToken({ readOnly: true });
   return `${baseUrl}/attachments/${id}/download?auth=${encodeURIComponent(token)}`;
