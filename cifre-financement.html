@@ -36,16 +36,44 @@
 
   /* Filters: one row, above everything they scope (table + chart alike). */
   .filter-row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
-  .filter-row label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); margin-right: 4px; }
-  .filter-row select {
-    font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--border);
-    border-radius: 7px; background: var(--card-bg); color: var(--text);
-  }
   .filter-reset {
     background: none; border: none; color: var(--sequoia-green-dark); font-size: 12.5px;
     cursor: pointer; text-decoration: underline; padding: 0;
   }
   .filter-reset[hidden] { display: none; }
+
+  /* Multi-select filter (checkbox dropdown) */
+  .ms-filter { position: relative; }
+  .ms-filter-btn {
+    font: inherit; font-size: 13px; padding: 6px 10px; border: 1px solid var(--border);
+    border-radius: 7px; background: var(--card-bg); color: var(--text); cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .ms-filter-btn .ms-label { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  .ms-filter-btn.active { border-color: var(--sequoia-green); color: var(--sequoia-green-dark); }
+  .ms-filter-panel {
+    position: absolute; top: calc(100% + 4px); left: 0; z-index: 30; width: 250px;
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(11,11,11,0.14); padding: 8px;
+  }
+  .ms-filter-panel[hidden] { display: none; }
+  .ms-search {
+    width: 100%; box-sizing: border-box; font: inherit; font-size: 12.5px; padding: 6px 8px;
+    border: 1px solid var(--border); border-radius: 6px; margin-bottom: 6px;
+  }
+  .ms-quick-actions { display: flex; gap: 12px; font-size: 11.5px; margin-bottom: 6px; }
+  .ms-quick-actions button {
+    background: none; border: none; color: var(--sequoia-green-dark); cursor: pointer;
+    padding: 0; text-decoration: underline;
+  }
+  .ms-options { max-height: 220px; overflow-y: auto; }
+  .ms-option {
+    display: flex; align-items: center; gap: 8px; padding: 5px 4px; font-size: 13px;
+    cursor: pointer; border-radius: 4px;
+  }
+  .ms-option:hover { background: var(--bg); }
+  .ms-option input { margin: 0; }
+  .ms-empty { font-size: 12.5px; color: var(--text-muted); padding: 6px 4px; }
 
   /* Tableau / Graphique view tabs */
   .view-tabs { display: flex; gap: 4px; margin-bottom: 12px; }
@@ -108,12 +136,30 @@
 <div class="kpi-row" id="kpi-row"></div>
 
 <div class="filter-row">
-  <label for="filter-universite">Université</label>
-  <select id="filter-universite"><option value="">Toutes</option></select>
-  <label for="filter-entreprise">Entreprise</label>
-  <select id="filter-entreprise"><option value="">Toutes</option></select>
-  <label for="filter-annee">Année de début</label>
-  <select id="filter-annee"><option value="">Toutes</option></select>
+  <div class="ms-filter" id="msf-universite">
+    <button class="ms-filter-btn" type="button"><span class="ms-label">Université</span> <span class="ms-count">Toutes</span></button>
+    <div class="ms-filter-panel" hidden>
+      <input type="text" class="ms-search" placeholder="Chercher…">
+      <div class="ms-quick-actions"><button data-action="all" type="button">Tout cocher</button><button data-action="none" type="button">Tout décocher</button></div>
+      <div class="ms-options"></div>
+    </div>
+  </div>
+  <div class="ms-filter" id="msf-entreprise">
+    <button class="ms-filter-btn" type="button"><span class="ms-label">Entreprise</span> <span class="ms-count">Toutes</span></button>
+    <div class="ms-filter-panel" hidden>
+      <input type="text" class="ms-search" placeholder="Chercher…">
+      <div class="ms-quick-actions"><button data-action="all" type="button">Tout cocher</button><button data-action="none" type="button">Tout décocher</button></div>
+      <div class="ms-options"></div>
+    </div>
+  </div>
+  <div class="ms-filter" id="msf-annee">
+    <button class="ms-filter-btn" type="button"><span class="ms-label">Année de début</span> <span class="ms-count">Toutes</span></button>
+    <div class="ms-filter-panel" hidden>
+      <input type="text" class="ms-search" placeholder="Chercher…">
+      <div class="ms-quick-actions"><button data-action="all" type="button">Tout cocher</button><button data-action="none" type="button">Tout décocher</button></div>
+      <div class="ms-options"></div>
+    </div>
+  </div>
   <button class="filter-reset" id="filter-reset" hidden>Réinitialiser</button>
 </div>
 
@@ -191,7 +237,10 @@
   let allRecords = [];
   let currentMappings = {};
   let currentConfig = { ...DEFAULT_CONFIG };
-  let activeFilters = { universite: '', entreprise: '', annee: '' };
+  // Multi-select: an empty array means "no filter" (every value shown),
+  // matching the old single-select's '' sentinel — a non-empty array keeps
+  // only rows whose value is included in it.
+  let activeFilters = { universite: [], entreprise: [], annee: [] };
   let currentView = 'table'; // 'table' | 'chart'
   let chartMetric = 'montant'; // 'montant' | 'nombre'
   let chartGroupBy = 'aucun'; // 'aucun' | 'universite' | 'entreprise'
@@ -290,11 +339,15 @@
 
   // Applies the Université/Entreprise/Année filters to the raw mapped
   // records, before they're turned into enriched rows for the table/chart.
+  // Each filter is a set of allowed values; empty = no restriction.
   function filteredRecords() {
     return allRecords.filter(t => {
-      if (activeFilters.universite && (formatValue(t.Universite) || 'Non renseigné') !== activeFilters.universite) return false;
-      if (activeFilters.entreprise && (formatValue(t.Entreprise) || 'Non renseigné') !== activeFilters.entreprise) return false;
-      if (activeFilters.annee && String(yearOf(t.DateDebut)) !== activeFilters.annee) return false;
+      const uni = formatValue(t.Universite) || 'Non renseigné';
+      const ent = formatValue(t.Entreprise) || 'Non renseigné';
+      const yr = String(yearOf(t.DateDebut));
+      if (activeFilters.universite.length && !activeFilters.universite.includes(uni)) return false;
+      if (activeFilters.entreprise.length && !activeFilters.entreprise.includes(ent)) return false;
+      if (activeFilters.annee.length && !activeFilters.annee.includes(yr)) return false;
       return true;
     });
   }
@@ -403,7 +456,8 @@
     const formatVal = (opts && opts.formatValue) || (v => String(Math.round(v)));
     const width = Math.max(container.clientWidth || 640, 480);
     const height = 320;
-    const margin = { top: 12, right: 16, bottom: 30, left: 68 };
+    // Extra top margin on stacked charts leaves room for the total dot + label.
+    const margin = { top: stacked ? 30 : 12, right: 16, bottom: 30, left: 68 };
     const plotW = width - margin.left - margin.right;
     const plotH = height - margin.top - margin.bottom;
 
@@ -442,14 +496,26 @@
       const groupX = ci * bandWidth + groupPad + (innerW - clusterW) / 2;
       if (stacked) {
         let yCursor = plotH;
+        let total = 0;
         series.forEach(se => {
           const v = se.values[ci];
+          total += v;
           if (v <= 0) return;
           const h = plotH - yOf(v);
           const yTop = yCursor - h;
           svg += `<path d="${barPath(groupX, yTop, barW, h, 4)}" fill="${se.color}"><title>${escapeHtml(se.label + ' — ' + cat + ' : ' + formatVal(v))}</title></path>`;
           yCursor = yTop - barGap;
         });
+        // Total marker: a dot at the stack's tip (with a surface-color ring
+        // so it stays legible against the top segment) plus its direct
+        // label, since the stack's own top edge already IS the total but
+        // isn't itself labelled.
+        if (total > 0) {
+          const cx = groupX + barW / 2;
+          const cy = yOf(total);
+          svg += `<circle cx="${cx}" cy="${cy}" r="5" fill="#0b0b0b" stroke="#fcfcfb" stroke-width="2"><title>${escapeHtml('Total — ' + cat + ' : ' + formatVal(total))}</title></circle>`;
+          svg += `<text x="${cx}" y="${Math.max(cy - 10, 12)}" text-anchor="middle" font-size="11" font-weight="600" fill="#0b0b0b">${escapeHtml(formatVal(total))}</text>`;
+        }
       } else {
         series.forEach((se, si) => {
           const v = se.values[ci];
@@ -567,37 +633,103 @@
     t.innerHTML = thead + '<tbody>' + bodyRows + '</tbody>' + tfoot;
   }
 
-  // Filter dropdowns always list every value present in the *unfiltered*
+  // Filter checklists always list every value present in the *unfiltered*
   // data (so picking one option doesn't hide the others) — same pattern as
   // the Structures widget's filter panel.
   function populateFilterOptions() {
     const { rows } = buildEnrichedRows(allRecords, currentMappings, currentConfig);
     const universites = Array.from(new Set(rows.map(r => r.universite))).sort((a, b) => a.localeCompare(b, 'fr'));
     const entreprises = Array.from(new Set(rows.map(r => r.entreprise))).sort((a, b) => a.localeCompare(b, 'fr'));
-    const annees = Array.from(new Set(rows.map(r => r.anneeDebut).filter(y => y != null))).sort((a, b) => a - b);
+    const annees = Array.from(new Set(rows.map(r => r.anneeDebut).filter(y => y != null))).sort((a, b) => a - b).map(String);
 
-    fillSelect('filter-universite', universites, activeFilters.universite);
-    fillSelect('filter-entreprise', entreprises, activeFilters.entreprise);
-    fillSelect('filter-annee', annees.map(String), activeFilters.annee);
+    if (multiSelects.universite) multiSelects.universite.setOptions(universites);
+    if (multiSelects.entreprise) multiSelects.entreprise.setOptions(entreprises);
+    if (multiSelects.annee) multiSelects.annee.setOptions(annees);
   }
 
-  function fillSelect(id, values, current) {
-    const select = document.getElementById(id);
-    const placeholder = select.options[0];
-    select.innerHTML = '';
-    select.appendChild(placeholder);
-    values.forEach(v => {
-      const opt = document.createElement('option');
-      opt.value = v;
-      opt.textContent = v;
-      select.appendChild(opt);
+  // A checkbox dropdown filter: button shows "Toutes" or a count, panel has
+  // a search box, "Tout cocher/décocher" quick actions, and a checkbox per
+  // value. Reused for Université / Entreprise / Année de début.
+  const multiSelects = {};
+  function initMultiSelect(containerId, key) {
+    const root = document.getElementById(containerId);
+    const btn = root.querySelector('.ms-filter-btn');
+    const countEl = btn.querySelector('.ms-count');
+    const panel = root.querySelector('.ms-filter-panel');
+    const search = root.querySelector('.ms-search');
+    const optionsEl = root.querySelector('.ms-options');
+    let values = [];
+
+    function updateButton() {
+      const n = activeFilters[key].length;
+      countEl.textContent = n === 0 ? 'Toutes' : n + ' sélectionnée' + (n > 1 ? 's' : '');
+      btn.classList.toggle('active', n > 0);
+    }
+
+    function renderOptions() {
+      optionsEl.innerHTML = values.length
+        ? values.map(v =>
+            '<label class="ms-option"><input type="checkbox" value="' + escapeHtml(v) + '"' +
+            (activeFilters[key].includes(v) ? ' checked' : '') + '> ' + escapeHtml(v) + '</label>'
+          ).join('')
+        : '<div class="ms-empty">Aucune valeur</div>';
+      optionsEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        cb.addEventListener('change', () => {
+          const set = new Set(activeFilters[key]);
+          if (cb.checked) set.add(cb.value); else set.delete(cb.value);
+          activeFilters[key] = Array.from(set);
+          updateButton();
+          renderAll();
+        });
+      });
+    }
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const willOpen = panel.hidden;
+      document.querySelectorAll('.ms-filter-panel').forEach(p => { p.hidden = true; });
+      panel.hidden = !willOpen;
+      if (willOpen) { search.value = ''; filterOptionRows(''); search.focus(); }
     });
-    select.value = values.includes(current) ? current : '';
+    panel.addEventListener('click', (e) => e.stopPropagation());
+
+    function filterOptionRows(q) {
+      optionsEl.querySelectorAll('.ms-option').forEach(l => {
+        l.hidden = !!q && !l.textContent.toLowerCase().includes(q);
+      });
+    }
+    search.addEventListener('input', () => filterOptionRows(search.value.trim().toLowerCase()));
+
+    root.querySelector('[data-action="all"]').addEventListener('click', () => {
+      const visible = [...optionsEl.querySelectorAll('.ms-option')].filter(l => !l.hidden)
+        .map(l => l.querySelector('input').value);
+      activeFilters[key] = Array.from(new Set([...activeFilters[key], ...visible]));
+      renderOptions();
+      updateButton();
+      renderAll();
+    });
+    root.querySelector('[data-action="none"]').addEventListener('click', () => {
+      activeFilters[key] = [];
+      renderOptions();
+      updateButton();
+      renderAll();
+    });
+
+    multiSelects[key] = {
+      setOptions(newValues) { values = newValues; renderOptions(); updateButton(); }
+    };
   }
+  initMultiSelect('msf-universite', 'universite');
+  initMultiSelect('msf-entreprise', 'entreprise');
+  initMultiSelect('msf-annee', 'annee');
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.ms-filter-panel').forEach(p => { p.hidden = true; });
+  });
 
   function renderAll() {
     populateFilterOptions();
-    document.getElementById('filter-reset').hidden = !(activeFilters.universite || activeFilters.entreprise || activeFilters.annee);
+    document.getElementById('filter-reset').hidden =
+      !(activeFilters.universite.length || activeFilters.entreprise.length || activeFilters.annee.length);
 
     const filtered = filteredRecords();
     const { rows, sansDate } = buildEnrichedRows(filtered, currentMappings, currentConfig);
@@ -664,14 +796,8 @@
   });
 
   // ---------- Filters ----------
-  ['universite', 'entreprise', 'annee'].forEach(key => {
-    document.getElementById('filter-' + key).addEventListener('change', (e) => {
-      activeFilters[key] = e.target.value;
-      renderAll();
-    });
-  });
   document.getElementById('filter-reset').addEventListener('click', () => {
-    activeFilters = { universite: '', entreprise: '', annee: '' };
+    activeFilters = { universite: [], entreprise: [], annee: [] };
     renderAll();
   });
 

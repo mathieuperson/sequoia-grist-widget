@@ -19,9 +19,10 @@ URL de base : `https://mathieuperson.github.io/sequoia-grist-widget/`
 Regroupe les thèses CIFRE par **Université > Entreprise partenaire** : nombre de CIFRE, montant total, et
 répartition monétaire (salaire doctorant + contrat) / in-kind (encadrement entreprise) **par année**, réparties à
 parts égales sur la durée de la thèse (200k€/3 ans par défaut — 120k doctorant + 40k contrat en monétaire, 40k
-d'encadrement en in-kind). Export CSV, filtres (Université / Entreprise / Année de début), vue Graphique (barres par
-année, regroupables par Université ou Entreprise — plafonné aux 6 catégories les plus importantes + "Autres" pour
-rester lisible), et paramètres (montants, durée par défaut) éditables et persistés dans le document via
+d'encadrement en in-kind). Export CSV, filtres multi-sélection (Université / Entreprise / Année de début, chacun un
+menu à cases à cocher avec recherche), vue Graphique (barres par année, regroupables par Université ou Entreprise —
+plafonné aux 6 catégories les plus importantes + "Autres" pour rester lisible, total affiché au sommet des barres
+empilées), et paramètres (montants, durée par défaut) éditables et persistés dans le document via
 `grist.setOption`/`getOption`. Une ligne de diagnostic (lignes reçues de Grist / après filtres / comptées comme
 CIFRE) aide à repérer si un écart de comptage vient d'un filtre Grist en amont (Filtre ou Sélectionné par sur la
 section du widget) plutôt que du widget lui-même.
