@@ -176,7 +176,7 @@
     { name: 'Universite', title: 'Université', optional: false },
     { name: 'Entreprise', title: 'Entreprise partenaire', optional: false },
     { name: 'DateDebut', title: 'Date de début de thèse', optional: false },
-    { name: 'EstCIFRE', title: 'Financement CIFRE (oui/non)', optional: true },
+    { name: 'EstCIFRE', title: 'Financement CIFRE (oui/non, ou colonne "Type de financement")', optional: true },
     { name: 'DureeAnnees', title: 'Durée (années, si différente de 3)', optional: true },
     { name: 'MontantTotal', title: 'Montant total (€, si différent de 200k)', optional: true }
   ];
@@ -228,11 +228,26 @@
     return iso ? Number(iso.slice(0, 4)) : null;
   }
 
+  // The mapped column can be either a genuine oui/non flag, OR (very common
+  // in practice) a multi-value "Type de financement" category column where
+  // "CIFRE" is just one of many possible values (CDD STANDARD, EUROPEEN,
+  // PARTENAIRE, DGA...). Treating every non-"non" value as CIFRE (the old
+  // behaviour) silently counted all of those other categories too. Now:
+  // recognised yes/no markers keep their meaning, anything else only counts
+  // if "cifre" is literally one of its tokens (so "CIFRE", "CIFRE + ANR"
+  // match, "CIFRE DEFENSE" style multi-word values still match via the
+  // trailing check, but "PARTENAIRE + AID" or "EUROPEEN" don't).
+  const NEGATIVE_MARKERS = ['non', 'no', 'false', '0', 'ko', 'faux'];
+  const POSITIVE_MARKERS = ['oui', 'yes', 'true', '1', 'ok', 'vrai'];
   function isCIFRE(t, mappings) {
     if (!mappings.EstCIFRE) return true; // not mapped: the table is assumed already CIFRE-scoped
-    const v = formatValue(t.EstCIFRE).trim().toLowerCase();
-    if (!v) return true; // empty: don't silently drop unlabeled rows
-    return !['non', 'no', 'false', '0', 'ko'].includes(v);
+    const raw = formatValue(t.EstCIFRE).trim();
+    if (!raw) return true; // empty: don't silently drop unlabeled rows
+    const v = raw.toLowerCase();
+    if (NEGATIVE_MARKERS.includes(v)) return false;
+    if (POSITIVE_MARKERS.includes(v)) return true;
+    const tokens = v.split(/[\s+/]+/).map(s => s.trim()).filter(Boolean);
+    return tokens.includes('cifre');
   }
 
   function computeRow(t, cfg) {
@@ -481,7 +496,7 @@
   function renderWarnings(pivot) {
     const msgs = [];
     if (!currentMappings.EstCIFRE) {
-      msgs.push('Le champ "Financement CIFRE (oui/non)" n’est pas mappé : toutes les lignes de la table sont comptées comme CIFRE.');
+      msgs.push('Le champ "Financement CIFRE" n’est pas mappé : toutes les lignes reçues sont comptées comme CIFRE. Si la table mélange plusieurs types de financement, mappe-le sur la colonne "Type de financement".');
     }
     if (pivot.sansDate > 0) {
       msgs.push(pivot.sansDate + ' thèse(s) sans date de début : comptée(s) dans les totaux mais absente(s) de la répartition par année.');
