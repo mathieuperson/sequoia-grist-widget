@@ -408,7 +408,8 @@
     </div>
     <div id="map"></div>
     <div class="stats-view" id="stats-view" hidden>
-      <p class="stats-intro">Calculées sur les structures actuellement affichées (filtres de gauche compris).</p>
+      <p class="stats-intro">Calculées sur les structures actuellement affichées (filtres de gauche compris).
+        Secteur d'activité et Taille ne portent que sur les entreprises (Type d'acteur = Économique).</p>
       <div class="stats-grid">
         <div class="stat-card">
           <h3>Type d'acteur</h3>
@@ -426,7 +427,7 @@
           <div class="bar-list" id="chart-axe_sequoia"></div>
         </div>
         <div class="stat-card">
-          <h3>Secteur d'activité</h3>
+          <h3>Secteur d'activité (entreprises)</h3>
           <div class="stat-total" id="stat-total-entreprise_activite"></div>
           <div class="bar-list" id="chart-entreprise_activite"></div>
         </div>
@@ -613,12 +614,20 @@
     return rows;
   }
 
+  // Activité et taille ne concernent que les entreprises (Type d'acteur =
+  // Économique) : les autres acteurs (institutions, labos, associations...)
+  // n'ont pas ces champs renseignés, ce qui gonflait ces 2 graphiques d'un
+  // énorme "Non renseigné" sans rapport avec la question posée.
+  function isEconomique(record) {
+    return listValues(record.type_acteur).some(v => typeActeurClass(v) === 'economique');
+  }
+
   const STAT_DIMENSIONS = [
-    { field: 'type_acteur', colorFor: label => TYPE_COLORS[typeActeurClass(label)] || 'var(--text-muted)' },
-    { field: 'pilier_sequoia', colorFor: label => PILIER_COLORS[pilierClass(label)] || 'var(--text-muted)' },
-    { field: 'axe_sequoia', colorFor: () => 'var(--sequoia-green)' },
-    { field: 'entreprise_activite', colorFor: () => 'var(--sequoia-green)' },
-    { field: 'entreprise_taille', colorFor: () => 'var(--sequoia-green)' }
+    { field: 'type_acteur', unit: 'structure', colorFor: label => TYPE_COLORS[typeActeurClass(label)] || 'var(--text-muted)' },
+    { field: 'pilier_sequoia', unit: 'structure', colorFor: label => PILIER_COLORS[pilierClass(label)] || 'var(--text-muted)' },
+    { field: 'axe_sequoia', unit: 'structure', colorFor: () => 'var(--sequoia-green)' },
+    { field: 'entreprise_activite', unit: 'entreprise', scope: isEconomique, colorFor: () => 'var(--sequoia-green)' },
+    { field: 'entreprise_taille', unit: 'entreprise', scope: isEconomique, colorFor: () => 'var(--sequoia-green)' }
   ];
 
   // Recalculée à chaque render() : les graphiques suivent donc automatiquement
@@ -626,11 +635,12 @@
   // câblage séparé.
   function renderStats(visible) {
     STAT_DIMENSIONS.forEach(dim => {
-      const rows = countBy(visible, dim.field);
+      const scoped = dim.scope ? visible.filter(dim.scope) : visible;
+      const rows = countBy(scoped, dim.field);
       const max = rows.length ? rows[0].count : 0;
 
       const totalEl = document.getElementById('stat-total-' + dim.field);
-      totalEl.textContent = visible.length + (visible.length > 1 ? ' structures' : ' structure');
+      totalEl.textContent = scoped.length + ' ' + dim.unit + (scoped.length > 1 ? 's' : '');
 
       const container = document.getElementById('chart-' + dim.field);
       if (rows.length === 0) {
