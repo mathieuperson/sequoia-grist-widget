@@ -428,26 +428,43 @@ async function testCifreDashboard(browser) {
   const optionCalls = await page.evaluate(() => window.__mockCalls.filter(c => c.fn === 'setOption'));
   ok(optionCalls.length >= 1, 'la config est persistée via grist.setOption (survivra à un rechargement)');
 
-  // ---- Filters ----
-  const entrepriseOptions = await page.locator('#filter-entreprise option').allTextContents();
-  ok(entrepriseOptions.includes('Orange') && entrepriseOptions.includes('Neverhack'),
+  // ---- Filters (multi-select checkbox dropdown) ----
+  await page.click('#msf-entreprise .ms-filter-btn');
+  await page.waitForTimeout(50);
+  const entrepriseOptions = await page.locator('#msf-entreprise .ms-option').allTextContents();
+  ok(entrepriseOptions.some(t => t.includes('Orange')) && entrepriseOptions.some(t => t.includes('Neverhack')),
     'le filtre Entreprise liste toutes les entreprises présentes');
-  await page.selectOption('#filter-entreprise', 'Neverhack');
+  await page.click('#msf-entreprise .ms-option:has-text("Neverhack") input');
   await page.waitForTimeout(50);
   const filteredPivot = await page.evaluate(() => window.__lastPivot);
   ok(filteredPivot.totalNb === 1 && filteredPivot.groupList[0].rows[0].entreprise === 'Neverhack',
-    'filtrer par Entreprise=Neverhack ne garde que sa thèse (1, pas 3)');
+    'cocher Entreprise=Neverhack ne garde que sa thèse (1, pas 3)');
+  ok((await page.locator('#msf-entreprise .ms-count').textContent()).includes('1 sélectionnée'),
+    'le bouton affiche "1 sélectionnée"');
   ok(!(await page.locator('#filter-reset').isHidden()), 'le bouton Réinitialiser apparaît quand un filtre est actif');
   await page.click('#filter-reset');
   await page.waitForTimeout(50);
   const resetPivot = await page.evaluate(() => window.__lastPivot);
   ok(resetPivot.totalNb === 3, 'Réinitialiser restaure les 3 thèses');
 
+  // Real multi-selection: check TWO values together, not just one.
+  await page.click('#msf-entreprise .ms-filter-btn');
+  await page.waitForTimeout(50);
+  await page.click('#msf-entreprise .ms-option:has-text("Orange") input');
+  await page.click('#msf-entreprise .ms-option:has-text("Neverhack") input');
+  await page.waitForTimeout(50);
+  const multiPivot = await page.evaluate(() => window.__lastPivot);
+  ok(multiPivot.totalNb === 3, 'cocher Orange + Neverhack ensemble garde les 3 thèses (multi-sélection réelle)');
+  await page.click('#filter-reset');
+  await page.waitForTimeout(50);
+
   // ---- Chart view ----
   await page.click('#view-chart');
   await page.waitForTimeout(100);
   ok(await page.locator('#chart-view').isVisible(), 'la vue Graphique s\'affiche');
   ok((await page.locator('#chart-svg path').count()) > 0, 'le graphique dessine des barres (SVG <path>)');
+  ok((await page.locator('#chart-svg circle').count()) > 0,
+    'un marqueur de total (point) est dessiné au sommet des barres empilées');
   let legendText = await page.locator('#chart-legend').textContent();
   ok(legendText.includes('Monétaire') && legendText.includes('In-kind'),
     'légende par défaut (Aucun regroupement, Montant) : Monétaire / In-kind');
@@ -466,31 +483,35 @@ async function testCifreDashboard(browser) {
   await context.close();
 }
 
-async function testCifreDashboardNumericYear(browser) {
-  console.log('\n=== cifre-financement.html : régression "Année" en colonne Numeric (pas une vraie Date Grist) ===');
+async function testCifreDashboardTypeFinancementColumn(browser) {
+  console.log('\n=== cifre-financement.html : régression "Type de financement" (colonne multi-valeurs, pas oui/non) ===');
   const cfg = {
     widgetTableId: 'Theses',
     baseUrl: 'https://mock.grist.local/api/docs/mockdoc',
     tables: {
       Theses: {
-        colIds: ['Universite', 'Entreprise', 'Annee_debut', 'EstCIFRE', 'DureeAnnees', 'MontantTotal'],
+        colIds: ['Universite', 'Entreprise', 'DateDebut', 'TypeFinancement', 'DureeAnnees', 'MontantTotal'],
         data: {
-          id: [1, 2],
-          Universite: ['IMT Atlantique', 'IMT Atlantique'],
-          Entreprise: ['Orange Labs', 'Canon CRF'],
-          // A bare Numeric "Année" column holding the calendar year (2022,
-          // 2023) — not a real Grist Date (epoch seconds). Reproduces the
-          // reported "1970/1971/1972" bug.
-          Annee_debut: [2022, 2023],
-          EstCIFRE: ['Oui', 'Oui'],
-          DureeAnnees: [null, null],
-          MontantTotal: [null, null]
+          id: [1, 2, 3, 4, 5, 6],
+          Universite: ['Rennes', 'Rennes', 'Rennes', 'Rennes', 'Rennes', 'Rennes'],
+          Entreprise: ['Orange', 'Thales', 'InterDigital', 'Orange', 'Thales', 'Naval Group'],
+          DateDebut: Array(6).fill(epoch(2023, 9, 1)),
+          // A real "Type de financement" category column: CIFRE is only ONE
+          // of many values (EUROPEEN, CDD STANDARD, a combo...). The old
+          // "anything that isn't a negative marker counts as CIFRE" logic
+          // would have wrongly counted all rows instead of just the 3 that
+          // are actually CIFRE — this is the reported 56-vs-64 root cause.
+          // Row 6's blank value is the follow-up off-by-one (65 vs 64): a
+          // blank Type de financement must NOT be assumed to be CIFRE.
+          TypeFinancement: ['CIFRE', 'CDD STANDARD', 'CIFRE', 'EUROPEEN', 'CIFRE + ANR', ''],
+          DureeAnnees: Array(6).fill(null),
+          MontantTotal: Array(6).fill(null)
         }
       }
     },
     mappings: {
-      Universite: 'Universite', Entreprise: 'Entreprise', DateDebut: 'Annee_debut',
-      EstCIFRE: 'EstCIFRE', DureeAnnees: 'DureeAnnees', MontantTotal: 'MontantTotal'
+      Universite: 'Universite', Entreprise: 'Entreprise', DateDebut: 'DateDebut',
+      EstCIFRE: 'TypeFinancement', DureeAnnees: 'DureeAnnees', MontantTotal: 'MontantTotal'
     }
   };
 
@@ -498,9 +519,11 @@ async function testCifreDashboardNumericYear(browser) {
   await page.waitForTimeout(100);
   const pivot = await page.evaluate(() => window.__lastPivot);
 
-  ok(JSON.stringify(pivot.years) === JSON.stringify([2022, 2023, 2024, 2025]),
-    'les années sont 2022-2025 (pas 1970/1971/1972) quand "Année" est une colonne Numeric');
-  ok(pivot.sansDate === 0, 'aucune thèse n\'est comptée "sans date" — la valeur Numeric est bien reconnue comme année');
+  ok(pivot.totalNb === 3,
+    '"Type de financement" mappé : seules les 3 lignes valant CIFRE / "CIFRE + ANR" comptent (pas EUROPEEN, CDD STANDARD, ni la ligne vide)');
+  const diagText = await page.locator('#diag-line').textContent();
+  ok(diagText.includes('6 ligne(s) reçue(s) de Grist') && diagText.includes('3 comptée(s) comme CIFRE'),
+    'le diagnostic confirme 6 lignes reçues mais seulement 3 réellement CIFRE (dont 1 avec Type de financement vide, exclue)');
 
   ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
   await context.close();
@@ -829,6 +852,7 @@ try {
   await testContactsCreateFlow(browser);
   await testOpportunitesDateSave(browser);
   await testCifreDashboard(browser);
+  await testCifreDashboardTypeFinancementColumn(browser);
   await testCifreDashboardNumericYear(browser);
   await testCrmFiche(browser);
   await testCrmEdition(browser);
