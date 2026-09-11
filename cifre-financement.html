@@ -32,6 +32,47 @@
     background: #fff7ed; border: 1px solid #fdba74; color: #9a3412; border-radius: 8px;
     padding: 9px 13px; font-size: 12.5px; margin-bottom: 10px;
   }
+  .diag-line { font-size: 11.5px; color: var(--text-muted); margin-bottom: 12px; }
+
+  /* Filters: one row, above everything they scope (table + chart alike). */
+  .filter-row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+  .filter-row label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); margin-right: 4px; }
+  .filter-row select {
+    font: inherit; font-size: 13px; padding: 6px 8px; border: 1px solid var(--border);
+    border-radius: 7px; background: var(--card-bg); color: var(--text);
+  }
+  .filter-reset {
+    background: none; border: none; color: var(--sequoia-green-dark); font-size: 12.5px;
+    cursor: pointer; text-decoration: underline; padding: 0;
+  }
+  .filter-reset[hidden] { display: none; }
+
+  /* Tableau / Graphique view tabs */
+  .view-tabs { display: flex; gap: 4px; margin-bottom: 12px; }
+  .view-tabs button {
+    background: none; border: 1px solid var(--border); border-radius: 7px; padding: 6px 14px;
+    font: inherit; font-size: 13px; cursor: pointer; color: var(--text-muted);
+  }
+  .view-tabs button.active { background: var(--sequoia-green); border-color: var(--sequoia-green); color: #fff; font-weight: 600; }
+
+  .chart-card {
+    background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin-top: 8px;
+  }
+  .chart-controls { display: flex; align-items: center; gap: 18px; margin-bottom: 12px; flex-wrap: wrap; }
+  .chart-controls .group { display: flex; align-items: center; gap: 6px; }
+  .chart-controls label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); }
+  .segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+  .segmented button {
+    background: var(--card-bg); border: none; border-right: 1px solid var(--border); padding: 6px 12px;
+    font: inherit; font-size: 12.5px; cursor: pointer; color: var(--text-muted);
+  }
+  .segmented button:last-child { border-right: none; }
+  .segmented button.active { background: var(--sequoia-green-light); color: var(--sequoia-green-dark); font-weight: 600; }
+  .chart-note { font-size: 11.5px; color: var(--text-muted); margin-bottom: 8px; }
+  .chart-legend { display: flex; flex-wrap: wrap; gap: 12px 18px; margin-top: 10px; }
+  .legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text); }
+  .legend-swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+  .chart-svg-wrap { overflow-x: auto; }
 
   .table-wrap {
     overflow-x: auto; background: var(--card-bg); border: 1px solid var(--border);
@@ -63,8 +104,50 @@
 </div>
 
 <div id="warnings"></div>
+<div class="diag-line" id="diag-line"></div>
 <div class="kpi-row" id="kpi-row"></div>
-<div class="table-wrap"><table class="pivot" id="pivot-table"></table></div>
+
+<div class="filter-row">
+  <label for="filter-universite">Université</label>
+  <select id="filter-universite"><option value="">Toutes</option></select>
+  <label for="filter-entreprise">Entreprise</label>
+  <select id="filter-entreprise"><option value="">Toutes</option></select>
+  <label for="filter-annee">Année de début</label>
+  <select id="filter-annee"><option value="">Toutes</option></select>
+  <button class="filter-reset" id="filter-reset" hidden>Réinitialiser</button>
+</div>
+
+<div class="view-tabs">
+  <button id="view-table" class="active">Tableau</button>
+  <button id="view-chart">Graphique</button>
+</div>
+
+<div class="table-wrap" id="table-view"><table class="pivot" id="pivot-table"></table></div>
+
+<div class="chart-card" id="chart-view" hidden>
+  <div class="chart-controls">
+    <div class="group">
+      <label>Mesure</label>
+      <div class="segmented" id="metric-toggle">
+        <button data-value="montant" class="active">Montant (€)</button>
+        <button data-value="nombre">Nombre de CIFRE</button>
+      </div>
+    </div>
+    <div class="group">
+      <label>Regrouper par</label>
+      <div class="segmented" id="groupby-toggle">
+        <button data-value="aucun" class="active">Aucun</button>
+        <button data-value="universite">Université</button>
+        <button data-value="entreprise">Entreprise</button>
+      </div>
+    </div>
+  </div>
+  <div class="chart-note" id="chart-note" hidden>
+    Trop de catégories pour rester lisible : les 6 plus importantes sont affichées, le reste est regroupé dans "Autres".
+  </div>
+  <div class="chart-svg-wrap" id="chart-svg"></div>
+  <div class="chart-legend" id="chart-legend"></div>
+</div>
 
 <div class="form-modal-backdrop" id="settings-modal" hidden>
   <div class="form-modal">
@@ -108,6 +191,10 @@
   let allRecords = [];
   let currentMappings = {};
   let currentConfig = { ...DEFAULT_CONFIG };
+  let activeFilters = { universite: '', entreprise: '', annee: '' };
+  let currentView = 'table'; // 'table' | 'chart'
+  let chartMetric = 'montant'; // 'montant' | 'nombre'
+  let chartGroupBy = 'aucun'; // 'aucun' | 'universite' | 'entreprise'
 
   grist.ready({ requiredAccess: 'read table', columns: COLUMNS, allowSelectBy: true });
 
@@ -166,27 +253,49 @@
     return { montantTotal, anneeDebut, perYear };
   }
 
-  // Groups by Université > Entreprise, sums nb/montant, and pivots the
-  // per-year monétaire/in-kind split. Pure function of (records, mappings,
-  // cfg) — no Grist calls — so it can be exercised directly in tests.
-  function computePivot(records, mappings, cfg) {
-    const groups = new Map(); // universite -> Map(entreprise -> agg)
-    const yearsSet = new Set();
-    let sansDate = 0, totalNb = 0, totalMontant = 0;
-
+  // One CIFRE-filtered, computed row per thesis — the shared input for both
+  // the pivot table and the chart, so they always agree on what counts.
+  function buildEnrichedRows(records, mappings, cfg) {
+    const rows = [];
+    let sansDate = 0;
     records.forEach(t => {
       if (!isCIFRE(t, mappings)) return;
       const universite = formatValue(t.Universite) || 'Non renseigné';
       const entreprise = formatValue(t.Entreprise) || 'Non renseigné';
       const r = computeRow(t, cfg);
       if (r.anneeDebut == null) sansDate++;
+      rows.push({ universite, entreprise, montantTotal: r.montantTotal, anneeDebut: r.anneeDebut, perYear: r.perYear });
+    });
+    return { rows, sansDate };
+  }
+
+  // Applies the Université/Entreprise/Année filters to the raw mapped
+  // records, before they're turned into enriched rows for the table/chart.
+  function filteredRecords() {
+    return allRecords.filter(t => {
+      if (activeFilters.universite && (formatValue(t.Universite) || 'Non renseigné') !== activeFilters.universite) return false;
+      if (activeFilters.entreprise && (formatValue(t.Entreprise) || 'Non renseigné') !== activeFilters.entreprise) return false;
+      if (activeFilters.annee && String(yearOf(t.DateDebut)) !== activeFilters.annee) return false;
+      return true;
+    });
+  }
+
+  // Groups enriched rows by Université > Entreprise, sums nb/montant, and
+  // pivots the per-year monétaire/in-kind split. Pure function of `rows`
+  // (see buildEnrichedRows) — no Grist calls — so it's testable directly.
+  function computePivot(rows, sansDate) {
+    const groups = new Map(); // universite -> Map(entreprise -> agg)
+    const yearsSet = new Set();
+    let totalNb = 0, totalMontant = 0;
+
+    rows.forEach(r => {
       totalNb++;
       totalMontant += r.montantTotal;
 
-      if (!groups.has(universite)) groups.set(universite, new Map());
-      const byEntreprise = groups.get(universite);
-      if (!byEntreprise.has(entreprise)) byEntreprise.set(entreprise, { nbCIFRE: 0, montantTotal: 0, perYear: {} });
-      const agg = byEntreprise.get(entreprise);
+      if (!groups.has(r.universite)) groups.set(r.universite, new Map());
+      const byEntreprise = groups.get(r.universite);
+      if (!byEntreprise.has(r.entreprise)) byEntreprise.set(r.entreprise, { nbCIFRE: 0, montantTotal: 0, perYear: {} });
+      const agg = byEntreprise.get(r.entreprise);
       agg.nbCIFRE++;
       agg.montantTotal += r.montantTotal;
       Object.keys(r.perYear).forEach(y => {
@@ -208,6 +317,150 @@
       .sort((a, b) => a.universite.localeCompare(b.universite, 'fr'));
 
     return { groupList, years, totalNb, totalMontant, sansDate };
+  }
+
+  // ---------- Chart series (grouped/stacked bars by year) ----------
+  const CHART_PALETTE = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300']; // validated categorical order (adjacent CVD-safe)
+  const AUTRES_COLOR = '#898781'; // muted ink — "Autres" isn't a real identity, not a categorical hue
+  const AUTRES_LABEL = 'Autres';
+  const TOP_N = 6;
+
+  function sumBy(arr, fn) { return arr.reduce((s, x) => s + fn(x), 0); }
+
+  function topCategories(rows, dimension, maxCount) {
+    const totals = new Map();
+    rows.forEach(r => totals.set(r[dimension], (totals.get(r[dimension]) || 0) + r.montantTotal));
+    return Array.from(totals.entries()).sort((a, b) => b[1] - a[1]).slice(0, maxCount).map(([k]) => k);
+  }
+
+  function computeChartSeries(rows, years, groupBy, metric) {
+    if (groupBy === 'aucun') {
+      if (metric === 'montant') {
+        return {
+          stacked: true,
+          series: [
+            { label: 'Monétaire', color: CHART_PALETTE[0], values: years.map(y => sumBy(rows, r => (r.perYear[y] ? r.perYear[y].monetaire : 0))) },
+            { label: 'In-kind', color: CHART_PALETTE[1], values: years.map(y => sumBy(rows, r => (r.perYear[y] ? r.perYear[y].inKind : 0))) }
+          ]
+        };
+      }
+      return { stacked: false, series: [{ label: 'CIFRE actives', color: CHART_PALETTE[0], values: years.map(y => rows.filter(r => r.perYear[y]).length) }] };
+    }
+
+    const top = topCategories(rows, groupBy, TOP_N);
+    const topSet = new Set(top);
+    const cats = rows.some(r => !topSet.has(r[groupBy])) ? [...top, AUTRES_LABEL] : top;
+    const series = cats.map((cat, i) => {
+      const color = cat === AUTRES_LABEL ? AUTRES_COLOR : CHART_PALETTE[i];
+      const matching = rows.filter(r => (topSet.has(r[groupBy]) ? r[groupBy] : AUTRES_LABEL) === cat);
+      const values = years.map(y => metric === 'montant'
+        ? sumBy(matching, r => (r.perYear[y] ? r.perYear[y].monetaire + r.perYear[y].inKind : 0))
+        : matching.filter(r => r.perYear[y]).length);
+      return { label: cat, color, values };
+    });
+    return { stacked: false, series };
+  }
+
+  function niceCeil(v) {
+    if (v <= 0) return 1;
+    const exp = Math.floor(Math.log10(v));
+    const base = Math.pow(10, exp);
+    const norm = v / base;
+    const niceNorm = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10;
+    return niceNorm * base;
+  }
+
+  // Rounded-top / square-baseline bar, per the mark spec.
+  function barPath(x, yTop, w, h, r) {
+    r = Math.max(0, Math.min(r, w / 2, h));
+    const yBottom = yTop + h;
+    if (r === 0) return `M${x},${yBottom} L${x},${yTop} L${x + w},${yTop} L${x + w},${yBottom} Z`;
+    return `M${x},${yBottom} L${x},${yTop + r} Q${x},${yTop} ${x + r},${yTop} ` +
+      `L${x + w - r},${yTop} Q${x + w},${yTop} ${x + w},${yTop + r} L${x + w},${yBottom} Z`;
+  }
+
+  function renderChartSvg(container, categories, series, opts) {
+    const stacked = !!(opts && opts.stacked);
+    const formatVal = (opts && opts.formatValue) || (v => String(Math.round(v)));
+    const width = Math.max(container.clientWidth || 640, 480);
+    const height = 320;
+    const margin = { top: 12, right: 16, bottom: 30, left: 68 };
+    const plotW = width - margin.left - margin.right;
+    const plotH = height - margin.top - margin.bottom;
+
+    if (categories.length === 0 || series.length === 0) {
+      container.innerHTML = '<div class="empty-state">Rien à afficher pour ce filtre.</div>';
+      return;
+    }
+
+    const maxVal = stacked
+      ? Math.max(1, ...categories.map((_, ci) => series.reduce((s, se) => s + se.values[ci], 0)))
+      : Math.max(1, ...series.flatMap(se => se.values));
+    const niceMax = niceCeil(maxVal);
+    const ticks = 4;
+    const yOf = v => plotH - (v / niceMax) * plotH;
+
+    let svg = `<svg viewBox="0 0 ${width} ${height}" width="100%" height="${height}">`;
+    svg += `<g transform="translate(${margin.left},${margin.top})">`;
+    for (let i = 0; i <= ticks; i++) {
+      const v = (niceMax / ticks) * i;
+      const y = yOf(v);
+      svg += `<line x1="0" y1="${y}" x2="${plotW}" y2="${y}" stroke="#e1e0d9" stroke-width="1" />`;
+      svg += `<text x="-8" y="${y + 3}" text-anchor="end" font-size="11" fill="#898781">${escapeHtml(formatVal(v))}</text>`;
+    }
+    svg += `<line x1="0" y1="${plotH}" x2="${plotW}" y2="${plotH}" stroke="#c3c2b7" stroke-width="1" />`;
+
+    const bandWidth = plotW / categories.length;
+    const groupPad = bandWidth * 0.14;
+    const innerW = bandWidth - groupPad * 2;
+    const barGap = 2;
+    const barW = stacked
+      ? Math.min(24, innerW)
+      : Math.min(24, (innerW - barGap * (series.length - 1)) / Math.max(1, series.length));
+
+    categories.forEach((cat, ci) => {
+      const clusterW = stacked ? barW : barW * series.length + barGap * (series.length - 1);
+      const groupX = ci * bandWidth + groupPad + (innerW - clusterW) / 2;
+      if (stacked) {
+        let yCursor = plotH;
+        series.forEach(se => {
+          const v = se.values[ci];
+          if (v <= 0) return;
+          const h = plotH - yOf(v);
+          const yTop = yCursor - h;
+          svg += `<path d="${barPath(groupX, yTop, barW, h, 4)}" fill="${se.color}"><title>${escapeHtml(se.label + ' — ' + cat + ' : ' + formatVal(v))}</title></path>`;
+          yCursor = yTop - barGap;
+        });
+      } else {
+        series.forEach((se, si) => {
+          const v = se.values[ci];
+          const h = plotH - yOf(v);
+          const x = groupX + si * (barW + barGap);
+          const yTop = plotH - h;
+          svg += `<path d="${barPath(x, yTop, barW, h, 4)}" fill="${se.color}"><title>${escapeHtml(se.label + ' — ' + cat + ' : ' + formatVal(v))}</title></path>`;
+        });
+      }
+      svg += `<text x="${ci * bandWidth + bandWidth / 2}" y="${plotH + 20}" text-anchor="middle" font-size="11" fill="#898781">${escapeHtml(String(cat))}</text>`;
+    });
+
+    svg += '</g></svg>';
+    container.innerHTML = svg;
+  }
+
+  function renderChartLegend(container, series) {
+    if (series.length < 2) { container.innerHTML = ''; return; }
+    container.innerHTML = series.map(se =>
+      '<span class="legend-item"><span class="legend-swatch" style="background:' + se.color + '"></span>' + escapeHtml(se.label) + '</span>'
+    ).join('');
+  }
+
+  function renderChart(pivot, rows) {
+    const noteEl = document.getElementById('chart-note');
+    noteEl.hidden = chartGroupBy === 'aucun';
+    const { series, stacked } = computeChartSeries(rows, pivot.years, chartGroupBy, chartMetric);
+    const formatVal = chartMetric === 'montant' ? (v => formatMontant(Math.round(v))) : (v => String(Math.round(v)));
+    renderChartSvg(document.getElementById('chart-svg'), pivot.years, series, { stacked, formatValue: formatVal });
+    renderChartLegend(document.getElementById('chart-legend'), series);
   }
 
   // ---------- Rendering ----------
@@ -295,12 +548,58 @@
     t.innerHTML = thead + '<tbody>' + bodyRows + '</tbody>' + tfoot;
   }
 
+  // Filter dropdowns always list every value present in the *unfiltered*
+  // data (so picking one option doesn't hide the others) — same pattern as
+  // the Structures widget's filter panel.
+  function populateFilterOptions() {
+    const { rows } = buildEnrichedRows(allRecords, currentMappings, currentConfig);
+    const universites = Array.from(new Set(rows.map(r => r.universite))).sort((a, b) => a.localeCompare(b, 'fr'));
+    const entreprises = Array.from(new Set(rows.map(r => r.entreprise))).sort((a, b) => a.localeCompare(b, 'fr'));
+    const annees = Array.from(new Set(rows.map(r => r.anneeDebut).filter(y => y != null))).sort((a, b) => a - b);
+
+    fillSelect('filter-universite', universites, activeFilters.universite);
+    fillSelect('filter-entreprise', entreprises, activeFilters.entreprise);
+    fillSelect('filter-annee', annees.map(String), activeFilters.annee);
+  }
+
+  function fillSelect(id, values, current) {
+    const select = document.getElementById(id);
+    const placeholder = select.options[0];
+    select.innerHTML = '';
+    select.appendChild(placeholder);
+    values.forEach(v => {
+      const opt = document.createElement('option');
+      opt.value = v;
+      opt.textContent = v;
+      select.appendChild(opt);
+    });
+    select.value = values.includes(current) ? current : '';
+  }
+
   function renderAll() {
-    const pivot = computePivot(allRecords, currentMappings, currentConfig);
+    populateFilterOptions();
+    document.getElementById('filter-reset').hidden = !(activeFilters.universite || activeFilters.entreprise || activeFilters.annee);
+
+    const filtered = filteredRecords();
+    const { rows, sansDate } = buildEnrichedRows(filtered, currentMappings, currentConfig);
+    const pivot = computePivot(rows, sansDate);
     window.__lastPivot = pivot; // read by the export button and by tests
+    window.__lastRows = rows; // read by the chart and by tests
+
+    // Always-visible diagnostic: separates "Grist gave the widget fewer rows
+    // than expected" (check the section's own Filtre/Sélectionné par — that
+    // restriction happens before this widget ever sees the data) from "the
+    // widget itself is dropping rows" (only happens for a value your
+    // "Financement CIFRE" mapping treats as non-CIFRE).
+    const diagParts = [allRecords.length + ' ligne(s) reçue(s) de Grist'];
+    if (filtered.length !== allRecords.length) diagParts.push(filtered.length + ' après filtres ci-dessus');
+    diagParts.push(pivot.totalNb + ' comptée(s) comme CIFRE');
+    document.getElementById('diag-line').textContent = diagParts.join(' · ');
+
     renderWarnings(pivot);
     renderKpis(pivot);
     renderTable(pivot);
+    if (currentView === 'chart') renderChart(pivot, rows);
   }
 
   // ---------- CSV export ----------
@@ -342,8 +641,45 @@
   loadConfig().then(renderAll);
 
   document.getElementById('btn-export').addEventListener('click', () => {
-    exportCsv(window.__lastPivot || computePivot(allRecords, currentMappings, currentConfig));
+    exportCsv(window.__lastPivot || computePivot([], 0));
   });
+
+  // ---------- Filters ----------
+  ['universite', 'entreprise', 'annee'].forEach(key => {
+    document.getElementById('filter-' + key).addEventListener('change', (e) => {
+      activeFilters[key] = e.target.value;
+      renderAll();
+    });
+  });
+  document.getElementById('filter-reset').addEventListener('click', () => {
+    activeFilters = { universite: '', entreprise: '', annee: '' };
+    renderAll();
+  });
+
+  // ---------- View tabs (Tableau / Graphique) ----------
+  function setView(view) {
+    currentView = view;
+    document.getElementById('view-table').classList.toggle('active', view === 'table');
+    document.getElementById('view-chart').classList.toggle('active', view === 'chart');
+    document.getElementById('table-view').hidden = view !== 'table';
+    document.getElementById('chart-view').hidden = view !== 'chart';
+    if (view === 'chart') renderChart(window.__lastPivot, window.__lastRows || []);
+  }
+  document.getElementById('view-table').addEventListener('click', () => setView('table'));
+  document.getElementById('view-chart').addEventListener('click', () => setView('chart'));
+
+  function wireSegmented(id, onChange) {
+    const el = document.getElementById(id);
+    el.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', () => {
+        el.querySelectorAll('button').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        onChange(btn.dataset.value);
+      });
+    });
+  }
+  wireSegmented('metric-toggle', (value) => { chartMetric = value; renderChart(window.__lastPivot, window.__lastRows || []); });
+  wireSegmented('groupby-toggle', (value) => { chartGroupBy = value; renderChart(window.__lastPivot, window.__lastRows || []); });
 
   const settingsModal = document.getElementById('settings-modal');
   function openSettings() {

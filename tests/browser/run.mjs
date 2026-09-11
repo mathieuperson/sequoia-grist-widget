@@ -382,6 +382,9 @@ async function testCifreDashboard(browser) {
 
   const pivot = await page.evaluate(() => window.__lastPivot);
   ok(pivot.totalNb === 3, 'la thèse marquée "Non" CIFRE est exclue (3 thèses comptées, pas 4)');
+  const diagText = await page.locator('#diag-line').textContent();
+  ok(diagText.includes('4 ligne(s) reçue(s) de Grist') && diagText.includes('3 comptée(s) comme CIFRE'),
+    'la ligne de diagnostic distingue les lignes reçues de Grist (4) des lignes comptées comme CIFRE (3)');
   ok(pivot.totalMontant === 600000, 'montant total = 3 x 200k€ (défaut doctorant+contrat+encadrant)');
   ok(pivot.groupList.length === 1 && pivot.groupList[0].universite === 'Université de Rennes',
     'un seul groupe Université (Rennes)');
@@ -417,6 +420,80 @@ async function testCifreDashboard(browser) {
     'changer le salaire doctorant dans les Paramètres recalcule bien les montants');
   const optionCalls = await page.evaluate(() => window.__mockCalls.filter(c => c.fn === 'setOption'));
   ok(optionCalls.length >= 1, 'la config est persistée via grist.setOption (survivra à un rechargement)');
+
+  // ---- Filters ----
+  const entrepriseOptions = await page.locator('#filter-entreprise option').allTextContents();
+  ok(entrepriseOptions.includes('Orange') && entrepriseOptions.includes('Neverhack'),
+    'le filtre Entreprise liste toutes les entreprises présentes');
+  await page.selectOption('#filter-entreprise', 'Neverhack');
+  await page.waitForTimeout(50);
+  const filteredPivot = await page.evaluate(() => window.__lastPivot);
+  ok(filteredPivot.totalNb === 1 && filteredPivot.groupList[0].rows[0].entreprise === 'Neverhack',
+    'filtrer par Entreprise=Neverhack ne garde que sa thèse (1, pas 3)');
+  ok(!(await page.locator('#filter-reset').isHidden()), 'le bouton Réinitialiser apparaît quand un filtre est actif');
+  await page.click('#filter-reset');
+  await page.waitForTimeout(50);
+  const resetPivot = await page.evaluate(() => window.__lastPivot);
+  ok(resetPivot.totalNb === 3, 'Réinitialiser restaure les 3 thèses');
+
+  // ---- Chart view ----
+  await page.click('#view-chart');
+  await page.waitForTimeout(100);
+  ok(await page.locator('#chart-view').isVisible(), 'la vue Graphique s\'affiche');
+  ok((await page.locator('#chart-svg path').count()) > 0, 'le graphique dessine des barres (SVG <path>)');
+  let legendText = await page.locator('#chart-legend').textContent();
+  ok(legendText.includes('Monétaire') && legendText.includes('In-kind'),
+    'légende par défaut (Aucun regroupement, Montant) : Monétaire / In-kind');
+
+  await page.click('#groupby-toggle button[data-value="entreprise"]');
+  await page.waitForTimeout(100);
+  legendText = await page.locator('#chart-legend').textContent();
+  ok(legendText.includes('Orange') && legendText.includes('Neverhack'),
+    'regrouper par Entreprise : la légende liste les entreprises (Orange, Neverhack)');
+
+  await page.click('#metric-toggle button[data-value="nombre"]');
+  await page.waitForTimeout(100);
+  ok((await page.locator('#chart-svg path').count()) > 0, 'le graphique se met à jour sur la mesure "Nombre de CIFRE"');
+
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
+async function testCifreDashboardNumericYear(browser) {
+  console.log('\n=== cifre-financement.html : régression "Année" en colonne Numeric (pas une vraie Date Grist) ===');
+  const cfg = {
+    widgetTableId: 'Theses',
+    baseUrl: 'https://mock.grist.local/api/docs/mockdoc',
+    tables: {
+      Theses: {
+        colIds: ['Universite', 'Entreprise', 'Annee_debut', 'EstCIFRE', 'DureeAnnees', 'MontantTotal'],
+        data: {
+          id: [1, 2],
+          Universite: ['IMT Atlantique', 'IMT Atlantique'],
+          Entreprise: ['Orange Labs', 'Canon CRF'],
+          // A bare Numeric "Année" column holding the calendar year (2022,
+          // 2023) — not a real Grist Date (epoch seconds). Reproduces the
+          // reported "1970/1971/1972" bug.
+          Annee_debut: [2022, 2023],
+          EstCIFRE: ['Oui', 'Oui'],
+          DureeAnnees: [null, null],
+          MontantTotal: [null, null]
+        }
+      }
+    },
+    mappings: {
+      Universite: 'Universite', Entreprise: 'Entreprise', DateDebut: 'Annee_debut',
+      EstCIFRE: 'EstCIFRE', DureeAnnees: 'DureeAnnees', MontantTotal: 'MontantTotal'
+    }
+  };
+
+  const { page, context, consoleErrors } = await openWidget(browser, 'cifre-financement.html', cfg);
+  await page.waitForTimeout(100);
+  const pivot = await page.evaluate(() => window.__lastPivot);
+
+  ok(JSON.stringify(pivot.years) === JSON.stringify([2022, 2023, 2024, 2025]),
+    'les années sont 2022-2025 (pas 1970/1971/1972) quand "Année" est une colonne Numeric');
+  ok(pivot.sansDate === 0, 'aucune thèse n\'est comptée "sans date" — la valeur Numeric est bien reconnue comme année');
 
   ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
   await context.close();
