@@ -242,7 +242,11 @@
   function isCIFRE(t, mappings) {
     if (!mappings.EstCIFRE) return true; // not mapped: the table is assumed already CIFRE-scoped
     const raw = formatValue(t.EstCIFRE).trim();
-    if (!raw) return true; // empty: don't silently drop unlabeled rows
+    // Once a "Financement CIFRE" field IS mapped, a blank cell means "no
+    // financing type recorded" — it must NOT be assumed to be CIFRE (that
+    // was the last count-off-by-one: rows with an empty Type de financement
+    // were silently added on top of the real 64).
+    if (!raw) return false;
     const v = raw.toLowerCase();
     if (NEGATIVE_MARKERS.includes(v)) return false;
     if (POSITIVE_MARKERS.includes(v)) return true;
