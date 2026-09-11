@@ -6,6 +6,7 @@ Widgets personnalisés Grist pour le CRM SequoIA (déployés via GitHub Pages).
 
 | Widget | URL | Table | Accès requis |
 |---|---|---|---|
+| **CRM SequoIA — fiche 360** | `/crm.html` | Structures | Complet (lit et écrit Contacts / Interactions / Opportunités) |
 | Fiche partenaire | `/index.html` | Structures | Lecture |
 | Fiche contact | `/contacts.html` | Contacts | Lecture |
 | Fiche interaction | `/interactions.html` | Interactions | Lecture + écriture (CR, pièces jointes) |
@@ -13,6 +14,26 @@ Widgets personnalisés Grist pour le CRM SequoIA (déployés via GitHub Pages).
 | Dashboard financement CIFRE | `/cifre-financement.html` | Thèses (ou toute table de thèses doctorales) | Lecture |
 
 URL de base : `https://mathieuperson.github.io/sequoia-grist-widget/`
+
+### CRM SequoIA — fiche 360 (`crm.html`)
+
+Vue de travail unique qui remplace la page à quatre widgets : une structure sélectionnée dans la liste de gauche
+affiche sa fiche, ses indicateurs (dernier contact, nombre d'interactions, opportunités et montant cumulé,
+prochaine action), ses contacts, ses opportunités et l'historique de ses échanges — dernier compte-rendu déplié
+avec ses pièces jointes.
+
+Tout se modifie depuis cette vue, dans des popups : fiche structure, fiche contact, opportunité (statut compris),
+et interaction avec l'éditeur de compte-rendu (gras/italique/titre/liste/lien, collage d'image téléversée
+automatiquement) et le dépôt de pièces jointes. Les enregistrements créés sont rattachés d'office à la structure
+ouverte, donc jamais orphelins. Chaque champ s'enregistre seul, avec un retour visible ("Enregistrement…" /
+"Enregistré ✓").
+
+Particularité technique : un widget Grist n'est mappé que sur **une** table (ici Structures). Les trois autres
+tables sont lues via `docApi.fetchTable` et écrites via `docApi.applyUserActions`, et leurs colonnes sont
+**résolues par leur nom** (accents, tirets bas et variantes ignorés : `Nom_Complet`, `Compte_rendu`,
+`Date_interaction`… sont reconnus). Une table absente est signalée dans le panneau concerné sans casser le reste
+de la fiche. Le bouton ↻ en bas de la liste recharge les tables liées (utile si quelqu'un d'autre a modifié le
+document).
 
 ### Dashboard financement CIFRE
 
@@ -63,10 +84,26 @@ npm run test:browser
 
 Dans un environnement sans accès réseau pour télécharger Chromium, pointer `PLAYWRIGHT_CHROMIUM_PATH` vers un binaire déjà installé.
 
+Le faux document simule aussi `docApi.applyUserActions` (AddRecord / UpdateRecord / RemoveRecord) et les points
+d'entrée REST des pièces jointes, ce dont `crm.html` a besoin pour écrire dans des tables sur lesquelles il n'est
+pas mappé. Les jeux de données sont dans `tests/browser/fixtures.mjs`.
+
 Limites : ces tests ne couvrent pas le rendu visuel (mise en page, troncature de texte) ni l'intégration Grist réelle (droits d'accès, résolution de références par Grist) — seulement la logique JS des widgets.
+
+### Aperçu visuel (captures, sans Grist)
+
+`npm run preview` ouvre `crm.html` avec le même faux document et enregistre des captures dans
+`tests/browser/screenshots/` (fiche, popup structure, popup interaction, vue étroite). Sert à vérifier la mise en
+page — ce que les tests ci-dessus ne font pas — avant de brancher le widget dans Grist.
+
+```
+npm run preview
+npm run preview -- --width 1200
+```
 
 ## Notes techniques
 
 - `common.css` / `common.js` sont partagés par tous les widgets (design, helpers de formatage, upload/téléchargement de pièces jointes via l'API REST Grist).
 - Les widgets `interactions.html` et `opportunites.html` écrivent dans le document (compte-rendu markdown, pièces jointes, statut d'opportunité) via `grist.getTable().update()`.
+- `crm.html` écrit dans plusieurs tables via `grist.docApi.applyUserActions()` (helpers `addRecord` / `updateRecord` / `removeRecord` de `common.js`) et résout leurs colonnes avec `resolveColumns()`.
 - Le compte-rendu (CR) accepte le markdown ; coller une image l'upload automatiquement en pièce jointe Grist et l'insère dans le texte.

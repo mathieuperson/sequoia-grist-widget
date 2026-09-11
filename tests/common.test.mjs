@@ -145,5 +145,74 @@ async function testFieldSaverCollapsesSameField() {
 await testFieldSaverIndependence();
 await testFieldSaverCollapsesSameField();
 
+// ---- Cross-table helpers (crm.html reads/writes tables it isn't mapped on) ----
+const x = (() => {
+  const sb = { console, window: {}, document: undefined };
+  vm.createContext(sb);
+  vm.runInContext(src + '\nwindow.x = { normalizeKey, dataColumns, resolveColumns, recordsFromTableData, ' +
+    'refIdsFromValue, recordLinksTo, daysSince, formatDaysSince, formatMontantCompact, stripHtml, excerpt };', sb);
+  return sb.window.x;
+})();
+
+// normalizeKey
+eq(x.normalizeKey('Téléphone'), 'telephone', 'normalizeKey strips accents');
+eq(x.normalizeKey('Date de fin'), 'datedefin', 'normalizeKey strips spaces');
+eq(x.normalizeKey('Nom_Complet'), 'nomcomplet', 'normalizeKey strips underscores and lowercases');
+eq(x.normalizeKey(null), '', 'normalizeKey(null) -> empty');
+
+// dataColumns
+eq(x.dataColumns({ id: [1], manualSort: [1], Nom: ['a'] }), ['Nom'], 'dataColumns drops id and manualSort');
+
+// resolveColumns
+eq(x.resolveColumns(['Nom_Complet', 'Tel'], { NomComplet: ['Nom complet'], Telephone: ['Téléphone', 'Tel'] }),
+  { NomComplet: 'Nom_Complet', Telephone: 'Tel' }, 'resolveColumns matches ignoring case/accents/separators');
+eq(x.resolveColumns(['Date_interaction'], { Date: ['Date'] }), { Date: 'Date_interaction' },
+  'resolveColumns falls back to a "contains" match');
+eq(x.resolveColumns(['Objet'], { CR: ['CR', 'Compte_rendu'] }), { CR: null },
+  'resolveColumns returns null for a role with no column (caller must skip it)');
+eq(x.resolveColumns(['Prenom', 'Nom'], { Nom: ['Nom'] }), { Nom: 'Nom' },
+  'resolveColumns prefers the exact match over a column merely containing it');
+
+// recordsFromTableData
+eq(x.recordsFromTableData({ id: [7, 8], Nom: ['a', 'b'], manualSort: [1, 2] }),
+  [{ id: 7, Nom: 'a' }, { id: 8, Nom: 'b' }], 'recordsFromTableData transposes column-major data');
+eq(x.recordsFromTableData({ id: [] }), [], 'recordsFromTableData on an empty table -> []');
+
+// refIdsFromValue / recordLinksTo — raw Ref and RefList values from fetchTable
+eq(x.refIdsFromValue(['L', 3, 5]), [3, 5], 'refIdsFromValue: RefList');
+eq(x.refIdsFromValue(12), [12], 'refIdsFromValue: plain Ref');
+eq(x.refIdsFromValue(0), [], 'refIdsFromValue: empty Ref (id 0) -> []');
+eq(x.refIdsFromValue(null), [], 'refIdsFromValue: null -> []');
+eq(x.refIdsFromValue(['L']), [], 'refIdsFromValue: empty RefList -> []');
+eq(x.recordLinksTo({ P: ['L', 1, 2] }, 'P', 2), true, 'recordLinksTo: linked');
+eq(x.recordLinksTo({ P: ['L', 1] }, 'P', 2), false, 'recordLinksTo: not linked');
+eq(x.recordLinksTo({ P: ['L', 1] }, null, 1), false, 'recordLinksTo: unresolved column -> false');
+
+// daysSince / formatDaysSince
+const NOW = Date.UTC(2026, 8, 11) / 1000; // 2026-09-11
+eq(x.daysSince(Date.UTC(2026, 8, 1) / 1000, NOW), 10, 'daysSince: 10 days ago');
+eq(x.daysSince(Date.UTC(2026, 8, 11) / 1000, NOW), 0, 'daysSince: same day -> 0');
+eq(x.daysSince(Date.UTC(2026, 8, 20) / 1000, NOW), -9, 'daysSince: future date -> negative');
+eq(x.daysSince(null, NOW), null, 'daysSince: no date -> null');
+eq(x.formatDaysSince(Date.UTC(2026, 5, 1) / 1000, NOW), '102 j', 'formatDaysSince: past');
+eq(x.formatDaysSince(Date.UTC(2026, 8, 11) / 1000, NOW), "aujourd'hui", 'formatDaysSince: today');
+eq(x.formatDaysSince(Date.UTC(2026, 8, 16) / 1000, NOW), 'dans 5 j', 'formatDaysSince: future');
+eq(x.formatDaysSince(null, NOW), '', 'formatDaysSince: no date -> empty');
+
+// formatMontantCompact
+eq(x.formatMontantCompact(640000), '640 k€', 'formatMontantCompact: 640000 -> 640 k€');
+eq(x.formatMontantCompact(1250000), '1,3 M€', 'formatMontantCompact: 1250000 -> 1,3 M€');
+eq(x.formatMontantCompact(850), '850 €', 'formatMontantCompact: under 1k stays in euros');
+eq(x.formatMontantCompact(null), '', 'formatMontantCompact: null -> empty');
+eq(x.formatMontantCompact(0), '0 €', 'formatMontantCompact: 0 -> 0 €');
+
+// stripHtml / excerpt
+eq(x.stripHtml('<p>Bonjour <b>Marie</b></p><p>Suite</p>'), 'Bonjour Marie Suite', 'stripHtml: tags out, spacing kept');
+eq(x.stripHtml('<script>alert(1)</script>Texte'), 'Texte', 'stripHtml: script content dropped');
+eq(x.stripHtml('a &amp; b&nbsp;c'), 'a & b c', 'stripHtml: entities decoded');
+eq(x.stripHtml(null), '', 'stripHtml: null -> empty');
+eq(x.excerpt('<p>' + 'mot '.repeat(60) + '</p>', 20).endsWith('…'), true, 'excerpt: long text gets an ellipsis');
+eq(x.excerpt('<p>court</p>', 20), 'court', 'excerpt: short text kept as-is');
+
 console.log(`\n${pass} passed, ${fail} failed (final)`);
 process.exit(fail ? 1 : 0);

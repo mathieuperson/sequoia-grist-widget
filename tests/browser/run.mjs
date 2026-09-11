@@ -2,6 +2,7 @@ import { chromium } from 'playwright';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildMockScript } from './mock-grist.mjs';
+import { choiceCol, crmConfig } from './fixtures.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.join(__dirname, '..', '..'); // repo root, two levels up from tests/browser/
@@ -33,7 +34,16 @@ async function openWidget(browser, file, cfg) {
     const meta = (cfg.columnsMeta && cfg.columnsMeta[tableId]) || [];
     route.fulfill({ contentType: 'application/json', body: JSON.stringify({ columns: meta }) });
   });
-  await page.route('**/attachments*', (route) => route.fulfill({ contentType: 'application/json', body: '[]' }));
+  // Attachments REST endpoints: upload (POST .../attachments), metadata
+  // (GET .../attachments/{id}) and download (GET .../attachments/{id}/download).
+  let uploadSeq = 9000;
+  await page.route('**/attachments**', (route) => {
+    const url = new URL(route.request().url());
+    const m = url.pathname.match(/\/attachments\/(\d+)(\/download)?$/);
+    if (m && m[2]) return route.fulfill({ contentType: 'application/octet-stream', body: 'mock-file' });
+    if (m) return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ fileName: 'fichier-' + m[1] + '.pdf', fileSize: 2048 }) });
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify([++uploadSeq]) });
+  });
   // This sandbox's egress proxy doesn't allow Playwright's own network stack
   // out to jsdelivr — stub marked/DOMPurify so pages that load them (CR
   // markdown legacy-conversion) don't error; irrelevant to what's tested here.
@@ -49,9 +59,6 @@ async function openWidget(browser, file, cfg) {
   return { page, context, consoleErrors };
 }
 
-function choiceCol(id, choices) {
-  return { id, fields: { type: 'Choice', widgetOptions: JSON.stringify({ choices }) } };
-}
 
 async function testInteractionsCreateFlow(browser) {
   console.log('\n=== interactions.html : création liée à une structure sans interaction existante ===');
@@ -592,6 +599,316 @@ async function testCifreDashboardLabAndKEuros(browser) {
   await context.close();
 }
 
+// ---------------------------------------------------------------------
+// crm.html — la vue unifiée (structure + contacts + interactions + opportunités)
+// ---------------------------------------------------------------------
+
+
+
+async function openCrm(browser, cfg) {
+  const res = await openWidget(browser, 'crm.html', cfg || crmConfig());
+  // The related tables are fetched asynchronously after the first onRecords.
+  await res.page.waitForFunction(() => window.__crm && window.__crm.related && window.__crm.related.contacts.tableId, null, { timeout: 5000 });
+  return res;
+}
+
+const userActions = (page) => page.evaluate(() =>
+  window.__mockCalls.filter(c => c.fn === 'applyUserActions').flatMap(c => c.actions));
+
+async function testCrmFiche(browser) {
+  console.log('\n=== crm.html : fiche 360 (lecture) ===');
+  const { page, context, consoleErrors } = await openCrm(browser);
+
+  ok((await page.locator('.list-item').count()) === 3, 'les 3 structures sont listées');
+
+  // Column resolution across tables the widget isn't mapped onto.
+  const cols = await page.evaluate(() => window.__crm.related);
+  ok(cols.contacts.cols.NomComplet === 'Nom_Complet',
+    'la colonne "Nom_Complet" est résolue toute seule pour le rôle NomComplet');
+  ok(cols.contacts.cols.ContactPrincipal === 'Contact_Principal',
+    'la colonne "Contact_Principal" est résolue pour le rôle ContactPrincipal');
+  ok(cols.interactions.tableId === 'Interactions' && cols.opportunites.tableId === 'Opportunites',
+    'les tables Interactions et Opportunites sont trouvées');
+
+  await page.locator('.list-item', { hasText: 'Thales' }).click();
+  await page.waitForTimeout(200);
+
+  ok((await page.locator('.fiche-head h1').textContent()) === 'Thales', 'la fiche Thales s\'ouvre au clic');
+
+  const kpis = await page.evaluate(() => window.__crm.kpis);
+  ok(kpis.nbInteractions === 2, 'KPI interactions = 2 (celles de Zenika sont exclues)');
+  ok(kpis.nbContacts === 2, 'KPI contacts = 2');
+  ok(kpis.nbOpportunites === 3, 'KPI opportunités = 3');
+  ok(kpis.montantTotal === 570000,
+    'le montant cumulé exclut l\'opportunité abandonnée (570 k€ et non 1 470 k€)');
+  ok(kpis.prochaineAction && kpis.prochaineAction.label === 'Envoyer la note de cadrage',
+    'la prochaine action reprend les "Suites" de l\'échéance la plus proche');
+
+  const kpiText = await page.locator('.kpi-row').textContent();
+  ok(kpiText.includes('570 k€'), 'le montant est affiché en compact (570 k€)');
+  ok(/\d+ j/.test(kpiText), 'le KPI "Dernier contact" affiche un nombre de jours');
+
+  // Contacts
+  const contactRows = page.locator('.contact-row');
+  ok((await contactRows.count()) === 2, 'seuls les 2 contacts de Thales sont affichés');
+  ok((await contactRows.first().textContent()).includes('Julien Bertin'),
+    'le contact principal est remonté en tête de liste');
+  ok((await contactRows.first().locator('.star').count()) === 1, 'le contact principal porte une étoile');
+
+  // Opportunités
+  ok((await page.locator('.opp-row').count()) === 3, 'les 3 opportunités de Thales sont listées');
+  const oppFirst = await page.locator('.opp-row').first().textContent();
+  ok(oppFirst.includes('Chaire IA de confiance') && oppFirst.includes('420 k€'),
+    'l\'opportunité active la mieux dotée est en tête (l\'abandonnée à 900 k€ passe en dernier)');
+  ok((await page.locator('.opp-row').last().textContent()).includes('Vieux projet'),
+    'l\'opportunité abandonnée est reléguée en bas de liste');
+
+  // Historique
+  const last = await page.locator('.tl-last').textContent();
+  ok(last.includes('Revue annuelle du partenariat'), 'le dernier échange affiche son objet');
+  ok(last.includes('Thales confirme son intérêt'), 'le compte-rendu du dernier échange est rendu en clair');
+  ok(last.includes('Réunion'), 'le type de l\'échange est affiché');
+  ok(last.includes('Marie Lorrain') && last.includes('Julien Bertin'),
+    'les contacts de l\'échange sont résolus en noms (pas en ids)');
+  await page.waitForTimeout(150);
+  ok((await page.locator('.tl-pj .pj-chip').count()) === 1, 'la pièce jointe du dernier CR est affichée');
+  ok((await page.locator('.tl-item').count()) === 1, 'l\'échange plus ancien apparaît dans la timeline compacte');
+  ok((await page.locator('.tl-item').textContent()).includes('Calage du budget'), 'avec son objet');
+
+  // Structure sans données liées
+  await page.locator('.list-item', { hasText: 'Inria' }).click();
+  await page.waitForTimeout(200);
+  const mainText = await page.locator('#main').textContent();
+  ok(mainText.includes('Aucun contact rattaché'), 'structure sans contact : état vide explicite');
+  ok(mainText.includes('Aucune interaction enregistrée'), 'structure sans interaction : état vide explicite');
+  const kpis3 = await page.evaluate(() => window.__crm.kpis);
+  ok(kpis3.joursDepuisContact === null && kpis3.nbInteractions === 0, 'KPI vides sans interaction');
+
+  // Filtres
+  await page.click('.filter-chip[data-filter="prospects"]');
+  await page.waitForTimeout(100);
+  ok((await page.locator('.list-item').count()) === 1 &&
+     (await page.locator('.list-item').textContent()).includes('Zenika'),
+    'le filtre "Prospects" ne garde que les structures de catégorie Prospect');
+  await page.click('.filter-chip[data-filter="relancer"]');
+  await page.waitForTimeout(100);
+  ok((await page.locator('.list-item').count()) === 3,
+    'le filtre "À relancer" remonte les structures sans contact récent');
+  await page.click('.filter-chip[data-filter="tous"]');
+  await page.fill('#search', 'zenika');
+  await page.waitForTimeout(100);
+  ok((await page.locator('.list-item').count()) === 1, 'la recherche filtre la liste');
+
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
+async function testCrmEdition(browser) {
+  console.log('\n=== crm.html : édition depuis la vue (popups) ===');
+  const { page, context, consoleErrors } = await openCrm(browser);
+  await page.locator('.list-item', { hasText: 'Thales' }).click();
+  await page.waitForTimeout(200);
+
+  // ---- Fiche structure ----
+  await page.click('#btn-edit-structure');
+  await page.waitForTimeout(200);
+  ok(await page.locator('#modal').isVisible(), 'la popup "Fiche structure" s\'ouvre');
+  const tailleOptions = await page.locator('#m-taille option').allTextContents();
+  ok(tailleOptions.includes('ETI'),
+    'le champ Taille propose les choix Grist non encore utilisés (ETI)');
+  await page.selectOption('#m-taille', 'ETI');
+  await page.waitForTimeout(900); // autosave debounce
+  let actions = await userActions(page);
+  const tailleUpdate = actions.find(a => a[0] === 'UpdateRecord' && a[1] === 'Structures' && a[3] && 'entreprise_taille' in a[3]);
+  ok(!!tailleUpdate && tailleUpdate[3].entreprise_taille === 'ETI',
+    'modifier la Taille écrit dans la table Structures (UpdateRecord)');
+  await page.click('.form-modal-actions [data-close]');
+  await page.waitForTimeout(250);
+  ok(!(await page.locator('#modal').isVisible()), 'la popup se referme sur "Terminé"');
+  ok((await page.locator('.fiche-head').textContent()).includes('ETI'),
+    'la fiche reflète immédiatement la valeur enregistrée');
+
+  // ---- Nouvelle interaction + compte-rendu ----
+  await page.click('#btn-new-interaction');
+  await page.waitForTimeout(200);
+  await page.click('#m-create');
+  await page.waitForTimeout(150);
+  ok((await userActions(page)).filter(a => a[0] === 'AddRecord' && a[1] === 'Interactions').length === 0,
+    'la création est bloquée sans objet');
+
+  await page.fill('#m-objet', 'Point d\'avancement chaire');
+  await page.fill('#m-suites', 'Relancer sur le co-financement');
+  await page.fill('#m-ref-contacts .ref-input', 'Marie Lorrain');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(100);
+  ok((await page.locator('#m-ref-contacts .ref-chip').count()) === 1,
+    'le sélecteur ne propose que les contacts de la structure ouverte');
+
+  await page.click('#m-create');
+  await page.waitForTimeout(400);
+  actions = await userActions(page);
+  const add = actions.find(a => a[0] === 'AddRecord' && a[1] === 'Interactions');
+  ok(!!add, 'l\'interaction est créée via applyUserActions sur la table Interactions');
+  if (add) {
+    ok(JSON.stringify(add[3].Partenaires) === JSON.stringify(['L', 1]),
+      'elle est automatiquement liée à la structure ouverte (Partenaires = ["L", 1])');
+    ok(JSON.stringify(add[3].ContactPartenaire) === JSON.stringify(['L', 10]),
+      'le contact choisi est enregistré par son rowId');
+    ok(add[3].Objet === 'Point d\'avancement chaire' && typeof add[3].Date === 'number',
+      'objet et date (pré-remplie à aujourd\'hui) sont envoyés');
+  }
+
+  ok(await page.locator('#cr-editor').isVisible(),
+    'la popup rebascule sur le formulaire complet : le compte-rendu est saisissable tout de suite');
+
+  await page.locator('#cr-editor').click();
+  await page.keyboard.type('Réunion de cadrage, budget confirmé.');
+  await page.waitForTimeout(1100); // CR autosave debounce (800ms)
+  actions = await userActions(page);
+  const crUpdate = actions.find(a => a[0] === 'UpdateRecord' && a[1] === 'Interactions' && a[3] && 'CR' in a[3]);
+  ok(!!crUpdate && crUpdate[3].CR.includes('budget confirmé'),
+    'le compte-rendu s\'enregistre tout seul pendant la frappe');
+
+  // ---- Pièce jointe ----
+  await page.setInputFiles('#pj-input', {
+    name: 'note_cadrage.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-1.4 mock')
+  });
+  await page.waitForTimeout(400);
+  actions = await userActions(page);
+  const pjUpdate = actions.find(a => a[0] === 'UpdateRecord' && a[1] === 'Interactions' && a[3] && 'PJ' in a[3]);
+  ok(!!pjUpdate && Array.isArray(pjUpdate[3].PJ) && pjUpdate[3].PJ[0] === 'L' && pjUpdate[3].PJ.length === 2,
+    'la pièce jointe téléversée est rattachée à l\'interaction (PJ = ["L", id])');
+  ok((await page.locator('#pj-list .pj-item').count()) === 1, 'elle apparaît dans la liste des pièces jointes');
+
+  await page.click('.form-modal-actions [data-close]');
+  await page.waitForTimeout(300);
+  ok((await page.locator('.tl-last').textContent()).includes('Point d\'avancement chaire'),
+    'la nouvelle interaction devient le dernier échange de la timeline');
+
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
+async function testCrmContactsEtOpportunites(browser) {
+  console.log('\n=== crm.html : contacts et opportunités depuis la vue ===');
+  const { page, context, consoleErrors } = await openCrm(browser);
+  await page.locator('.list-item', { hasText: 'Thales' }).click();
+  await page.waitForTimeout(200);
+
+  // ---- Nouveau contact ----
+  await page.click('#btn-new-contact');
+  await page.waitForTimeout(150);
+  await page.fill('#m-nom', 'Fournier');
+  await page.fill('#m-prenom', 'Nadia');
+  await page.fill('#m-fonction', 'Ingénieure sécurité');
+  await page.click('#m-create');
+  await page.waitForTimeout(400);
+  let actions = await userActions(page);
+  const addContact = actions.find(a => a[0] === 'AddRecord' && a[1] === 'Contacts');
+  ok(!!addContact, 'le contact est créé dans la table Contacts');
+  if (addContact) {
+    ok(JSON.stringify(addContact[3].Structures) === JSON.stringify(['L', 1]),
+      'il est rattaché d\'office à la structure ouverte (plus de contact orphelin)');
+    ok(!('Nom_Complet' in addContact[3]),
+      'la colonne formule Nom_Complet n\'est pas écrite — Grist la calcule');
+  }
+  ok((await page.locator('.contact-row').count()) === 3, 'le nouveau contact apparaît dans la fiche');
+
+  // ---- Édition d'un contact existant ----
+  await page.locator('.contact-row', { hasText: 'Marie Lorrain' }).click();
+  await page.waitForTimeout(150);
+  await page.fill('#m-tel', '06 99 88 77 66');
+  await page.waitForTimeout(900);
+  actions = await userActions(page);
+  const telUpdate = actions.find(a => a[0] === 'UpdateRecord' && a[1] === 'Contacts' && a[3] && 'Telephone' in a[3]);
+  ok(!!telUpdate && telUpdate[3].Telephone === '06 99 88 77 66',
+    'éditer un champ du contact l\'enregistre sans quitter la vue');
+  await page.click('.form-modal-actions [data-close]');
+  await page.waitForTimeout(300);
+
+  // ---- Opportunité : changement de statut ----
+  await page.locator('.opp-row', { hasText: 'Chaire IA' }).click();
+  await page.waitForTimeout(250);
+  const statutOptions = await page.locator('#m-statut option').allTextContents();
+  ok(statutOptions.includes('Concrétisé'),
+    'le statut propose toute la liste de choix Grist (y compris les non utilisés)');
+  await page.selectOption('#m-statut', 'Concrétisé');
+  await page.waitForTimeout(900);
+  actions = await userActions(page);
+  const statutUpdate = actions.find(a => a[0] === 'UpdateRecord' && a[1] === 'Opportunites' && a[3] && 'Statut' in a[3]);
+  ok(!!statutUpdate && statutUpdate[3].Statut === 'Concrétisé',
+    'changer le statut écrit dans la table Opportunites');
+  await page.click('.form-modal-actions [data-close]');
+  await page.waitForTimeout(300);
+  ok((await page.locator('.opp-row', { hasText: 'Chaire IA' }).textContent()).includes('Concrétisé'),
+    'le nouveau statut est visible sur la fiche');
+
+  // ---- Nouvelle opportunité ----
+  await page.click('#btn-new-opp');
+  await page.waitForTimeout(200);
+  await page.fill('#m-sujet', 'Thèse CIFRE robustesse');
+  await page.fill('#m-montant', '90000');
+  await page.click('#m-create');
+  await page.waitForTimeout(400);
+  actions = await userActions(page);
+  const addOpp = actions.find(a => a[0] === 'AddRecord' && a[1] === 'Opportunites');
+  ok(!!addOpp && addOpp[3].Montant === 90000 && JSON.stringify(addOpp[3].Partenaires) === JSON.stringify(['L', 1]),
+    'l\'opportunité créée est liée à la structure et porte son montant');
+  ok((await page.locator('.opp-row').count()) === 4, 'elle apparaît immédiatement dans la fiche');
+
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
+async function testCrmSchemaDifferent(browser) {
+  console.log('\n=== crm.html : document dont les colonnes portent d\'autres noms ===');
+  const cfg = crmConfig();
+  // Same data, columns named differently (accents, underscores, suffixes) —
+  // the widget must still find Date / Compte-rendu / Pièce-jointe / Partenaires.
+  cfg.tables.Interactions.colIds = ['Date_interaction', 'Type', 'Partenaire', 'Objet',
+    'Contact_Partenaire', 'Prochaine_Echeance', 'Suites', 'Opportunites', 'Compte_rendu', 'Piece_jointe'];
+  const d = cfg.tables.Interactions.data;
+  cfg.tables.Interactions.data = {
+    id: d.id, Date_interaction: d.Date, Type: d.Type, Partenaire: d.Partenaires, Objet: d.Objet,
+    Contact_Partenaire: d.ContactPartenaire, Prochaine_Echeance: d.ProchaineEcheance, Suites: d.Suites,
+    Opportunites: d.Opportunites, Compte_rendu: d.CR, Piece_jointe: d.PJ
+  };
+  cfg.columnsMeta.Interactions = [choiceCol('Type', ['Réunion', 'Appel'])];
+
+  const { page, context, consoleErrors } = await openCrm(browser, cfg);
+  await page.locator('.list-item', { hasText: 'Thales' }).click();
+  await page.waitForTimeout(250);
+
+  const cols = await page.evaluate(() => window.__crm.related.interactions.cols);
+  ok(cols.Date === 'Date_interaction', 'le rôle Date est résolu sur "Date_interaction"');
+  ok(cols.CR === 'Compte_rendu', 'le rôle CR est résolu sur "Compte_rendu"');
+  ok(cols.PJ === 'Piece_jointe', 'le rôle PJ est résolu sur "Piece_jointe"');
+  ok(cols.Partenaires === 'Partenaire', 'le rôle Partenaires est résolu sur "Partenaire"');
+  ok((await page.evaluate(() => window.__crm.kpis.nbInteractions)) === 2,
+    'les interactions sont bien rattachées malgré les noms de colonnes différents');
+  ok((await page.locator('.tl-last').textContent()).includes('Thales confirme'),
+    'le compte-rendu est retrouvé et affiché');
+
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
+async function testCrmTableManquante(browser) {
+  console.log('\n=== crm.html : table liée absente du document ===');
+  const cfg = crmConfig();
+  delete cfg.tables.Opportunites;
+  const { page, context, consoleErrors } = await openCrm(browser, cfg);
+  await page.locator('.list-item', { hasText: 'Thales' }).click();
+  await page.waitForTimeout(250);
+
+  ok((await page.locator('#main').textContent()).includes('Table introuvable'),
+    'le widget signale la table manquante au lieu de planter');
+  ok((await page.locator('.contact-row').count()) === 2,
+    'le reste de la fiche continue de fonctionner');
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
 async function testCifreDashboardNumericYear(browser) {
   console.log('\n=== cifre-financement.html : régression "Année" en colonne Numeric (pas une vraie Date Grist) ===');
   const cfg = {
@@ -648,6 +965,11 @@ try {
   await testCifreDashboardTypeFinancementColumn(browser);
   await testCifreDashboardLabAndKEuros(browser);
   await testCifreDashboardNumericYear(browser);
+  await testCrmFiche(browser);
+  await testCrmEdition(browser);
+  await testCrmContactsEtOpportunites(browser);
+  await testCrmSchemaDifferent(browser);
+  await testCrmTableManquante(browser);
 } finally {
   await browser.close();
 }

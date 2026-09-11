@@ -72,6 +72,17 @@ function formatValue(value) {
   return String(value);
 }
 
+// Compact money, for KPI tiles where "640 k€" reads better than the full
+// "640 000 €" (the exact figure stays available in the detail cards).
+function formatMontantCompact(value) {
+  if (value === null || value === undefined || value === '') return '';
+  const n = Number(value);
+  if (isNaN(n)) return String(value);
+  if (Math.abs(n) >= 1000000) return (Math.round(n / 100000) / 10).toLocaleString('fr-FR') + ' M€';
+  if (Math.abs(n) >= 1000) return Math.round(n / 1000).toLocaleString('fr-FR') + ' k€';
+  return Math.round(n).toLocaleString('fr-FR') + ' €';
+}
+
 function formatMontant(value) {
   if (value === null || value === undefined || value === '') return '';
   const n = Number(value);
@@ -121,6 +132,30 @@ function formatDate(value) {
   const d = typeof value === 'number' ? new Date(value * 1000) : new Date(value);
   if (isNaN(d.getTime())) return String(value);
   return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+// Whole days between a Grist date and `now` (default: today). Positive =
+// in the past ("dernier contact il y a 12 j"), negative = in the future
+// ("échéance dans 5 j"). Returns null when there's no usable date.
+function daysSince(value, now) {
+  if (value === null || value === undefined || value === '') return null;
+  const d = typeof value === 'number' ? new Date(value * 1000) : new Date(value);
+  if (isNaN(d.getTime())) return null;
+  const ref = now === undefined ? new Date() : (typeof now === 'number' ? new Date(now * 1000) : new Date(now));
+  const DAY = 86400000;
+  // Compare calendar days, not exact instants: a meeting logged this morning
+  // must read "aujourd'hui", not "0,3 j".
+  const a = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+  const b = Date.UTC(ref.getUTCFullYear(), ref.getUTCMonth(), ref.getUTCDate());
+  return Math.round((b - a) / DAY);
+}
+
+function formatDaysSince(value, now) {
+  const n = daysSince(value, now);
+  if (n === null) return '';
+  if (n === 0) return "aujourd'hui";
+  if (n < 0) return 'dans ' + (-n) + ' j';
+  return n + ' j';
 }
 
 // Turns a mapped-columns "record" (raw colIds) into an object keyed by
@@ -231,6 +266,16 @@ function fetchTableCached(tableId) {
     });
   }
   return _tableCache[tableId];
+}
+
+// fetchTable results are cached for the life of the page; drop an entry
+// after writing to that table so the next read sees the new rows.
+function invalidateTableCache(tableId) {
+  if (tableId === undefined) {
+    Object.keys(_tableCache).forEach(k => delete _tableCache[k]);
+  } else {
+    delete _tableCache[tableId];
+  }
 }
 
 const DISPLAY_COL_CANDIDATES = ['Nom_Complet', 'NomComplet', 'nom_acteur', 'Nom', 'nom', 'Sujet', 'Objet', 'Name', 'Title', 'name'];
@@ -384,6 +429,197 @@ async function renderRefPicker(container, currentLabels, targetTableId, onChange
 // filterConfig.parentLabels).
 function chipLabels(chips) {
   return (chips || []).map(c => (c && typeof c === 'object') ? c.label : c);
+}
+
+// ---------- Working across several tables from one widget ----------
+// A widget is mapped onto a single table, so `grist.getTable()` only ever
+// reaches that one. Everything else (reading a related table, writing to
+// it) goes through docApi: fetchTable to read, applyUserActions to write.
+// Column ids of those other tables aren't part of the widget's column
+// mapping either, so they're resolved from the data's own keys by name.
+
+function normalizeKey(str) {
+  return String(str === null || str === undefined ? '' : str)
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')  // "Téléphone" -> "Telephone"
+    .toLowerCase().replace(/[^a-z0-9]/g, '');          // "Date de fin" -> "datedefin"
+}
+
+// Column ids actually holding data in a fetchTable result.
+function dataColumns(tableData) {
+  return Object.keys(tableData || {}).filter(k => k !== 'id' && k !== 'manualSort');
+}
+
+// Maps role names to this document's real column ids, e.g.
+// resolveColumns(['Nom_Complet','Tel'], {NomComplet:['Nom complet'], Telephone:['Téléphone']})
+// -> {NomComplet:'Nom_Complet', Telephone:'Tel'}. Exact (accent/case/
+// separator-insensitive) match first, then a contains match, so a document
+// that named a column "Date_interaction" still resolves the "Date" role.
+// A role with no match resolves to null — callers must skip it rather than
+// write to an undefined column.
+function resolveColumns(colIds, roleCandidates) {
+  const cols = colIds || [];
+  const index = {};
+  cols.forEach(c => { const k = normalizeKey(c); if (!(k in index)) index[k] = c; });
+
+  const out = {};
+  for (const role in roleCandidates) {
+    const candidates = roleCandidates[role];
+    let found = null;
+    for (const cand of candidates) {
+      const hit = index[normalizeKey(cand)];
+      if (hit) { found = hit; break; }
+    }
+    if (!found) {
+      for (const cand of candidates) {
+        const nc = normalizeKey(cand);
+        if (nc.length < 4) continue; // a 2-3 letter candidate would match almost anything
+        const hit = cols.find(c => normalizeKey(c).includes(nc));
+        if (hit) { found = hit; break; }
+      }
+    }
+    out[role] = found || null;
+  }
+  return out;
+}
+
+// fetchTable hands back column-major data ({id:[1,2], Nom:['a','b']});
+// turn it into the row objects the rest of the code works with.
+function recordsFromTableData(tableData) {
+  const ids = (tableData && tableData.id) || [];
+  const cols = dataColumns(tableData);
+  return ids.map((id, i) => {
+    const rec = { id };
+    cols.forEach(c => { rec[c] = tableData[c][i]; });
+    return rec;
+  });
+}
+
+// Row ids referenced by a raw Ref (a number) or RefList (["L", 1, 2]) cell.
+// Raw values are what fetchTable returns — unlike onRecords, which resolves
+// references to their display text.
+function refIdsFromValue(value) {
+  if (typeof value === 'number') return value ? [value] : [];
+  if (Array.isArray(value)) {
+    if (value[0] === 'L') return value.slice(1).filter(v => typeof v === 'number');
+    if (value[0] === 'R' || value[0] === 'r') return typeof value[1] === 'number' ? [value[1]] : [];
+    return value.filter(v => typeof v === 'number');
+  }
+  return [];
+}
+
+function recordLinksTo(record, colId, rowId) {
+  if (!colId) return false;
+  return refIdsFromValue(record[colId]).includes(rowId);
+}
+
+// ---------- Writing to any table (not just the mapped one) ----------
+
+async function addRecord(tableId, fields) {
+  const res = await grist.docApi.applyUserActions([['AddRecord', tableId, null, fields]]);
+  invalidateTableCache(tableId);
+  return res && res.retValues ? res.retValues[0] : null;
+}
+
+async function updateRecord(tableId, rowId, fields) {
+  await grist.docApi.applyUserActions([['UpdateRecord', tableId, rowId, fields]]);
+  invalidateTableCache(tableId);
+}
+
+async function removeRecord(tableId, rowId) {
+  await grist.docApi.applyUserActions([['RemoveRecord', tableId, rowId]]);
+  invalidateTableCache(tableId);
+}
+
+// Same per-column debounced autosave as createFieldSaver, but against an
+// arbitrary table — one timer per column so editing two fields quickly
+// saves both. `onSaved` lets the caller refresh its view afterwards.
+function createRecordSaver(statusSetter, onSaved) {
+  const timers = {};
+  return function saveField(tableId, rowId, colId, value) {
+    if (!tableId || !colId || !rowId) return;
+    const key = tableId + '::' + rowId + '::' + colId;
+    clearTimeout(timers[key]);
+    timers[key] = setTimeout(async () => {
+      try {
+        if (statusSetter) statusSetter('Enregistrement…');
+        await updateRecord(tableId, rowId, { [colId]: value });
+        if (statusSetter) statusSetter('Enregistré ✓');
+        if (onSaved) onSaved();
+      } catch (err) {
+        if (statusSetter) statusSetter('Erreur d’enregistrement');
+        console.error(err);
+      }
+    }, 700);
+  };
+}
+
+// ---------- Compte-rendu (rich text stored as sanitized HTML) ----------
+// Images keep a stable data-att-id reference instead of a live download URL
+// (those carry a short-lived auth token): resolved to a real src only for
+// display, stripped back to the stable form before saving.
+
+function looksLikeHtml(text) {
+  return /<[a-z][\s\S]*>/i.test(text || '');
+}
+
+function normalizeCrToHtml(raw) {
+  if (!raw) return '';
+  // Legacy compte-rendus were stored as plain Markdown; current ones are HTML.
+  const html = looksLikeHtml(raw) ? raw : (typeof marked !== 'undefined' ? marked.parse(raw) : escapeHtml(raw));
+  const clean = typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(html, { ADD_ATTR: ['data-att-id'] }) : html;
+  const tmp = document.createElement('div');
+  tmp.innerHTML = clean;
+  tmp.querySelectorAll('img[src^="grist-att:"]').forEach(img => {
+    img.setAttribute('data-att-id', img.getAttribute('src').replace('grist-att:', ''));
+    img.removeAttribute('src');
+  });
+  return tmp.innerHTML;
+}
+
+function serializeCrForSave(container) {
+  const tmp = document.createElement('div');
+  tmp.innerHTML = container.innerHTML;
+  tmp.querySelectorAll('img[data-att-id]').forEach(img => img.removeAttribute('src'));
+  return typeof DOMPurify !== 'undefined'
+    ? DOMPurify.sanitize(tmp.innerHTML, { ADD_ATTR: ['data-att-id'] })
+    : tmp.innerHTML;
+}
+
+async function resolveImagesIn(container) {
+  const imgs = container.querySelectorAll('img[data-att-id]');
+  for (const img of imgs) {
+    try {
+      img.src = await getAttachmentDownloadUrl(img.getAttribute('data-att-id'));
+    } catch (err) {
+      img.alt = 'Image indisponible';
+    }
+  }
+}
+
+// Plain-text excerpt of a compte-rendu, for timeline previews. Regex-based
+// rather than DOM-based so it stays a pure function (and stays usable on a
+// list of 200 interactions without building 200 throwaway elements).
+function stripHtml(html) {
+  if (!html) return '';
+  return String(html)
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, ' ')
+    .replace(/<br\s*\/?>/gi, ' ')
+    .replace(/<\/(p|div|li|h[1-6]|tr)>/gi, ' ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function excerpt(text, maxLength) {
+  const t = stripHtml(text);
+  const max = maxLength || 160;
+  return t.length <= max ? t : t.slice(0, max).replace(/\s+\S*$/, '') + '…';
 }
 
 async function saveRefField(recordId, colId, chips, statusEl) {

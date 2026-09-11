@@ -1,9 +1,10 @@
 // Builds a self-contained JS source string that stands in for
 // https://docs.getgrist.com/grist-plugin-api.js inside a Playwright page.
-// It implements just the surface the 4 widgets actually use (grist.ready,
+// It implements just the surface the widgets actually use (grist.ready,
 // onRecord[s], getTable().create/update/getTableId, docApi.getAccessToken,
-// docApi.fetchTable) against an in-memory "document" (`cfg.tables`), and
-// records every call into window.__mockCalls for assertions.
+// docApi.fetchTable, docApi.applyUserActions) against an in-memory
+// "document" (`cfg.tables`), and records every call into window.__mockCalls
+// for assertions.
 //
 // cfg shape:
 // {
@@ -141,6 +142,53 @@ export function buildMockScript(cfg) {
         const out = { id: t.data.id || [] };
         t.colIds.forEach(c => { out[c] = t.data[c] || []; });
         return Promise.resolve(out);
+      },
+      // How a widget writes to a table it isn't mapped onto. Supports the
+      // three row actions the CRM widget uses; anything else is recorded
+      // but not applied, so a test asserting on it still sees the call.
+      applyUserActions: (actions) => {
+        calls.push({ fn: 'applyUserActions', actions: JSON.parse(JSON.stringify(actions)) });
+        const retValues = [];
+        (actions || []).forEach(action => {
+          const [verb, tid, rowId, fields] = action;
+          const t = CFG.tables[tid];
+          if (!t) throw new Error('mock: no such table ' + tid);
+          t.data.id = t.data.id || [];
+          if (verb === 'AddRecord') {
+            const id = nextId(t);
+            t.data.id.push(id);
+            // A field written to a column the fixture didn't declare still
+            // has to exist afterwards — Grist would have created the cell.
+            Object.keys(fields || {}).forEach(k => { if (!t.colIds.includes(k)) t.colIds.push(k); });
+            t.colIds.forEach(c => {
+              t.data[c] = t.data[c] || [];
+              while (t.data[c].length < t.data.id.length - 1) t.data[c].push(null);
+              t.data[c].push((fields && c in fields) ? fields[c] : null);
+            });
+            retValues.push(id);
+          } else if (verb === 'UpdateRecord') {
+            const idx = t.data.id.indexOf(rowId);
+            if (idx >= 0) {
+              Object.keys(fields || {}).forEach(k => {
+                if (!t.colIds.includes(k)) t.colIds.push(k);
+                t.data[k] = t.data[k] || [];
+                t.data[k][idx] = fields[k];
+              });
+            }
+            retValues.push(null);
+          } else if (verb === 'RemoveRecord') {
+            const idx = t.data.id.indexOf(rowId);
+            if (idx >= 0) {
+              t.data.id.splice(idx, 1);
+              t.colIds.forEach(c => { if (t.data[c]) t.data[c].splice(idx, 1); });
+            }
+            retValues.push(null);
+          } else {
+            retValues.push(null);
+          }
+        });
+        if (CFG.tables[CFG.widgetTableId]) { fireRecords(); fireRecord(); }
+        return Promise.resolve({ retValues });
       }
     }
   };
