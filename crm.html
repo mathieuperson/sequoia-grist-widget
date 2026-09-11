@@ -1,0 +1,1640 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>CRM SequoIA — fiche 360</title>
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+<link rel="stylesheet" href="./common.css">
+<script src="./common.js"></script>
+<style>
+  /* ---------- Sidebar ---------- */
+  .filter-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+  .filter-chip {
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text-muted);
+    border-radius: 20px;
+    padding: 3px 11px;
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .filter-chip:hover { border-color: var(--sequoia-green); color: var(--sequoia-green-dark); }
+  .filter-chip.active { background: var(--sequoia-green); border-color: var(--sequoia-green); color: #fff; }
+
+  .sidebar-foot {
+    padding: 8px 14px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 11.5px;
+    color: var(--text-muted);
+  }
+  .icon-btn {
+    border: none;
+    background: none;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 13px;
+    padding: 2px 6px;
+    border-radius: 6px;
+  }
+  .icon-btn:hover { background: var(--bg); color: var(--text); }
+
+  .list-item .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    flex-shrink: 0; margin-left: auto;
+  }
+
+  /* ---------- Main ---------- */
+  .crm-main { flex: 1; overflow-y: auto; padding: 20px 24px 32px; }
+  .crm-inner { max-width: 1180px; margin: 0 auto; }
+
+  .fiche-head {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px 18px;
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+  .fiche-head .logo-frame {
+    width: 52px; height: 52px; min-width: 52px;
+    border-radius: 12px;
+    background: var(--sequoia-green);
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 17px; font-weight: 700;
+    overflow: hidden;
+  }
+  .fiche-head .logo-frame img { width: 100%; height: 100%; object-fit: contain; background: #fff; padding: 5px; }
+  .fiche-head .head-text { flex: 1; min-width: 0; }
+  .fiche-head h1 {
+    margin: 0 0 3px;
+    font-size: 20px; font-weight: 700;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .fiche-head .head-meta { font-size: 12.5px; color: var(--text-muted); margin-bottom: 7px; }
+  .fiche-head .head-pills { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .head-actions { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
+
+  .btn-ghost {
+    padding: 7px 13px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text);
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .btn-ghost:hover { border-color: var(--sequoia-green); color: var(--sequoia-green-dark); }
+
+  .site-link { font-size: 12.5px; color: var(--sequoia-green-dark); text-decoration: none; }
+  .site-link:hover { text-decoration: underline; }
+
+  /* ---------- KPI ---------- */
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+  .kpi {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px;
+  }
+  .kpi .kpi-label {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-muted); margin-bottom: 5px; font-weight: 600;
+  }
+  .kpi .kpi-value { font-size: 19px; font-weight: 700; line-height: 1.15; }
+  .kpi .kpi-value.small { font-size: 14px; font-weight: 600; }
+  .kpi .kpi-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
+  .kpi .kpi-value.warn { color: var(--danger); }
+
+  /* ---------- Colonnes ---------- */
+  .crm-grid { display: grid; grid-template-columns: minmax(300px, 1fr) 1.25fr; gap: 14px; align-items: start; }
+  .crm-col { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+
+  .panel {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .panel-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 13px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .panel-head h2 {
+    margin: 0; flex: 1;
+    font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-muted); font-weight: 700;
+  }
+  .panel-head .count {
+    font-size: 11px; font-weight: 700; color: var(--text-muted);
+    background: var(--bg); border-radius: 10px; padding: 1px 8px;
+  }
+  .panel-body { padding: 6px 0; }
+  .panel-empty { padding: 18px 16px; font-size: 13px; color: var(--text-muted); font-style: italic; text-align: center; }
+  .panel-warn { padding: 12px 16px; font-size: 12.5px; color: var(--danger); }
+
+  .btn-add {
+    border: 1px dashed var(--border);
+    background: none;
+    color: var(--sequoia-green-dark);
+    border-radius: 8px;
+    padding: 4px 10px;
+    font-size: 12px; font-weight: 600;
+    cursor: pointer;
+  }
+  .btn-add:hover { background: var(--sequoia-green-light); border-color: var(--sequoia-green); }
+
+  /* ---- Contacts ---- */
+  .contact-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 16px;
+    cursor: pointer;
+    border-bottom: 1px solid #f2f4f3;
+  }
+  .contact-row:last-child { border-bottom: none; }
+  .contact-row:hover { background: #f7faf8; }
+  .contact-row .avatar { width: 30px; height: 30px; font-size: 11px; }
+  .contact-row .c-text { min-width: 0; flex: 1; }
+  .contact-row .c-name { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .contact-row .c-sub { font-size: 11.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .contact-row .star { color: #eab308; font-size: 12px; flex-shrink: 0; }
+
+  /* ---- Opportunités ---- */
+  .opp-row {
+    padding: 10px 16px;
+    cursor: pointer;
+    border-bottom: 1px solid #f2f4f3;
+    display: flex; align-items: flex-start; gap: 10px;
+  }
+  .opp-row:last-child { border-bottom: none; }
+  .opp-row:hover { background: #f7faf8; }
+  .opp-row .o-text { flex: 1; min-width: 0; }
+  .opp-row .o-title { font-size: 13.5px; font-weight: 600; margin-bottom: 4px; }
+  .opp-row .o-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 3px; }
+  .opp-row .o-amount { font-size: 13px; font-weight: 700; white-space: nowrap; }
+  .status-pill {
+    display: inline-flex; align-items: center;
+    padding: 2px 9px; border-radius: 20px;
+    font-size: 11px; font-weight: 600; color: #fff;
+  }
+
+  /* ---- Timeline ---- */
+  .timeline { padding: 4px 0; }
+  .tl-last {
+    margin: 10px 16px 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: #fbfcfb;
+    padding: 13px 15px;
+    cursor: pointer;
+  }
+  .tl-last:hover { border-color: var(--sequoia-green); }
+  .tl-last-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+  .tl-last-head .tl-date { font-size: 12.5px; font-weight: 700; }
+  .tl-last-head .tl-who { font-size: 12px; color: var(--text-muted); flex: 1; min-width: 0; }
+  .tl-badge {
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--sequoia-green-dark); background: var(--sequoia-green-light);
+    border-radius: 10px; padding: 2px 8px;
+  }
+  .tl-objet { font-size: 13.5px; font-weight: 700; margin-bottom: 6px; }
+  .tl-cr {
+    font-size: 13px; line-height: 1.55; color: var(--text);
+    max-height: 260px; overflow: hidden; position: relative;
+  }
+  .tl-cr.clipped::after {
+    content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 40px;
+    background: linear-gradient(180deg, rgba(251,252,251,0), #fbfcfb);
+  }
+  .tl-cr img { max-width: 100%; border-radius: 6px; }
+  .tl-cr h1, .tl-cr h2, .tl-cr h3 { font-size: 14px; margin: 8px 0 3px; }
+  .tl-cr ul, .tl-cr ol { padding-left: 20px; margin: 5px 0; }
+  .tl-cr p { margin: 0 0 7px; }
+  .tl-pj { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .pj-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 4px 9px;
+    font-size: 12px; color: var(--sequoia-green-dark);
+    text-decoration: none; cursor: pointer;
+    max-width: 220px;
+  }
+  .pj-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pj-chip:hover { border-color: var(--sequoia-green); }
+
+  .tl-item {
+    display: flex; gap: 12px;
+    padding: 9px 16px;
+    cursor: pointer;
+    border-top: 1px solid #f2f4f3;
+  }
+  .tl-item:hover { background: #f7faf8; }
+  .tl-item .tl-when { font-size: 11.5px; color: var(--text-muted); min-width: 62px; flex-shrink: 0; padding-top: 1px; }
+  .tl-item .tl-body { min-width: 0; flex: 1; }
+  .tl-item .tl-title { font-size: 13px; font-weight: 600; }
+  .tl-item .tl-excerpt {
+    font-size: 12px; color: var(--text-muted); margin-top: 2px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .type-pill {
+    display: inline-block; padding: 1px 8px; border-radius: 10px;
+    background: var(--sequoia-green-light); color: var(--sequoia-green-dark);
+    font-size: 10.5px; font-weight: 600;
+  }
+
+  /* ---------- Modales ---------- */
+  .form-modal { max-width: 680px; }
+  .form-modal.wide { max-width: 840px; }
+  .modal-head { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 16px; }
+  .modal-head h2 { margin: 0; flex: 1; font-size: 18px; font-weight: 700; }
+  .modal-status { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; padding-top: 4px; }
+  .modal-section {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-muted); font-weight: 700;
+    margin: 18px 0 8px;
+  }
+  /* Les popups d'interaction sont longues (méta + CR + PJ) : les actions
+     restent collées en bas plutôt que de fuir sous le compte-rendu. */
+  .form-modal-actions {
+    position: sticky;
+    bottom: -28px;
+    background: #fff;
+    border-top: 1px solid var(--border);
+    padding: 12px 0 28px;
+    margin-bottom: -28px;
+  }
+  .btn-danger {
+    padding: 9px 14px; border-radius: 8px;
+    border: 1px solid #f0d4d2; background: #fff;
+    color: var(--danger); font-weight: 600; font-size: 13px; cursor: pointer;
+  }
+  .btn-danger:hover { background: #fdf3f2; }
+  .modal-actions-left { margin-right: auto; }
+
+  /* ---- Éditeur de compte-rendu ---- */
+  .cr-toolbar {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 4px;
+    border: 1px solid var(--border); border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    padding: 6px 8px;
+    background: var(--bg);
+  }
+  .cr-toolbar button {
+    border: 1px solid transparent; background: none; cursor: pointer;
+    font-size: 12.5px; padding: 3px 8px; border-radius: 6px; color: var(--text);
+  }
+  .cr-toolbar button:hover { background: #fff; border-color: var(--border); }
+  .cr-toolbar .spacer { flex: 1; }
+  .cr-editable {
+    width: 100%; min-height: 200px; max-height: 45vh; overflow-y: auto;
+    border: 1px solid var(--border); border-radius: 0 0 8px 8px;
+    padding: 12px 14px; font-size: 13.5px; line-height: 1.6; outline: none;
+    background: #fff;
+  }
+  .cr-editable:focus { border-color: var(--sequoia-green); }
+  .cr-editable img { max-width: 100%; border-radius: 6px; margin: 6px 0; }
+  .cr-editable:empty::before { content: attr(data-placeholder); color: var(--text-muted); font-style: italic; }
+  .cr-editable h1, .cr-editable h2, .cr-editable h3 { font-size: 15px; font-weight: 700; margin: 10px 0 4px; }
+  .cr-editable ul, .cr-editable ol { padding-left: 20px; margin: 6px 0; }
+  .cr-editable p:first-child { margin-top: 0; }
+
+  .pj-dropzone {
+    border: 2px dashed var(--border); border-radius: 10px;
+    padding: 13px; text-align: center; font-size: 12.5px;
+    color: var(--text-muted); cursor: pointer;
+  }
+  .pj-dropzone.dragover { border-color: var(--sequoia-green); background: var(--sequoia-green-light); }
+  .pj-list { margin-top: 9px; display: flex; flex-direction: column; gap: 6px; }
+  .pj-item {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 7px 10px; font-size: 12.5px;
+  }
+  .pj-item .pj-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pj-item a { color: var(--sequoia-green-dark); text-decoration: none; font-weight: 500; cursor: pointer; }
+  .pj-item .pj-remove { color: var(--danger); cursor: pointer; background: none; border: none; font-size: 13px; }
+
+  @media (max-width: 1000px) {
+    .crm-grid { grid-template-columns: 1fr; }
+    .kpi-row { grid-template-columns: repeat(2, 1fr); }
+  }
+  /* Sous cette largeur, les boutons d'action écraseraient le nom de la
+     structure : ils passent sur leur propre ligne. */
+  @media (max-width: 820px) {
+    .fiche-head { flex-wrap: wrap; }
+    .head-actions { flex-basis: 100%; justify-content: flex-end; }
+  }
+  @media (max-width: 700px) {
+    .crm-main { padding: 14px; }
+    .kpi-row { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="search-box">
+        <input type="text" id="search" placeholder="Rechercher une structure...">
+      </div>
+      <div class="filter-chips" id="filter-chips">
+        <button class="filter-chip active" data-filter="tous" type="button">Tous</button>
+        <button class="filter-chip" data-filter="partenaires" type="button">Partenaires</button>
+        <button class="filter-chip" data-filter="prospects" type="button">Prospects</button>
+        <button class="filter-chip" data-filter="relancer" type="button">À relancer</button>
+      </div>
+    </div>
+    <div class="list" id="list">
+      <div class="empty-list">Chargement…</div>
+    </div>
+    <div class="sidebar-foot">
+      <span id="list-count"></span>
+      <button class="icon-btn" id="btn-refresh" title="Recharger les données liées">↻</button>
+    </div>
+  </aside>
+
+  <main class="crm-main" id="main">
+    <div class="placeholder">Sélectionnez une structure</div>
+  </main>
+</div>
+
+<div class="form-modal-backdrop" id="modal" hidden>
+  <div class="form-modal" id="modal-content"></div>
+</div>
+
+<input type="file" id="pj-input" multiple hidden>
+
+<script>
+  // ---------------------------------------------------------------------
+  // Configuration
+  // ---------------------------------------------------------------------
+  // The widget is mapped onto Structures; Contacts / Interactions /
+  // Opportunites are read and written through docApi (see common.js,
+  // "Working across several tables from one widget"). Their column ids
+  // aren't part of the widget mapping, so they're resolved by name.
+
+  const COLUMNS = [
+    { name: 'Nom', title: 'Nom de la structure', optional: false },
+    { name: 'Description', optional: true },
+    { name: 'TypeActeur', title: "Type d'acteur", optional: true },
+    { name: 'Categorie', title: 'Catégorie', optional: true },
+    { name: 'Activite', title: 'Activité', optional: true },
+    { name: 'Taille', optional: true },
+    { name: 'AxeSequoia', title: 'Axe SequoIA', optional: true },
+    { name: 'PilierSequoia', title: 'Pilier SequoIA', optional: true },
+    { name: 'SiteWeb', title: 'Site web', optional: true },
+    { name: 'Logo', title: 'URL du logo', optional: true },
+    { name: 'RechercheStructure', title: 'Structure de recherche', optional: true },
+    { name: 'RechercheEquipeActivite', title: 'Équipe / activité', optional: true },
+    { name: 'RechercheEquipeLabo', title: 'Laboratoire', optional: true }
+  ];
+
+  const RELATED = {
+    contacts: {
+      tableCandidates: ['Contacts', 'Contact'],
+      linkRole: 'Structures',
+      roles: {
+        Nom: ['Nom'],
+        Prenom: ['Prenom', 'Prénom'],
+        NomComplet: ['Nom_Complet', 'NomComplet', 'Nom complet'],
+        Fonction: ['Fonction', 'Poste'],
+        Structures: ['Structures', 'Structure'],
+        Email: ['Email', 'Mail', 'Courriel'],
+        Telephone: ['Telephone', 'Téléphone', 'Tel'],
+        Linkedin: ['Linkedin', 'LinkedIn'],
+        ContactPrincipal: ['ContactPrincipal', 'Contact_Principal', 'Contact principal', 'Principal'],
+        Commentaire: ['Commentaire', 'Commentaires', 'Notes']
+      }
+    },
+    interactions: {
+      tableCandidates: ['Interactions', 'Interaction'],
+      linkRole: 'Partenaires',
+      roles: {
+        Objet: ['Objet', 'Sujet', 'Titre'],
+        Date: ['Date'],
+        Type: ['Type'],
+        Partenaires: ['Partenaires', 'Partenaire', 'Structures', 'Structure'],
+        ContactPartenaire: ['ContactPartenaire', 'Contact_Partenaire', 'Contact(s) partenaire', 'Contacts partenaire'],
+        ContactCluster: ['ContactCluster', 'Contact_Cluster', 'Contact(s) cluster'],
+        ProchaineEcheance: ['ProchaineEcheance', 'Prochaine_Echeance', 'Prochaine échéance', 'Echeance'],
+        Suites: ['Suites', 'Suite', 'Prochaine action'],
+        Opportunites: ['Opportunites', 'Opportunités', 'Opportunite'],
+        CR: ['CR', 'Compte_rendu', 'Compte-rendu', 'CompteRendu'],
+        PJ: ['PJ', 'Piece_jointe', 'Pièce-jointe', 'PiecesJointes', 'Attachments']
+      }
+    },
+    opportunites: {
+      tableCandidates: ['Opportunites', 'Opportunités', 'Opportunite'],
+      linkRole: 'Partenaires',
+      roles: {
+        Sujet: ['Sujet', 'Objet', 'Titre'],
+        Type: ['Type'],
+        Statut: ['Statut', 'Status', 'Etape'],
+        AxeSequoia: ['AxeSequoia', 'Axe_Sequoia', 'Axe SequoIA', 'Axe'],
+        Montant: ['Montant', 'Montant_€', 'Budget'],
+        DateDebut: ['DateDebut', 'Date_Debut', 'Date de début'],
+        Echeance: ['Echeance', 'Echéance', 'Date_fin'],
+        Commentaire: ['Commentaire', 'Commentaires', 'Notes'],
+        Partenaires: ['Partenaires', 'Partenaire', 'Structures', 'Structure'],
+        ContactPartenaire: ['ContactPartenaire', 'Contact_Partenaire', 'Contact(s) partenaire'],
+        ContactCluster: ['ContactCluster', 'Contact_Cluster', 'Contact(s) Cluster']
+      }
+    }
+  };
+
+  const RELANCE_DAYS = 90; // beyond this, a partner shows up in "À relancer"
+
+  // ---------------------------------------------------------------------
+  // État
+  // ---------------------------------------------------------------------
+  let structures = [];        // mapped records of the widget's own table
+  let mappings = null;        // role -> colId, for Structures
+  let structTableId = null;
+  let current = null;         // selected structure (mapped record)
+  let related = {};           // key -> { tableId, cols, records, error }
+  let filterMode = 'tous';
+  let query = '';
+
+  grist.ready({ requiredAccess: 'full', columns: COLUMNS, allowSelectBy: true });
+
+  // ---------------------------------------------------------------------
+  // Chargement des tables liées
+  // ---------------------------------------------------------------------
+
+  // Resolves a table by trying each candidate id until one loads — a doc may
+  // name it "Opportunites" or "Opportunite" and we can't know in advance.
+  async function resolveRelated(key) {
+    const conf = RELATED[key];
+    for (const tableId of conf.tableCandidates) {
+      try {
+        const data = await fetchTableCached(tableId);
+        return {
+          tableId,
+          cols: resolveColumns(dataColumns(data), conf.roles),
+          records: recordsFromTableData(data),
+          error: null
+        };
+      } catch (err) { /* try the next candidate */ }
+    }
+    return { tableId: null, cols: {}, records: [], error: 'Table introuvable (' + conf.tableCandidates.join(' / ') + ')' };
+  }
+
+  async function loadRelated() {
+    const keys = Object.keys(RELATED);
+    const results = await Promise.all(keys.map(resolveRelated));
+    keys.forEach((k, i) => { related[k] = results[i]; });
+  }
+
+  // Re-reads every related table from the document (their cached copy is
+  // dropped on each write, but another user's edits need this explicit
+  // refresh — hence the ↻ button and the refresh on window focus).
+  async function refreshRelated(force) {
+    if (force) {
+      Object.keys(related).forEach(k => { if (related[k].tableId) invalidateTableCache(related[k].tableId); });
+    }
+    await loadRelated();
+    render();
+  }
+
+  // ---------------------------------------------------------------------
+  // Sélecteurs
+  // ---------------------------------------------------------------------
+
+  function rel(key) { return related[key] || { tableId: null, cols: {}, records: [] }; }
+
+  function linkedRecords(key, structureId) {
+    const r = rel(key);
+    const colId = r.cols[RELATED[key].linkRole];
+    if (!colId || structureId == null) return [];
+    return r.records.filter(rec => recordLinksTo(rec, colId, structureId));
+  }
+
+  function contactsOf(id) {
+    const cols = rel('contacts').cols;
+    return linkedRecords('contacts', id).sort((a, b) => {
+      // Contact principal first, then alphabetically.
+      const pa = cols.ContactPrincipal ? (a[cols.ContactPrincipal] ? 0 : 1) : 1;
+      const pb = cols.ContactPrincipal ? (b[cols.ContactPrincipal] ? 0 : 1) : 1;
+      if (pa !== pb) return pa - pb;
+      return contactName(a).localeCompare(contactName(b), 'fr');
+    });
+  }
+
+  function interactionsOf(id) {
+    const cols = rel('interactions').cols;
+    return linkedRecords('interactions', id).sort((a, b) => {
+      const da = cols.Date ? (Number(a[cols.Date]) || 0) : 0;
+      const db = cols.Date ? (Number(b[cols.Date]) || 0) : 0;
+      return db - da;
+    });
+  }
+
+  function opportunitesOf(id) {
+    const cols = rel('opportunites').cols;
+    return linkedRecords('opportunites', id).sort((a, b) => {
+      // Abandoned ones sink to the bottom whatever their amount — they're
+      // history, not pipeline.
+      const aa = cols.Statut && isAbandoned(a[cols.Statut]) ? 1 : 0;
+      const ab = cols.Statut && isAbandoned(b[cols.Statut]) ? 1 : 0;
+      if (aa !== ab) return aa - ab;
+      const ma = cols.Montant ? (Number(a[cols.Montant]) || 0) : 0;
+      const mb = cols.Montant ? (Number(b[cols.Montant]) || 0) : 0;
+      return mb - ma;
+    });
+  }
+
+  function contactName(c) {
+    const cols = rel('contacts').cols;
+    const full = cols.NomComplet ? String(c[cols.NomComplet] || '').trim() : '';
+    if (full) return full;
+    const parts = [cols.Prenom && c[cols.Prenom], cols.Nom && c[cols.Nom]].filter(Boolean);
+    return parts.join(' ') || 'Sans nom';
+  }
+
+  function contactNamesFor(ids) {
+    const byId = {};
+    rel('contacts').records.forEach(c => { byId[c.id] = c; });
+    return (ids || []).map(id => (byId[id] ? contactName(byId[id]) : null)).filter(Boolean);
+  }
+
+  function isAbandoned(statut) {
+    return normalizeKey(statut).startsWith('abandon');
+  }
+
+  // Everything the header + KPI row needs, computed in one place so the
+  // browser tests can assert on it directly (window.__crm.kpis).
+  function computeKpis(structureId) {
+    const iCols = rel('interactions').cols;
+    const oCols = rel('opportunites').cols;
+    const interactions = interactionsOf(structureId);
+    const opportunites = opportunitesOf(structureId);
+
+    const dates = iCols.Date ? interactions.map(i => Number(i[iCols.Date]) || 0).filter(Boolean) : [];
+    const lastContact = dates.length ? Math.max(...dates) : null;
+
+    const active = opportunites.filter(o => !oCols.Statut || !isAbandoned(o[oCols.Statut]));
+    const montantTotal = oCols.Montant ? active.reduce((sum, o) => sum + (Number(o[oCols.Montant]) || 0), 0) : 0;
+
+    // Next action = soonest future deadline, from either an interaction
+    // follow-up or an opportunity milestone.
+    const todayDays = 0;
+    const candidates = [];
+    if (iCols.ProchaineEcheance) {
+      interactions.forEach(i => {
+        const d = Number(i[iCols.ProchaineEcheance]) || 0;
+        if (d && daysSince(d) <= todayDays) {
+          candidates.push({ date: d, label: (iCols.Suites && i[iCols.Suites]) || (iCols.Objet && i[iCols.Objet]) || 'Suite à donner' });
+        }
+      });
+    }
+    if (oCols.Echeance) {
+      active.forEach(o => {
+        const d = Number(o[oCols.Echeance]) || 0;
+        if (d && daysSince(d) <= todayDays) {
+          candidates.push({ date: d, label: (oCols.Sujet && o[oCols.Sujet]) || 'Opportunité' });
+        }
+      });
+    }
+    candidates.sort((a, b) => a.date - b.date);
+
+    return {
+      nbContacts: contactsOf(structureId).length,
+      nbInteractions: interactions.length,
+      nbOpportunites: opportunites.length,
+      montantTotal,
+      lastContact,
+      joursDepuisContact: lastContact ? daysSince(lastContact) : null,
+      prochaineAction: candidates[0] || null
+    };
+  }
+
+  function needsRelance(structureId) {
+    const k = computeKpis(structureId);
+    return k.joursDepuisContact === null || k.joursDepuisContact > RELANCE_DAYS;
+  }
+
+  // ---------------------------------------------------------------------
+  // Sidebar
+  // ---------------------------------------------------------------------
+
+  function structField(s, role) {
+    return s ? formatValue(s[role]) : '';
+  }
+
+  function matchesFilters(s) {
+    const cat = normalizeKey(structField(s, 'Categorie'));
+    if (filterMode === 'partenaires' && cat === 'prospect') return false;
+    if (filterMode === 'prospects' && cat !== 'prospect') return false;
+    if (filterMode === 'relancer' && !needsRelance(s.id)) return false;
+
+    if (!query) return true;
+    const haystack = [
+      structField(s, 'Nom'), structField(s, 'Categorie'), structField(s, 'TypeActeur'),
+      structField(s, 'Activite'), structField(s, 'AxeSequoia'), structField(s, 'PilierSequoia')
+    ].join(' ').toLowerCase();
+    return haystack.includes(query);
+  }
+
+  function renderList() {
+    const listEl = document.getElementById('list');
+    const visible = structures.filter(matchesFilters)
+      .sort((a, b) => structField(a, 'Nom').localeCompare(structField(b, 'Nom'), 'fr'));
+
+    document.getElementById('list-count').textContent =
+      visible.length + (visible.length > 1 ? ' structures' : ' structure');
+
+    if (visible.length === 0) {
+      listEl.innerHTML = '<div class="empty-list">Aucune structure ne correspond.</div>';
+      return;
+    }
+
+    listEl.innerHTML = '';
+    visible.forEach(s => {
+      const nom = structField(s, 'Nom') || 'Sans nom';
+      const logo = structField(s, 'Logo');
+      const nbContacts = contactsOf(s.id).length;
+      const k = computeKpis(s.id);
+
+      const item = document.createElement('div');
+      item.className = 'list-item' + (current && s.id === current.id ? ' active' : '');
+
+      const avatar = document.createElement('div');
+      avatar.className = 'avatar';
+      if (logo) {
+        const img = document.createElement('img');
+        img.src = logo;
+        img.style.cssText = 'width:100%;height:100%;object-fit:cover;';
+        img.onerror = () => { avatar.innerHTML = ''; avatar.textContent = initials(nom); };
+        avatar.appendChild(img);
+      } else {
+        avatar.textContent = initials(nom);
+      }
+
+      const info = document.createElement('div');
+      info.style.cssText = 'overflow:hidden;flex:1;min-width:0;';
+      const sub = [structField(s, 'Categorie') || structField(s, 'TypeActeur'),
+        nbContacts ? nbContacts + (nbContacts > 1 ? ' contacts' : ' contact') : ''].filter(Boolean).join(' · ');
+      info.innerHTML =
+        '<div class="name">' + escapeHtml(nom) + '</div>' +
+        '<div class="sub">' + escapeHtml(sub) + '</div>';
+
+      item.appendChild(avatar);
+      item.appendChild(info);
+
+      // Amber dot = no contact logged for a while; nothing = recent enough.
+      if (k.joursDepuisContact === null || k.joursDepuisContact > RELANCE_DAYS) {
+        const dot = document.createElement('span');
+        dot.className = 'dot';
+        dot.style.background = 'var(--status-montage)';
+        dot.title = k.joursDepuisContact === null ? 'Aucune interaction' : 'Dernier contact il y a ' + k.joursDepuisContact + ' j';
+        item.appendChild(dot);
+      }
+
+      item.addEventListener('click', () => selectStructure(s));
+      listEl.appendChild(item);
+    });
+  }
+
+  function selectStructure(s) {
+    current = s;
+    grist.setCursorPos({ rowId: s.id }).catch(() => {});
+    render();
+  }
+
+  // ---------------------------------------------------------------------
+  // Fiche
+  // ---------------------------------------------------------------------
+
+  function render() {
+    renderList();
+    renderMain();
+    window.__crm = {
+      structureId: current ? current.id : null,
+      kpis: current ? computeKpis(current.id) : null,
+      related: Object.fromEntries(Object.entries(related).map(([k, v]) => [k, { tableId: v.tableId, cols: v.cols, nb: v.records.length, error: v.error }]))
+    };
+  }
+
+  function renderMain() {
+    const main = document.getElementById('main');
+    if (!current) {
+      main.innerHTML = '<div class="placeholder">Sélectionnez une structure dans la liste</div>';
+      return;
+    }
+    // The selected structure may have dropped out of a filtered list.
+    if (!structures.some(s => s.id === current.id)) {
+      current = null;
+      main.innerHTML = '<div class="placeholder">Sélectionnez une structure dans la liste</div>';
+      return;
+    }
+
+    const s = current;
+    const k = computeKpis(s.id);
+    const nom = structField(s, 'Nom') || 'Sans nom';
+    const logo = structField(s, 'Logo');
+    const pilier = structField(s, 'PilierSequoia');
+    const axe = structField(s, 'AxeSequoia');
+    const site = structField(s, 'SiteWeb');
+
+    const metaParts = [structField(s, 'TypeActeur'), structField(s, 'Categorie'),
+      structField(s, 'Taille'), structField(s, 'Activite')].filter(Boolean);
+
+    main.innerHTML =
+      '<div class="crm-inner">' +
+        '<div class="fiche-head">' +
+          '<div class="logo-frame">' +
+            (logo ? '<img src="' + escapeHtml(logo) + '" alt="">' : escapeHtml(initials(nom))) +
+          '</div>' +
+          '<div class="head-text">' +
+            '<h1 title="' + escapeHtml(nom) + '">' + escapeHtml(nom) + '</h1>' +
+            '<div class="head-meta">' + escapeHtml(metaParts.join(' · ')) + '</div>' +
+            '<div class="head-pills">' +
+              (pilier ? '<span class="value-pill ' + pilierClass(pilier) + '">' + escapeHtml(pilier) + '</span>' : '') +
+              (axe ? '<span class="type-pill">' + escapeHtml(axe) + '</span>' : '') +
+              (site ? '<a class="site-link" href="' + escapeHtml(site) + '" target="_blank" rel="noopener">' + escapeHtml(site.replace(/^https?:\/\//, '')) + ' ↗</a>' : '') +
+            '</div>' +
+          '</div>' +
+          '<div class="head-actions">' +
+            '<button class="btn-ghost" id="btn-edit-structure">✏️ Modifier</button>' +
+            '<button class="btn-primary" id="btn-new-interaction">+ Interaction</button>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="kpi-row">' +
+          kpiHtml('Dernier contact',
+            k.joursDepuisContact === null ? '—' : escapeHtml(formatDaysSince(k.lastContact)),
+            k.lastContact ? formatDate(k.lastContact) : 'Aucune interaction',
+            k.joursDepuisContact !== null && k.joursDepuisContact > RELANCE_DAYS) +
+          kpiHtml('Interactions', String(k.nbInteractions), k.nbInteractions ? 'depuis le début' : 'aucune', false) +
+          kpiHtml('Opportunités',
+            k.nbOpportunites + (k.montantTotal ? ' · ' + formatMontantCompact(k.montantTotal) : ''),
+            k.nbOpportunites ? 'en cours ou gagnées' : 'aucune', false) +
+          kpiHtml('Prochaine action',
+            k.prochaineAction ? escapeHtml(excerpt(k.prochaineAction.label, 40)) : '—',
+            k.prochaineAction ? 'avant le ' + formatDate(k.prochaineAction.date) : 'rien de planifié',
+            false, !!k.prochaineAction) +
+        '</div>' +
+
+        '<div class="crm-grid">' +
+          '<div class="crm-col">' +
+            contactsPanelHtml(s) +
+            oppsPanelHtml(s) +
+          '</div>' +
+          '<div class="crm-col">' +
+            timelinePanelHtml(s) +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    document.getElementById('btn-edit-structure').addEventListener('click', () => openStructureModal(s));
+    document.getElementById('btn-new-interaction').addEventListener('click', () => openInteractionModal(null, s));
+    bindPanelEvents(s);
+  }
+
+  function kpiHtml(label, value, sub, warn, small) {
+    return '<div class="kpi">' +
+      '<div class="kpi-label">' + escapeHtml(label) + '</div>' +
+      '<div class="kpi-value' + (warn ? ' warn' : '') + (small ? ' small' : '') + '">' + value + '</div>' +
+      '<div class="kpi-sub">' + escapeHtml(sub) + '</div>' +
+    '</div>';
+  }
+
+  function panelShell(title, count, addId, addLabel, bodyHtml) {
+    return '<div class="panel">' +
+      '<div class="panel-head">' +
+        '<h2>' + escapeHtml(title) + '</h2>' +
+        (count !== null ? '<span class="count">' + count + '</span>' : '') +
+        (addId ? '<button class="btn-add" id="' + addId + '">' + escapeHtml(addLabel) + '</button>' : '') +
+      '</div>' +
+      '<div class="panel-body">' + bodyHtml + '</div>' +
+    '</div>';
+  }
+
+  function contactsPanelHtml(s) {
+    const r = rel('contacts');
+    if (r.error) return panelShell('Contacts', null, null, null, '<div class="panel-warn">' + escapeHtml(r.error) + '</div>');
+    const cols = r.cols;
+    const list = contactsOf(s.id);
+
+    const body = list.length === 0
+      ? '<div class="panel-empty">Aucun contact rattaché.</div>'
+      : list.map(c => {
+          const fonction = cols.Fonction ? formatValue(c[cols.Fonction]) : '';
+          const email = cols.Email ? formatValue(c[cols.Email]) : '';
+          const tel = cols.Telephone ? formatValue(c[cols.Telephone]) : '';
+          const sub = [fonction, email || tel].filter(Boolean).join(' · ');
+          const principal = cols.ContactPrincipal && c[cols.ContactPrincipal];
+          return '<div class="contact-row" data-contact="' + c.id + '">' +
+            '<div class="avatar">' + escapeHtml(initials(contactName(c))) + '</div>' +
+            '<div class="c-text">' +
+              '<div class="c-name">' + escapeHtml(contactName(c)) + '</div>' +
+              '<div class="c-sub">' + escapeHtml(sub) + '</div>' +
+            '</div>' +
+            (principal ? '<span class="star" title="Contact principal">★</span>' : '') +
+          '</div>';
+        }).join('');
+
+    return panelShell('Contacts', list.length, 'btn-new-contact', '+ Contact', body);
+  }
+
+  function oppsPanelHtml(s) {
+    const r = rel('opportunites');
+    if (r.error) return panelShell('Opportunités', null, null, null, '<div class="panel-warn">' + escapeHtml(r.error) + '</div>');
+    const cols = r.cols;
+    const list = opportunitesOf(s.id);
+
+    const body = list.length === 0
+      ? '<div class="panel-empty">Aucune opportunité.</div>'
+      : list.map(o => {
+          const statut = cols.Statut ? formatValue(o[cols.Statut]) : '';
+          const montant = cols.Montant ? o[cols.Montant] : null;
+          const echeance = cols.Echeance ? o[cols.Echeance] : null;
+          return '<div class="opp-row" data-opp="' + o.id + '">' +
+            '<div class="o-text">' +
+              '<div class="o-title">' + escapeHtml(cols.Sujet ? formatValue(o[cols.Sujet]) || 'Sans sujet' : 'Sans sujet') + '</div>' +
+              (statut ? '<span class="status-pill" style="background:' + statusColor(statut) + '">' + escapeHtml(statut) + '</span>' : '') +
+              (echeance ? '<div class="o-sub">échéance ' + escapeHtml(formatDate(echeance)) + '</div>' : '') +
+            '</div>' +
+            '<div class="o-amount">' + escapeHtml(formatMontantCompact(montant)) + '</div>' +
+          '</div>';
+        }).join('');
+
+    return panelShell('Opportunités', list.length, 'btn-new-opp', '+ Opportunité', body);
+  }
+
+  function timelinePanelHtml(s) {
+    const r = rel('interactions');
+    if (r.error) return panelShell('Historique des échanges', null, null, null, '<div class="panel-warn">' + escapeHtml(r.error) + '</div>');
+    const cols = r.cols;
+    const list = interactionsOf(s.id);
+
+    if (list.length === 0) {
+      return panelShell('Historique des échanges', 0, 'btn-new-interaction-2', '+ Interaction',
+        '<div class="panel-empty">Aucune interaction enregistrée. Créez-en une pour démarrer le suivi.</div>');
+    }
+
+    const last = list[0];
+    const others = list.slice(1);
+    const whoLast = cols.ContactPartenaire ? contactNamesFor(refIdsFromValue(last[cols.ContactPartenaire])) : [];
+
+    const lastHtml =
+      '<div class="tl-last" data-interaction="' + last.id + '">' +
+        '<div class="tl-last-head">' +
+          (cols.Type && last[cols.Type] ? '<span class="type-pill">' + escapeHtml(formatValue(last[cols.Type])) + '</span>' : '') +
+          '<span class="tl-date">' + escapeHtml(cols.Date ? formatDate(last[cols.Date]) : '') + '</span>' +
+          '<span class="tl-who">' + escapeHtml(whoLast.join(', ')) + '</span>' +
+          '<span class="tl-badge">Dernier CR</span>' +
+        '</div>' +
+        '<div class="tl-objet">' + escapeHtml(cols.Objet ? formatValue(last[cols.Objet]) || 'Sans objet' : 'Sans objet') + '</div>' +
+        '<div class="tl-cr" id="tl-cr">' + (cols.CR ? normalizeCrToHtml(last[cols.CR]) : '') + '</div>' +
+        '<div class="tl-pj" id="tl-pj"></div>' +
+      '</div>';
+
+    const othersHtml = others.map(i => {
+      const who = cols.ContactPartenaire ? contactNamesFor(refIdsFromValue(i[cols.ContactPartenaire])) : [];
+      const title = [cols.Type && formatValue(i[cols.Type]), cols.Objet && formatValue(i[cols.Objet])].filter(Boolean).join(' · ');
+      return '<div class="tl-item" data-interaction="' + i.id + '">' +
+        '<div class="tl-when">' + escapeHtml(cols.Date ? formatDate(i[cols.Date]) : '') + '</div>' +
+        '<div class="tl-body">' +
+          '<div class="tl-title">' + escapeHtml(title || 'Sans objet') + '</div>' +
+          '<div class="tl-excerpt">' + escapeHtml(who.length ? who.join(', ') + ' — ' : '') +
+            escapeHtml(excerpt(cols.CR ? i[cols.CR] : '', 110)) + '</div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+
+    return panelShell('Historique des échanges', list.length, 'btn-new-interaction-2', '+ Interaction',
+      '<div class="timeline">' + lastHtml + othersHtml + '</div>');
+  }
+
+  function bindPanelEvents(s) {
+    const byId = (id) => document.getElementById(id);
+    const newContact = byId('btn-new-contact');
+    if (newContact) newContact.addEventListener('click', () => openContactModal(null, s));
+    const newOpp = byId('btn-new-opp');
+    if (newOpp) newOpp.addEventListener('click', () => openOpportuniteModal(null, s));
+    const newInter2 = byId('btn-new-interaction-2');
+    if (newInter2) newInter2.addEventListener('click', () => openInteractionModal(null, s));
+
+    document.querySelectorAll('[data-contact]').forEach(el => {
+      el.addEventListener('click', () => {
+        const rec = rel('contacts').records.find(c => c.id === Number(el.dataset.contact));
+        if (rec) openContactModal(rec, s);
+      });
+    });
+    document.querySelectorAll('[data-opp]').forEach(el => {
+      el.addEventListener('click', () => {
+        const rec = rel('opportunites').records.find(o => o.id === Number(el.dataset.opp));
+        if (rec) openOpportuniteModal(rec, s);
+      });
+    });
+    document.querySelectorAll('[data-interaction]').forEach(el => {
+      el.addEventListener('click', (e) => {
+        // Attachment chips inside the last-CR block open the file, not the modal.
+        if (e.target.closest('.pj-chip')) return;
+        const rec = rel('interactions').records.find(i => i.id === Number(el.dataset.interaction));
+        if (rec) openInteractionModal(rec, s);
+      });
+    });
+
+    // Images and attachments of the last compte-rendu need authenticated
+    // URLs, fetched after the synchronous render.
+    const crEl = document.getElementById('tl-cr');
+    if (crEl) {
+      resolveImagesIn(crEl);
+      if (crEl.scrollHeight > crEl.clientHeight + 4) crEl.classList.add('clipped');
+      const iCols = rel('interactions').cols;
+      const last = interactionsOf(s.id)[0];
+      const pjEl = document.getElementById('tl-pj');
+      if (last && iCols.PJ && pjEl) renderPjChips(attachmentIdsFromValue(last[iCols.PJ]), pjEl);
+    }
+  }
+
+  async function renderPjChips(ids, container) {
+    if (!ids || ids.length === 0) { container.innerHTML = ''; return; }
+    const metas = await Promise.all(ids.map(id => getAttachmentMeta(id).catch(() => ({ id, fileName: 'Fichier #' + id }))));
+    container.innerHTML = metas.map(m =>
+      '<a class="pj-chip" data-att="' + m.id + '">📎<span>' + escapeHtml(m.fileName) + '</span></a>').join('');
+    container.querySelectorAll('.pj-chip').forEach(a => {
+      a.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        try { window.open(await getAttachmentDownloadUrl(a.dataset.att), '_blank'); } catch (err) { console.error(err); }
+      });
+    });
+  }
+
+  // ---------------------------------------------------------------------
+  // Modales
+  // ---------------------------------------------------------------------
+
+  const modalEl = document.getElementById('modal');
+  const modalContentEl = document.getElementById('modal-content');
+  let modalCleanup = null;
+
+  function openModal(html, onMount, wide) {
+    modalContentEl.className = 'form-modal' + (wide ? ' wide' : '');
+    modalContentEl.innerHTML = html;
+    modalEl.hidden = false;
+    modalContentEl.querySelectorAll('[data-close]').forEach(btn => btn.addEventListener('click', closeModal));
+    modalCleanup = onMount ? onMount(modalContentEl) : null;
+  }
+
+  async function closeModal() {
+    if (typeof modalCleanup === 'function') { try { await modalCleanup(); } catch (err) { console.error(err); } }
+    modalCleanup = null;
+    modalEl.hidden = true;
+    modalContentEl.innerHTML = '';
+    // Autosaves went through applyUserActions, which invalidated the caches;
+    // re-read so the fiche shows what was just written.
+    await loadRelated();
+    render();
+  }
+
+  modalEl.addEventListener('click', (e) => { if (e.target === modalEl) closeModal(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !modalEl.hidden) closeModal(); });
+
+  function modalHeadHtml(title) {
+    return '<div class="modal-head">' +
+      '<h2>' + escapeHtml(title) + '</h2>' +
+      '<span class="modal-status" id="modal-status"></span>' +
+      '<button class="form-modal-close" data-close>✕</button>' +
+    '</div>';
+  }
+
+  function setModalStatus(text) {
+    const el = document.getElementById('modal-status');
+    if (el) el.textContent = text;
+  }
+
+  function fieldHtml(id, label, inner, full) {
+    return '<div class="form-field' + (full ? ' full' : '') + '">' +
+      '<label for="' + id + '">' + escapeHtml(label) + '</label>' + inner + '</div>';
+  }
+
+  function textField(id, label, value, full, type) {
+    return fieldHtml(id, label,
+      '<input id="' + id + '" type="' + (type || 'text') + '" value="' + escapeHtml(value === null || value === undefined ? '' : value) + '">', full);
+  }
+
+  function dateField(id, label, value, full) {
+    return fieldHtml(id, label, '<input id="' + id + '" type="date" value="' + gristDateToInputValue(value) + '">', full);
+  }
+
+  function areaField(id, label, value, full) {
+    return fieldHtml(id, label, '<textarea id="' + id + '">' + escapeHtml(value || '') + '</textarea>', full);
+  }
+
+  function selectField(id, label, value, full) {
+    return fieldHtml(id, label,
+      '<select id="' + id + '"><option value="' + escapeHtml(value || '') + '" selected>' + escapeHtml(value || '—') + '</option></select>', full);
+  }
+
+  // Fills a <select> with the union of the column's configured Grist choices
+  // and the values actually in use (a Choice column can carry values typed
+  // before they were added to "Modifier les choix" — Grist keeps them).
+  async function populateChoiceSelect(selectId, tableId, colId, records, currentValue) {
+    if (!colId) return;
+    try {
+      const choices = await fetchColumnChoices(tableId, colId);
+      const used = Array.from(new Set((records || []).map(r => formatValue(r[colId])).filter(Boolean)));
+      const merged = Array.from(new Set([...(choices || []), ...used]));
+      if (currentValue && !merged.includes(currentValue)) merged.push(currentValue);
+      const el = document.getElementById(selectId);
+      if (!el || merged.length === 0) return;
+      merged.sort((a, b) => String(a).localeCompare(String(b), 'fr'));
+      el.innerHTML = '<option value="">—</option>' + merged.map(c =>
+        '<option value="' + escapeHtml(c) + '"' + (c === currentValue ? ' selected' : '') + '>' + escapeHtml(c) + '</option>').join('');
+    } catch (err) {
+      console.error('populateChoiceSelect', colId, err);
+    }
+  }
+
+  // Binds an input to a debounced autosave on `tableId`. `transform` adapts
+  // the DOM value to what the column expects (date -> epoch, number, ...).
+  function bindField(saver, tableId, rowId, elId, colId, transform) {
+    const el = document.getElementById(elId);
+    if (!el || !colId) return;
+    const handler = () => saver(tableId, rowId, colId, transform ? transform(el) : el.value);
+    el.addEventListener('input', handler);
+    if (el.tagName === 'SELECT' || el.type === 'checkbox') el.addEventListener('change', handler);
+  }
+
+  const asNumber = (el) => (el.value === '' ? null : Number(el.value));
+  const asDate = (el) => inputValueToGristDate(el.value);
+  const asChecked = (el) => el.checked;
+
+  // ---- Structure ----
+
+  function openStructureModal(s) {
+    const typeActeur = structField(s, 'TypeActeur');
+    const html =
+      modalHeadHtml('Fiche structure') +
+      '<div class="form-modal-grid">' +
+        textField('m-nom', 'Nom', structField(s, 'Nom'), true) +
+        areaField('m-description', 'Description', structField(s, 'Description'), true) +
+        selectField('m-type', "Type d'acteur", typeActeur) +
+        selectField('m-categorie', 'Catégorie', structField(s, 'Categorie')) +
+        selectField('m-activite', 'Activité', structField(s, 'Activite')) +
+        selectField('m-taille', 'Taille', structField(s, 'Taille')) +
+        textField('m-axe', 'Axe SequoIA', structField(s, 'AxeSequoia')) +
+        textField('m-pilier', 'Pilier SequoIA', structField(s, 'PilierSequoia')) +
+        textField('m-site', 'Site web', structField(s, 'SiteWeb'), true) +
+        textField('m-logo', 'URL du logo', structField(s, 'Logo'), true) +
+        textField('m-rstructure', 'Structure de recherche', structField(s, 'RechercheStructure')) +
+        textField('m-requipe', 'Équipe / activité', structField(s, 'RechercheEquipeActivite')) +
+        textField('m-rlabo', 'Laboratoire', structField(s, 'RechercheEquipeLabo')) +
+      '</div>' +
+      '<div class="form-modal-actions"><button class="btn-primary" data-close>Terminé</button></div>';
+
+    openModal(html, () => {
+      const saver = createRecordSaver(setModalStatus);
+      const bind = (elId, role, transform) => bindField(saver, structTableId, s.id, elId, mappings[role], transform);
+      bind('m-nom', 'Nom');
+      bind('m-description', 'Description');
+      bind('m-type', 'TypeActeur');
+      bind('m-categorie', 'Categorie');
+      bind('m-activite', 'Activite');
+      bind('m-taille', 'Taille');
+      bind('m-axe', 'AxeSequoia');
+      bind('m-pilier', 'PilierSequoia');
+      bind('m-site', 'SiteWeb');
+      bind('m-logo', 'Logo');
+      bind('m-rstructure', 'RechercheStructure');
+      bind('m-requipe', 'RechercheEquipeActivite');
+      bind('m-rlabo', 'RechercheEquipeLabo');
+
+      const raw = structures.map(x => {
+        // populateChoiceSelect works on raw records; rebuild them from the
+        // mapped ones so a Choice value in use elsewhere still shows up.
+        const o = { id: x.id };
+        Object.keys(mappings).forEach(role => { if (mappings[role]) o[mappings[role]] = x[role]; });
+        return o;
+      });
+      populateChoiceSelect('m-type', structTableId, mappings.TypeActeur, raw, typeActeur);
+      populateChoiceSelect('m-categorie', structTableId, mappings.Categorie, raw, structField(s, 'Categorie'));
+      populateChoiceSelect('m-activite', structTableId, mappings.Activite, raw, structField(s, 'Activite'));
+      populateChoiceSelect('m-taille', structTableId, mappings.Taille, raw, structField(s, 'Taille'));
+    });
+  }
+
+  // ---- Contact ----
+
+  function openContactModal(c, s) {
+    const r = rel('contacts');
+    const cols = r.cols;
+    if (!r.tableId) { alert('Table Contacts introuvable.'); return; }
+    const isNew = !c;
+    const get = (role) => (c && cols[role] ? formatValue(c[cols[role]]) : '');
+
+    const html =
+      modalHeadHtml(isNew ? 'Nouveau contact' : contactName(c)) +
+      '<div class="form-modal-grid">' +
+        textField('m-nom', 'Nom', get('Nom'), true) +
+        textField('m-prenom', 'Prénom', get('Prenom')) +
+        textField('m-fonction', 'Fonction', get('Fonction')) +
+        textField('m-email', 'Email', get('Email'), false, 'email') +
+        textField('m-tel', 'Téléphone', get('Telephone')) +
+        textField('m-linkedin', 'Linkedin', get('Linkedin'), true) +
+        (cols.ContactPrincipal ? '<div class="form-field full"><label>' +
+          '<input type="checkbox" id="m-principal" style="width:auto;margin-right:6px;"' +
+          (c && c[cols.ContactPrincipal] ? ' checked' : '') + '>★ Contact principal</label></div>' : '') +
+        areaField('m-commentaire', 'Commentaire', get('Commentaire'), true) +
+        '<div class="form-modal-note">Rattaché à <strong>' + escapeHtml(structField(s, 'Nom')) + '</strong>.</div>' +
+      '</div>' +
+      '<div class="form-modal-actions">' +
+        (isNew ? '' : '<button class="btn-danger modal-actions-left" id="m-delete">Supprimer</button>') +
+        '<button class="btn-secondary" data-close>' + (isNew ? 'Annuler' : 'Fermer') + '</button>' +
+        (isNew ? '<button class="btn-primary" id="m-create">Créer</button>' : '') +
+      '</div>';
+
+    openModal(html, () => {
+      if (isNew) {
+        document.getElementById('m-nom').focus();
+        document.getElementById('m-create').addEventListener('click', async () => {
+          const nom = document.getElementById('m-nom').value.trim();
+          if (!nom) { document.getElementById('m-nom').focus(); return; }
+          const fields = {};
+          const set = (role, value) => { if (cols[role]) fields[cols[role]] = value; };
+          set('Nom', nom);
+          set('Prenom', document.getElementById('m-prenom').value.trim());
+          set('Fonction', document.getElementById('m-fonction').value.trim());
+          set('Email', document.getElementById('m-email').value.trim());
+          set('Telephone', document.getElementById('m-tel').value.trim());
+          set('Linkedin', document.getElementById('m-linkedin').value.trim());
+          set('Commentaire', document.getElementById('m-commentaire').value.trim());
+          const principalEl = document.getElementById('m-principal');
+          if (principalEl) set('ContactPrincipal', principalEl.checked);
+          // Always link the new contact to the open structure — an unlinked
+          // contact would show up in no fiche at all.
+          set('Structures', ['L', s.id]);
+          try {
+            setModalStatus('Création…');
+            await addRecord(r.tableId, fields);
+            await closeModal();
+          } catch (err) {
+            console.error(err);
+            setModalStatus('Erreur à la création');
+          }
+        });
+        return;
+      }
+
+      const saver = createRecordSaver(setModalStatus);
+      const bind = (elId, role, transform) => bindField(saver, r.tableId, c.id, elId, cols[role], transform);
+      bind('m-nom', 'Nom');
+      bind('m-prenom', 'Prenom');
+      bind('m-fonction', 'Fonction');
+      bind('m-email', 'Email');
+      bind('m-tel', 'Telephone');
+      bind('m-linkedin', 'Linkedin');
+      bind('m-commentaire', 'Commentaire');
+      bind('m-principal', 'ContactPrincipal', asChecked);
+
+      document.getElementById('m-delete').addEventListener('click', async () => {
+        if (!confirm('Supprimer définitivement ce contact ?')) return;
+        try {
+          await removeRecord(r.tableId, c.id);
+          await closeModal();
+        } catch (err) { console.error(err); setModalStatus('Erreur à la suppression'); }
+      });
+    });
+  }
+
+  // ---- Opportunité ----
+
+  function openOpportuniteModal(o, s) {
+    const r = rel('opportunites');
+    const cols = r.cols;
+    if (!r.tableId) { alert('Table Opportunités introuvable.'); return; }
+    const isNew = !o;
+    const get = (role) => (o && cols[role] ? formatValue(o[cols[role]]) : '');
+    const rawGet = (role) => (o && cols[role] ? o[cols[role]] : null);
+
+    const html =
+      modalHeadHtml(isNew ? 'Nouvelle opportunité' : (get('Sujet') || 'Opportunité')) +
+      '<div class="form-modal-grid">' +
+        textField('m-sujet', 'Sujet', get('Sujet'), true) +
+        selectField('m-statut', 'Statut', get('Statut')) +
+        textField('m-type', 'Type', get('Type')) +
+        textField('m-axe', 'Axe SequoIA', get('AxeSequoia')) +
+        textField('m-montant', 'Montant (€)', rawGet('Montant') === null ? '' : rawGet('Montant'), false, 'number') +
+        dateField('m-debut', 'Date de début', rawGet('DateDebut')) +
+        dateField('m-echeance', 'Échéance', rawGet('Echeance')) +
+        areaField('m-commentaire', 'Commentaire', get('Commentaire'), true) +
+        '<div class="form-modal-note">Rattachée à <strong>' + escapeHtml(structField(s, 'Nom')) + '</strong>.</div>' +
+      '</div>' +
+      '<div class="form-modal-actions">' +
+        (isNew ? '' : '<button class="btn-danger modal-actions-left" id="m-delete">Supprimer</button>') +
+        '<button class="btn-secondary" data-close>' + (isNew ? 'Annuler' : 'Fermer') + '</button>' +
+        (isNew ? '<button class="btn-primary" id="m-create">Créer</button>' : '') +
+      '</div>';
+
+    openModal(html, () => {
+      populateChoiceSelect('m-statut', r.tableId, cols.Statut, r.records, get('Statut'));
+
+      if (isNew) {
+        document.getElementById('m-sujet').focus();
+        document.getElementById('m-create').addEventListener('click', async () => {
+          const sujet = document.getElementById('m-sujet').value.trim();
+          if (!sujet) { document.getElementById('m-sujet').focus(); return; }
+          const fields = {};
+          const set = (role, value) => { if (cols[role]) fields[cols[role]] = value; };
+          set('Sujet', sujet);
+          set('Statut', document.getElementById('m-statut').value);
+          set('Type', document.getElementById('m-type').value.trim());
+          set('AxeSequoia', document.getElementById('m-axe').value.trim());
+          const montant = document.getElementById('m-montant').value;
+          set('Montant', montant === '' ? null : Number(montant));
+          set('DateDebut', inputValueToGristDate(document.getElementById('m-debut').value));
+          set('Echeance', inputValueToGristDate(document.getElementById('m-echeance').value));
+          set('Commentaire', document.getElementById('m-commentaire').value.trim());
+          set('Partenaires', ['L', s.id]);
+          try {
+            setModalStatus('Création…');
+            await addRecord(r.tableId, fields);
+            await closeModal();
+          } catch (err) { console.error(err); setModalStatus('Erreur à la création'); }
+        });
+        return;
+      }
+
+      const saver = createRecordSaver(setModalStatus);
+      const bind = (elId, role, transform) => bindField(saver, r.tableId, o.id, elId, cols[role], transform);
+      bind('m-sujet', 'Sujet');
+      bind('m-statut', 'Statut');
+      bind('m-type', 'Type');
+      bind('m-axe', 'AxeSequoia');
+      bind('m-montant', 'Montant', asNumber);
+      bind('m-debut', 'DateDebut', asDate);
+      bind('m-echeance', 'Echeance', asDate);
+      bind('m-commentaire', 'Commentaire');
+
+      document.getElementById('m-delete').addEventListener('click', async () => {
+        if (!confirm('Supprimer définitivement cette opportunité ?')) return;
+        try {
+          await removeRecord(r.tableId, o.id);
+          await closeModal();
+        } catch (err) { console.error(err); setModalStatus('Erreur à la suppression'); }
+      });
+    });
+  }
+
+  // ---- Interaction (méta + compte-rendu + pièces jointes) ----
+
+  function openInteractionModal(i, s) {
+    const r = rel('interactions');
+    const cols = r.cols;
+    if (!r.tableId) { alert('Table Interactions introuvable.'); return; }
+    const isNew = !i;
+    const get = (role) => (i && cols[role] ? formatValue(i[cols[role]]) : '');
+    const rawGet = (role) => (i && cols[role] ? i[cols[role]] : null);
+
+    const html =
+      modalHeadHtml(isNew ? 'Nouvelle interaction' : (get('Objet') || 'Interaction')) +
+      '<div class="form-modal-grid">' +
+        textField('m-objet', 'Objet', get('Objet'), true) +
+        dateField('m-date', 'Date', isNew ? Math.floor(Date.now() / 1000) : rawGet('Date')) +
+        selectField('m-type', 'Type', get('Type')) +
+        dateField('m-echeance', 'Prochaine échéance', rawGet('ProchaineEcheance')) +
+        textField('m-suites', 'Suites à donner', get('Suites')) +
+        '<div class="form-field full"><label>Contact(s) partenaire</label><div id="m-ref-contacts"></div></div>' +
+        '<div class="form-modal-note">Liée à <strong>' + escapeHtml(structField(s, 'Nom')) + '</strong>.</div>' +
+      '</div>' +
+      (isNew ? '' :
+        '<div class="modal-section">Compte-rendu</div>' +
+        '<div class="cr-toolbar">' +
+          '<button type="button" data-cmd="bold" title="Gras"><b>G</b></button>' +
+          '<button type="button" data-cmd="italic" title="Italique"><i>I</i></button>' +
+          '<button type="button" data-cmd="heading" title="Titre">H</button>' +
+          '<button type="button" data-cmd="list" title="Liste">• Liste</button>' +
+          '<button type="button" data-cmd="link" title="Lien">🔗</button>' +
+          '<span class="spacer"></span>' +
+          '<span class="save-status" id="cr-status"></span>' +
+        '</div>' +
+        '<div class="cr-editable" id="cr-editor" contenteditable="true" data-placeholder="Rédigez le compte-rendu… (collez une image directement)"></div>' +
+        '<div class="modal-section">Pièces jointes</div>' +
+        '<div class="pj-dropzone" id="pj-dropzone">Glissez un fichier ici, ou cliquez pour parcourir</div>' +
+        '<div class="pj-list" id="pj-list"></div>') +
+      '<div class="form-modal-actions">' +
+        (isNew ? '' : '<button class="btn-danger modal-actions-left" id="m-delete">Supprimer</button>') +
+        '<button class="btn-secondary" data-close>' + (isNew ? 'Annuler' : 'Fermer') + '</button>' +
+        (isNew ? '<button class="btn-primary" id="m-create">Créer et rédiger le CR</button>' : '') +
+      '</div>';
+
+    openModal(html, () => {
+      populateChoiceSelect('m-type', r.tableId, cols.Type, r.records, get('Type'));
+
+      // The contact picker only offers this structure's own contacts — the
+      // point of the fiche is to stay inside one partner's world.
+      const contactOptions = contactsOf(s.id).map(c => ({ id: c.id, label: contactName(c) }));
+      const currentContactIds = i && cols.ContactPartenaire ? refIdsFromValue(i[cols.ContactPartenaire]) : [];
+      let contactChips = contactOptions.filter(o => currentContactIds.includes(o.id));
+      renderLocalPicker(document.getElementById('m-ref-contacts'), contactOptions, contactChips, (chips) => {
+        contactChips = chips;
+        if (!isNew && cols.ContactPartenaire) {
+          updateRecord(r.tableId, i.id, { [cols.ContactPartenaire]: ['L', ...chips.map(c => c.id)] })
+            .then(() => setModalStatus('Enregistré ✓'))
+            .catch(err => { console.error(err); setModalStatus('Erreur d’enregistrement'); });
+        }
+      });
+
+      if (isNew) {
+        document.getElementById('m-objet').focus();
+        document.getElementById('m-create').addEventListener('click', async () => {
+          const objet = document.getElementById('m-objet').value.trim();
+          if (!objet) { document.getElementById('m-objet').focus(); return; }
+          const fields = {};
+          const set = (role, value) => { if (cols[role]) fields[cols[role]] = value; };
+          set('Objet', objet);
+          set('Date', inputValueToGristDate(document.getElementById('m-date').value));
+          set('Type', document.getElementById('m-type').value);
+          set('ProchaineEcheance', inputValueToGristDate(document.getElementById('m-echeance').value));
+          set('Suites', document.getElementById('m-suites').value.trim());
+          if (contactChips.length) set('ContactPartenaire', ['L', ...contactChips.map(c => c.id)]);
+          // Without this link the interaction belongs to no fiche.
+          set('Partenaires', ['L', s.id]);
+          try {
+            setModalStatus('Création…');
+            const newId = await addRecord(r.tableId, fields);
+            await loadRelated();
+            const created = rel('interactions').records.find(x => x.id === newId);
+            // Reopen straight into the full form so the CR can be written now.
+            if (created) { modalCleanup = null; openInteractionModal(created, s); }
+            else await closeModal();
+          } catch (err) { console.error(err); setModalStatus('Erreur à la création'); }
+        });
+        return;
+      }
+
+      const saver = createRecordSaver(setModalStatus);
+      const bind = (elId, role, transform) => bindField(saver, r.tableId, i.id, elId, cols[role], transform);
+      bind('m-objet', 'Objet');
+      bind('m-date', 'Date', asDate);
+      bind('m-type', 'Type');
+      bind('m-echeance', 'ProchaineEcheance', asDate);
+      bind('m-suites', 'Suites');
+
+      document.getElementById('m-delete').addEventListener('click', async () => {
+        if (!confirm('Supprimer définitivement cette interaction (et son compte-rendu) ?')) return;
+        try {
+          await removeRecord(r.tableId, i.id);
+          await closeModal();
+        } catch (err) { console.error(err); setModalStatus('Erreur à la suppression'); }
+      });
+
+      setupCrEditor(r.tableId, i, cols);
+      setupAttachments(r.tableId, i, cols);
+    }, true);
+  }
+
+  // Lightweight chip picker over a fixed option list (no cross-table
+  // autocomplete needed: the options are this structure's contacts).
+  function renderLocalPicker(container, options, initialChips, onChange) {
+    if (!container) return;
+    let chips = [...(initialChips || [])];
+    const datalistId = 'dl-' + Math.random().toString(36).slice(2);
+
+    function paint() {
+      container.innerHTML =
+        '<div class="ref-chips">' +
+          chips.map((c, idx) => '<span class="ref-chip">' + escapeHtml(c.label) +
+            '<button type="button" data-i="' + idx + '" title="Retirer">✕</button></span>').join('') +
+        '</div>' +
+        '<input class="editable-input ref-input" list="' + datalistId + '" placeholder="Ajouter un contact… (Entrée)">' +
+        '<datalist id="' + datalistId + '">' +
+          options.filter(o => !chips.some(c => c.id === o.id))
+            .map(o => '<option value="' + escapeHtml(o.label) + '">').join('') +
+        '</datalist>';
+
+      container.querySelectorAll('.ref-chip button').forEach(btn => {
+        btn.addEventListener('click', () => {
+          chips.splice(Number(btn.dataset.i), 1);
+          paint();
+          onChange([...chips]);
+        });
+      });
+
+      const input = container.querySelector('.ref-input');
+      const tryAdd = () => {
+        const val = input.value.trim();
+        if (!val) return;
+        const match = options.find(o => o.label.toLowerCase() === val.toLowerCase());
+        if (!match || chips.some(c => c.id === match.id)) {
+          input.classList.add('ref-input-error');
+          setTimeout(() => input.classList.remove('ref-input-error'), 900);
+          return;
+        }
+        chips.push(match);
+        input.value = '';
+        paint();
+        onChange([...chips]);
+      };
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); tryAdd(); } });
+      input.addEventListener('change', tryAdd);
+    }
+    paint();
+  }
+
+  // ---- Compte-rendu ----
+
+  function setupCrEditor(tableId, i, cols) {
+    const editor = document.getElementById('cr-editor');
+    if (!editor || !cols.CR) return;
+    const setStatus = (t) => { const el = document.getElementById('cr-status'); if (el) el.textContent = t; };
+
+    editor.innerHTML = normalizeCrToHtml(i[cols.CR]);
+    resolveImagesIn(editor);
+
+    const saveCR = debounce(async (html) => {
+      try {
+        setStatus('Enregistrement…');
+        await updateRecord(tableId, i.id, { [cols.CR]: html });
+        i[cols.CR] = html;
+        setStatus('Enregistré ✓');
+      } catch (err) {
+        setStatus('Erreur d’enregistrement');
+        console.error(err);
+      }
+    }, 800);
+
+    editor.addEventListener('input', () => saveCR(serializeCrForSave(editor)));
+
+    document.querySelectorAll('.cr-toolbar button[data-cmd]').forEach(btn => {
+      // mousedown + preventDefault keeps the selection alive (a click would
+      // blur the editor first and lose it).
+      btn.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        editor.focus();
+        const cmd = btn.dataset.cmd;
+        if (cmd === 'heading') document.execCommand('formatBlock', false, 'H3');
+        else if (cmd === 'list') document.execCommand('insertUnorderedList');
+        else if (cmd === 'link') {
+          const url = prompt('URL du lien :', 'https://');
+          if (url) document.execCommand('createLink', false, url);
+        } else document.execCommand(cmd);
+        saveCR(serializeCrForSave(editor));
+      });
+    });
+
+    editor.addEventListener('paste', async (e) => {
+      const items = e.clipboardData && e.clipboardData.items;
+      if (!items) return;
+      for (const item of items) {
+        if (item.type && item.type.startsWith('image/')) {
+          e.preventDefault();
+          const placeholder = document.createElement('span');
+          placeholder.textContent = 'Téléversement de l’image…';
+          placeholder.style.color = 'var(--text-muted)';
+          const sel = window.getSelection();
+          if (sel && sel.rangeCount) {
+            const range = sel.getRangeAt(0);
+            range.deleteContents();
+            range.insertNode(placeholder);
+            range.collapse(false);
+          } else {
+            editor.appendChild(placeholder);
+          }
+          try {
+            const [attId] = await uploadAttachments([item.getAsFile()]);
+            const img = document.createElement('img');
+            img.setAttribute('data-att-id', attId);
+            img.src = await getAttachmentDownloadUrl(attId);
+            placeholder.replaceWith(img);
+          } catch (err) {
+            placeholder.textContent = 'Échec du téléversement de l’image.';
+            console.error(err);
+          }
+          saveCR(serializeCrForSave(editor));
+          return;
+        }
+      }
+    });
+  }
+
+  // ---- Pièces jointes ----
+
+  function setupAttachments(tableId, i, cols) {
+    const zone = document.getElementById('pj-dropzone');
+    const listEl = document.getElementById('pj-list');
+    const input = document.getElementById('pj-input');
+    if (!zone || !listEl || !cols.PJ) return;
+
+    async function paint() {
+      const ids = attachmentIdsFromValue(i[cols.PJ]);
+      if (ids.length === 0) { listEl.innerHTML = '<div class="panel-empty" style="padding:6px 0;">Aucune pièce jointe.</div>'; return; }
+      listEl.innerHTML = '<div class="panel-empty" style="padding:6px 0;">Chargement…</div>';
+      const metas = await Promise.all(ids.map(id => getAttachmentMeta(id).catch(() => ({ id, fileName: 'Fichier #' + id }))));
+      listEl.innerHTML = metas.map(m =>
+        '<div class="pj-item"><span>📎</span><span class="pj-name">' + escapeHtml(m.fileName) + '</span>' +
+        '<a data-dl="' + m.id + '">Télécharger</a>' +
+        '<button class="pj-remove" data-rm="' + m.id + '" title="Retirer">✕</button></div>').join('');
+
+      listEl.querySelectorAll('[data-dl]').forEach(a => a.addEventListener('click', async () => {
+        try { window.open(await getAttachmentDownloadUrl(a.dataset.dl), '_blank'); } catch (err) { console.error(err); }
+      }));
+      listEl.querySelectorAll('[data-rm]').forEach(btn => btn.addEventListener('click', async () => {
+        const remaining = attachmentIdsFromValue(i[cols.PJ]).filter(id => String(id) !== String(btn.dataset.rm));
+        try {
+          await updateRecord(tableId, i.id, { [cols.PJ]: ['L', ...remaining] });
+          i[cols.PJ] = ['L', ...remaining];
+          paint();
+        } catch (err) { console.error(err); }
+      }));
+    }
+
+    async function handleFiles(files) {
+      if (!files || files.length === 0) return;
+      const original = zone.textContent;
+      zone.textContent = 'Envoi en cours…';
+      try {
+        const newIds = await uploadAttachments(Array.from(files));
+        const all = [...attachmentIdsFromValue(i[cols.PJ]), ...newIds];
+        await updateRecord(tableId, i.id, { [cols.PJ]: ['L', ...all] });
+        i[cols.PJ] = ['L', ...all];
+        await paint();
+      } catch (err) {
+        console.error(err);
+      } finally {
+        zone.textContent = original;
+      }
+    }
+
+    zone.addEventListener('click', () => { input.value = ''; input.click(); });
+    input.onchange = () => handleFiles(input.files);
+    zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('dragover'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+    zone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      zone.classList.remove('dragover');
+      handleFiles(e.dataTransfer.files);
+    });
+
+    paint();
+  }
+
+  // ---------------------------------------------------------------------
+  // Événements Grist + UI
+  // ---------------------------------------------------------------------
+
+  grist.onRecords(async function (records, maps) {
+    mappings = maps || {};
+    structures = mapRecords(records, maps);
+    if (structTableId === null) {
+      try { structTableId = await grist.getTable().getTableId(); } catch (err) { console.error(err); }
+    }
+    if (!related.contacts) await loadRelated();
+    if (current) {
+      // Keep the open fiche in sync with the new data (or drop it if the
+      // row fell out of a filtered list — onRecord doesn't always re-fire).
+      const fresh = structures.find(s => s.id === current.id);
+      current = fresh || null;
+    }
+    render();
+  });
+
+  grist.onRecord(function (record, maps) {
+    // Deliberately not opening a fiche here: Grist restores the last cursor
+    // position at load time, which would auto-open a partner (and fetch its
+    // attachments) before being asked. A click in the list is what opens it.
+    if (maps) mappings = maps;
+  });
+
+  document.getElementById('search').addEventListener('input', (e) => {
+    query = e.target.value.trim().toLowerCase();
+    renderList();
+  });
+
+  document.getElementById('filter-chips').addEventListener('click', (e) => {
+    const btn = e.target.closest('.filter-chip');
+    if (!btn) return;
+    filterMode = btn.dataset.filter;
+    document.querySelectorAll('.filter-chip').forEach(b => b.classList.toggle('active', b === btn));
+    renderList();
+  });
+
+  document.getElementById('btn-refresh').addEventListener('click', () => refreshRelated(true));
+
+  // Another widget (or another user) may have changed a linked table while
+  // this one sat in the background — re-read on focus rather than polling.
+  window.addEventListener('focus', () => { if (modalEl.hidden) refreshRelated(true); });
+</script>
+
+</body>
+</html>
