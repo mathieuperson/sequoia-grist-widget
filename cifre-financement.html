@@ -101,6 +101,21 @@
   .legend-item { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--text); }
   .legend-swatch { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
   .chart-svg-wrap { overflow-x: auto; }
+  .bar-mark { cursor: pointer; }
+  .bar-mark:hover, .bar-mark.bar-hover { opacity: .82; }
+  .bar-mark:focus-visible { opacity: .82; outline: 2px solid var(--sequoia-green); outline-offset: 1px; }
+
+  #chart-tooltip {
+    position: fixed; z-index: 60; pointer-events: none;
+    transform: translate(-50%, -100%) translateY(-10px);
+    background: #0b0b0b; color: #fff; border-radius: 6px; padding: 6px 10px;
+    font-size: 12px; line-height: 1.4; white-space: nowrap;
+    box-shadow: 0 6px 16px rgba(11,11,11,0.25);
+  }
+  #chart-tooltip[hidden] { display: none; }
+  #chart-tooltip .tt-value { font-weight: 700; font-size: 13px; }
+  #chart-tooltip .tt-meta { color: #c3c2b7; display: flex; align-items: center; gap: 5px; }
+  #chart-tooltip .tt-key { width: 8px; height: 8px; border-radius: 2px; display: inline-block; flex: none; }
 
   .table-wrap {
     overflow-x: auto; background: var(--card-bg); border: 1px solid var(--border);
@@ -201,6 +216,7 @@
     Trop de catégories pour rester lisible : les 6 plus importantes sont affichées, le reste est regroupé dans "Autres".
   </div>
   <div class="chart-svg-wrap" id="chart-svg"></div>
+  <div id="chart-tooltip" hidden></div>
   <div class="chart-legend" id="chart-legend"></div>
 </div>
 
@@ -546,7 +562,9 @@
           if (v <= 0) return;
           const h = plotH - yOf(v);
           const yTop = yCursor - h;
-          svg += `<path d="${barPath(groupX, yTop, barW, h, 4)}" fill="${se.color}"><title>${escapeHtml(se.label + ' — ' + cat + ' : ' + formatVal(v))}</title></path>`;
+          svg += `<path class="bar-mark" tabindex="0" d="${barPath(groupX, yTop, barW, h, 4)}" fill="${se.color}" ` +
+            `data-color="${se.color}" data-label="${escapeHtml(se.label)}" data-cat="${escapeHtml(String(cat))}" ` +
+            `data-value="${escapeHtml(formatVal(v))}" aria-label="${escapeHtml(se.label + ' — ' + cat + ' : ' + formatVal(v))}"></path>`;
           yCursor = yTop - barGap;
         });
         // Total marker: a dot at the stack's tip (with a surface-color ring
@@ -556,7 +574,9 @@
         if (total > 0) {
           const cx = groupX + barW / 2;
           const cy = yOf(total);
-          svg += `<circle cx="${cx}" cy="${cy}" r="5" fill="#0b0b0b" stroke="#fcfcfb" stroke-width="2"><title>${escapeHtml('Total — ' + cat + ' : ' + formatVal(total))}</title></circle>`;
+          svg += `<circle class="bar-mark" tabindex="0" cx="${cx}" cy="${cy}" r="5" fill="#0b0b0b" stroke="#fcfcfb" stroke-width="2" ` +
+            `data-color="#0b0b0b" data-label="Total" data-cat="${escapeHtml(String(cat))}" data-value="${escapeHtml(formatVal(total))}" ` +
+            `aria-label="${escapeHtml('Total — ' + cat + ' : ' + formatVal(total))}"></circle>`;
           svg += `<text x="${cx}" y="${Math.max(cy - 10, 12)}" text-anchor="middle" font-size="11" font-weight="600" fill="#0b0b0b">${escapeHtml(formatVal(total))}</text>`;
         }
       } else {
@@ -565,7 +585,9 @@
           const h = plotH - yOf(v);
           const x = groupX + si * (barW + barGap);
           const yTop = plotH - h;
-          svg += `<path d="${barPath(x, yTop, barW, h, 4)}" fill="${se.color}"><title>${escapeHtml(se.label + ' — ' + cat + ' : ' + formatVal(v))}</title></path>`;
+          svg += `<path class="bar-mark" tabindex="0" d="${barPath(x, yTop, barW, h, 4)}" fill="${se.color}" ` +
+            `data-color="${se.color}" data-label="${escapeHtml(se.label)}" data-cat="${escapeHtml(String(cat))}" ` +
+            `data-value="${escapeHtml(formatVal(v))}" aria-label="${escapeHtml(se.label + ' — ' + cat + ' : ' + formatVal(v))}"></path>`;
         });
       }
       svg += `<text x="${ci * bandWidth + bandWidth / 2}" y="${plotH + 20}" text-anchor="middle" font-size="11" fill="#898781">${escapeHtml(String(cat))}</text>`;
@@ -573,6 +595,52 @@
 
     svg += '</g></svg>';
     container.innerHTML = svg;
+    wireChartTooltips(container);
+  }
+
+  // Hover/focus tooltip for the bar chart: the mark itself is the hit
+  // target (no crosshair needed for bars), shows category+value with the
+  // value leading, and the hovered mark lifts slightly so the reader sees
+  // it respond. Native <title> would also work but shows with a ~1s OS
+  // delay and can't be styled — this appears instantly.
+  function wireChartTooltips(container) {
+    const tooltip = document.getElementById('chart-tooltip');
+    if (!tooltip) return;
+
+    function renderTooltip(el) {
+      tooltip.innerHTML =
+        '<div class="tt-value">' + escapeHtml(el.dataset.value) + '</div>' +
+        '<div class="tt-meta"><span class="tt-key" style="background:' + el.dataset.color + '"></span>' +
+        escapeHtml((el.dataset.label && el.dataset.label !== el.dataset.cat ? el.dataset.label + ' · ' : '') + el.dataset.cat) +
+        '</div>';
+    }
+    function positionAtPointer(evt) {
+      tooltip.style.left = evt.clientX + 'px';
+      tooltip.style.top = evt.clientY + 'px';
+    }
+    function positionAtElement(el) {
+      const r = el.getBoundingClientRect();
+      tooltip.style.left = (r.left + r.width / 2) + 'px';
+      tooltip.style.top = r.top + 'px';
+    }
+
+    container.querySelectorAll('.bar-mark').forEach(el => {
+      el.addEventListener('pointerenter', (evt) => {
+        renderTooltip(el);
+        positionAtPointer(evt);
+        tooltip.hidden = false;
+        el.classList.add('bar-hover');
+      });
+      el.addEventListener('pointermove', positionAtPointer);
+      el.addEventListener('pointerleave', () => { tooltip.hidden = true; el.classList.remove('bar-hover'); });
+      el.addEventListener('focus', () => {
+        renderTooltip(el);
+        positionAtElement(el);
+        tooltip.hidden = false;
+        el.classList.add('bar-hover');
+      });
+      el.addEventListener('blur', () => { tooltip.hidden = true; el.classList.remove('bar-hover'); });
+    });
   }
 
   function renderChartLegend(container, series) {

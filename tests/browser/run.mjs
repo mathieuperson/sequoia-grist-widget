@@ -469,6 +469,17 @@ async function testCifreDashboard(browser) {
   ok(legendText.includes('Monétaire') && legendText.includes('In-kind'),
     'légende par défaut (Aucun regroupement, Montant) : Monétaire / In-kind');
 
+  // Hover tooltip: instant on pointerenter, shows the value, hidden again on leave
+  ok(await page.locator('#chart-tooltip').isHidden(), 'le tooltip est caché avant survol');
+  await page.locator('#chart-svg .bar-mark').first().dispatchEvent('pointerenter');
+  await page.waitForTimeout(30);
+  ok(await page.locator('#chart-tooltip').isVisible(), 'le tooltip apparaît au survol d\'une barre');
+  ok((await page.locator('#chart-tooltip .tt-value').textContent()).includes('k€'),
+    'le tooltip affiche la valeur (montant en k€)');
+  await page.locator('#chart-svg .bar-mark').first().dispatchEvent('pointerleave');
+  await page.waitForTimeout(30);
+  ok(await page.locator('#chart-tooltip').isHidden(), 'le tooltip disparaît quand on quitte la barre');
+
   await page.click('#groupby-toggle button[data-value="entreprise"]');
   await page.waitForTimeout(100);
   legendText = await page.locator('#chart-legend').textContent();
