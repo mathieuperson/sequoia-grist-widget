@@ -1195,6 +1195,93 @@ async function testCartographieFiltres(browser) {
   await context.close();
 }
 
+async function testCartographieStatistiques(browser) {
+  console.log('\n=== cartographie.html : vue Statistiques (filtre-réactive) ===');
+  const cfg = {
+    widgetTableId: 'Structures',
+    baseUrl: 'https://mock.grist.local/api/docs/mockdoc',
+    tables: {
+      Structures: {
+        colIds: [
+          'nom_acteur', 'type_acteur', 'acteur_categorie', 'entreprise_activite',
+          'entreprise_taille', 'pilier_sequoia', 'axe_sequoia', 'latitude', 'longitude'
+        ],
+        data: {
+          id: [1, 2, 3, 4],
+          nom_acteur: ['Orange', 'Cooperl', 'Inria Rennes', 'Prospect SAS'],
+          // Orange porte 2 piliers : doit compter dans les 2 barres du graphique Pilier.
+          type_acteur: ['Entreprise', 'Entreprise', 'Recherche', 'Entreprise'],
+          acteur_categorie: ['Partenaire', 'Partenaire', 'Partenaire', 'Prospect'],
+          entreprise_activite: ['Télécoms', 'Agroalimentaire', '', 'Télécoms'],
+          entreprise_taille: ['Grand groupe', 'ETI', '', 'PME'],
+          pilier_sequoia: [['L', 'IA fondamentale', 'Sécurité'], ['L', 'Sécurité'], ['L', 'Environnement'], ['L', 'IA fondamentale']],
+          axe_sequoia: [['L', 'Axe 1'], ['L', 'Axe 2'], ['L', 'Axe 3'], ['L', 'Axe 1']],
+          latitude: [48.11, 48.2, 48.08, 47.9],
+          longitude: [-1.68, -2.9, -1.67, -1.5]
+        }
+      }
+    },
+    mappings: {}
+  };
+
+  const { page, context, consoleErrors } = await openWidget(browser, 'cartographie.html', cfg);
+  await page.waitForTimeout(150);
+
+  ok(await page.locator('#stats-view').isHidden(), 'la vue Statistiques est masquée par défaut (vue Carte active)');
+  await page.click('#tab-stats');
+  await page.waitForTimeout(50);
+  ok(await page.locator('#stats-view').isVisible(), 'cliquer sur "Statistiques" affiche la vue');
+  ok(await page.locator('#map').isHidden(), 'la carte est masquée pendant la vue Statistiques');
+
+  // Prospects excluded by default ("de base, tout sauf les prospects") : 3 des 4
+  // structures comptent (Prospect SAS est exclue).
+  ok((await page.locator('#stat-total-type_acteur').textContent()).includes('3'),
+    'les statistiques excluent les prospects par défaut (3 structures)');
+
+  // ChoiceList : Orange porte 2 piliers, donc les 2 apparaissent avec un compte.
+  const pilierRows = await page.locator('#chart-pilier_sequoia .bar-row-label').allTextContents();
+  ok(pilierRows.includes('IA fondamentale') && pilierRows.includes('Sécurité') && pilierRows.includes('Environnement'),
+    'le graphique Pilier SequoIA liste les 3 piliers présents (une structure peut en porter plusieurs)');
+  const secuValue = await page.locator('#chart-pilier_sequoia .bar-row:has-text("Sécurité") .bar-row-value').textContent();
+  ok(secuValue === '2', 'Sécurité compte Orange ET Cooperl (multi-pilier : Orange compte aussi pour IA fondamentale)');
+
+  // Cocher "Afficher les prospects" doit recalculer les graphiques (filtre-réactif).
+  await page.click('#tab-carte');
+  await page.check('#show-prospects');
+  await page.click('#tab-stats');
+  await page.waitForTimeout(50);
+  ok((await page.locator('#stat-total-type_acteur').textContent()).includes('4'),
+    'afficher les prospects recalcule les statistiques (4 structures)');
+  const ifValueWithProspect = await page.locator('#chart-pilier_sequoia .bar-row:has-text("IA fondamentale") .bar-row-value').textContent();
+  ok(ifValueWithProspect === '2', 'afficher les prospects fait passer IA fondamentale de 1 (Orange) à 2 (+ Prospect SAS)');
+
+  // Un filtre du panneau de gauche s'applique aussi aux statistiques.
+  await page.uncheck('#show-prospects');
+  await page.click('#filter-toggle');
+  await page.selectOption('#filter-type_acteur', 'Recherche');
+  await page.waitForTimeout(50);
+  ok((await page.locator('#stat-total-type_acteur').textContent()).includes('1'),
+    'un filtre de la barre latérale (Type = Recherche) réduit aussi les statistiques (1 structure)');
+  await page.click('#filter-reset');
+  await page.waitForTimeout(50);
+
+  // Couleurs cohérentes avec le reste du widget : Type d'acteur reprend la
+  // palette des marqueurs, Pilier SequoIA reprend les couleurs des badges.
+  const typeBarColor = await page.locator('#chart-type_acteur .bar-fill').first().evaluate(el => getComputedStyle(el).backgroundColor);
+  const pilierBarColor = await page.locator('#chart-pilier_sequoia .bar-row:has-text("Environnement") .bar-fill').evaluate(el => getComputedStyle(el).backgroundColor);
+  ok(typeBarColor !== 'rgba(0, 0, 0, 0)' && pilierBarColor !== 'rgba(0, 0, 0, 0)', 'les barres portent une couleur (pas de repli transparent)');
+
+  // Bulle au survol : la valeur et le libellé sont accessibles sans avoir à
+  // les lire dans la barre (utile pour les longs libellés tronqués en CSS).
+  ok(await page.locator('#chart-tooltip').isHidden(), 'la bulle est masquée avant tout survol');
+  await page.locator('#chart-type_acteur .bar-fill').first().dispatchEvent('pointermove', { clientX: 100, clientY: 100 });
+  ok(await page.locator('#chart-tooltip').isVisible(), 'survoler une barre affiche la bulle');
+  ok((await page.locator('#chart-tooltip .tt-value').textContent()).length > 0, 'la bulle indique une valeur');
+
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
 // PLAYWRIGHT_CHROMIUM_PATH lets a sandboxed/offline environment point at a
 // pre-installed browser (no network access to download one); omit it to use
 // Playwright's own managed install (after `npx playwright install chromium`).
@@ -1220,6 +1307,7 @@ try {
   await testCrmContactsCluster(browser);
   await testCrmSuggestionsRecherche(browser);
   await testCartographieFiltres(browser);
+  await testCartographieStatistiques(browser);
 } finally {
   await browser.close();
 }
