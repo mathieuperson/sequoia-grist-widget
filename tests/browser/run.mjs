@@ -518,6 +518,73 @@ async function testCifreDashboardTypeFinancementColumn(browser) {
   ok(diagText.includes('6 ligne(s) reçue(s) de Grist') && diagText.includes('3 comptée(s) comme CIFRE'),
     'le diagnostic confirme 6 lignes reçues mais seulement 3 réellement CIFRE (dont 1 avec Type de financement vide, exclue)');
 
+  // Transparency banner: the excluded raw values must be visible on-page,
+  // not just inferred from the totals — this is what turns "je n'ai pas le
+  // bon nombre" into something the user can read off the screen themselves.
+  const warningsText = await page.locator('#warnings').textContent();
+  ok(warningsText.includes('CDD STANDARD') && warningsText.includes('EUROPEEN') && warningsText.includes('(vide)'),
+    'le bandeau liste les valeurs exclues (CDD STANDARD, EUROPEEN, (vide)...)');
+
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
+async function testCifreDashboardLabAndKEuros(browser) {
+  console.log('\n=== cifre-financement.html : filtre Laboratoire + montants en k€ + valeur CIFRE séparée par virgule ===');
+  const cfg = {
+    widgetTableId: 'Theses',
+    baseUrl: 'https://mock.grist.local/api/docs/mockdoc',
+    tables: {
+      Theses: {
+        colIds: ['Universite', 'Entreprise', 'DateDebut', 'TypeFinancement', 'Laboratoire', 'DureeAnnees', 'MontantTotal'],
+        data: {
+          id: [1, 2],
+          Universite: ['Rennes', 'Rennes'],
+          Entreprise: ['Orange', 'Thales'],
+          DateDebut: [epoch(2023, 9, 1), epoch(2023, 9, 1)],
+          // A ChoiceList-style rendering ("CIFRE, PARTENAIRE") must still
+          // match on the "cifre" token (comma is a valid separator too).
+          TypeFinancement: ['CIFRE', 'CIFRE, PARTENAIRE'],
+          Laboratoire: ['IRISA', 'Lab-STICC'],
+          DureeAnnees: [null, null],
+          MontantTotal: [null, null]
+        }
+      }
+    },
+    mappings: {
+      Universite: 'Universite', Entreprise: 'Entreprise', DateDebut: 'DateDebut',
+      EstCIFRE: 'TypeFinancement', Laboratoire: 'Laboratoire', DureeAnnees: 'DureeAnnees', MontantTotal: 'MontantTotal'
+    }
+  };
+
+  const { page, context, consoleErrors } = await openWidget(browser, 'cifre-financement.html', cfg);
+  await page.waitForTimeout(100);
+  const pivot = await page.evaluate(() => window.__lastPivot);
+  ok(pivot.totalNb === 2, '"CIFRE, PARTENAIRE" (rendu ChoiceList) compte bien comme CIFRE (virgule acceptée comme séparateur)');
+
+  // Laboratoire filter
+  await page.click('#msf-laboratoire .ms-filter-btn');
+  await page.waitForTimeout(50);
+  const labOptions = await page.locator('#msf-laboratoire .ms-option').allTextContents();
+  ok(labOptions.some(t => t.includes('IRISA')) && labOptions.some(t => t.includes('Lab-STICC')),
+    'le filtre Laboratoire liste les laboratoires présents');
+  await page.click('#msf-laboratoire .ms-option:has-text("IRISA") input');
+  await page.waitForTimeout(50);
+  const labPivot = await page.evaluate(() => window.__lastPivot);
+  ok(labPivot.totalNb === 1 && labPivot.groupList[0].rows[0].entreprise === 'Orange',
+    'cocher Laboratoire=IRISA ne garde que la thèse Orange');
+  await page.click('#filter-reset');
+  await page.waitForTimeout(50);
+
+  // Amounts displayed in k€, not raw euros
+  const tableText = await page.locator('#pivot-table').textContent();
+  ok(tableText.includes('200 k€') && !tableText.includes('200 000 €'),
+    'les montants du tableau sont affichés en k€ (200 k€), pas en euros bruts');
+  ok((await page.locator('.kpi-card .value').first().textContent().catch(() => '')) !== null,
+    'les cartes KPI se chargent toujours');
+  const kpiText = await page.locator('.kpi-row').textContent();
+  ok(kpiText.includes('k€'), 'le KPI "Montant total investi" est aussi affiché en k€');
+
   ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
   await context.close();
 }
@@ -576,6 +643,7 @@ try {
   await testOpportunitesDateSave(browser);
   await testCifreDashboard(browser);
   await testCifreDashboardTypeFinancementColumn(browser);
+  await testCifreDashboardLabAndKEuros(browser);
   await testCifreDashboardNumericYear(browser);
 } finally {
   await browser.close();

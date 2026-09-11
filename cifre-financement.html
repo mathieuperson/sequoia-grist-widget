@@ -160,6 +160,14 @@
       <div class="ms-options"></div>
     </div>
   </div>
+  <div class="ms-filter" id="msf-laboratoire">
+    <button class="ms-filter-btn" type="button"><span class="ms-label">Laboratoire</span> <span class="ms-count">Toutes</span></button>
+    <div class="ms-filter-panel" hidden>
+      <input type="text" class="ms-search" placeholder="Chercher…">
+      <div class="ms-quick-actions"><button data-action="all" type="button">Tout cocher</button><button data-action="none" type="button">Tout décocher</button></div>
+      <div class="ms-options"></div>
+    </div>
+  </div>
   <button class="filter-reset" id="filter-reset" hidden>Réinitialiser</button>
 </div>
 
@@ -223,6 +231,7 @@
     { name: 'Entreprise', title: 'Entreprise partenaire', optional: false },
     { name: 'DateDebut', title: 'Date de début de thèse', optional: false },
     { name: 'EstCIFRE', title: 'Financement CIFRE (oui/non, ou colonne "Type de financement")', optional: true },
+    { name: 'Laboratoire', title: 'Laboratoire (référence)', optional: true },
     { name: 'DureeAnnees', title: 'Durée (années, si différente de 3)', optional: true },
     { name: 'MontantTotal', title: 'Montant total (€, si différent de 200k)', optional: true }
   ];
@@ -240,7 +249,7 @@
   // Multi-select: an empty array means "no filter" (every value shown),
   // matching the old single-select's '' sentinel — a non-empty array keeps
   // only rows whose value is included in it.
-  let activeFilters = { universite: [], entreprise: [], annee: [] };
+  let activeFilters = { universite: [], entreprise: [], annee: [], laboratoire: [] };
   let currentView = 'table'; // 'table' | 'chart'
   let chartMetric = 'montant'; // 'montant' | 'nombre'
   let chartGroupBy = 'aucun'; // 'aucun' | 'universite' | 'entreprise'
@@ -290,7 +299,10 @@
   const POSITIVE_MARKERS = ['oui', 'yes', 'true', '1', 'ok', 'vrai'];
   function isCIFRE(t, mappings) {
     if (!mappings.EstCIFRE) return true; // not mapped: the table is assumed already CIFRE-scoped
-    const raw = formatValue(t.EstCIFRE).trim();
+    // Normalize NBSP/zero-width space (common from Excel copy-paste) to a
+    // regular space before trimming/tokenizing, so an invisible character
+    // never silently turns a real "CIFRE" into something that fails to match.
+    const raw = formatValue(t.EstCIFRE).replace(/[\u00A0\u200B]/g, ' ').trim();
     // Once a "Financement CIFRE" field IS mapped, a blank cell means "no
     // financing type recorded" — it must NOT be assumed to be CIFRE (that
     // was the last count-off-by-one: rows with an empty Type de financement
@@ -299,7 +311,9 @@
     const v = raw.toLowerCase();
     if (NEGATIVE_MARKERS.includes(v)) return false;
     if (POSITIVE_MARKERS.includes(v)) return true;
-    const tokens = v.split(/[\s+/]+/).map(s => s.trim()).filter(Boolean);
+    // Split on whitespace/+//,, so "CIFRE", "CIFRE + ANR" and a ChoiceList
+    // rendered as "CIFRE, PARTENAIRE" all match on the "cifre" token.
+    const tokens = v.split(/[\s,+/]+/).map(s => s.trim()).filter(Boolean);
     return tokens.includes('cifre');
   }
 
@@ -323,31 +337,45 @@
 
   // One CIFRE-filtered, computed row per thesis — the shared input for both
   // the pivot table and the chart, so they always agree on what counts.
+  // Also tracks, per distinct raw "Financement CIFRE" value, how many rows
+  // got excluded under it — an always-visible way to catch a value that
+  // *should* count (stray whitespace, an unexpected label…) without having
+  // to guess and re-deploy: see renderWarnings().
   function buildEnrichedRows(records, mappings, cfg) {
     const rows = [];
     let sansDate = 0;
+    const excluded = new Map();
     records.forEach(t => {
-      if (!isCIFRE(t, mappings)) return;
+      if (!isCIFRE(t, mappings)) {
+        if (mappings.EstCIFRE) {
+          const key = formatValue(t.EstCIFRE).trim() || '(vide)';
+          excluded.set(key, (excluded.get(key) || 0) + 1);
+        }
+        return;
+      }
       const universite = formatValue(t.Universite) || 'Non renseigné';
       const entreprise = formatValue(t.Entreprise) || 'Non renseigné';
+      const laboratoire = formatValue(t.Laboratoire) || 'Non renseigné';
       const r = computeRow(t, cfg);
       if (r.anneeDebut == null) sansDate++;
-      rows.push({ universite, entreprise, montantTotal: r.montantTotal, anneeDebut: r.anneeDebut, perYear: r.perYear });
+      rows.push({ universite, entreprise, laboratoire, montantTotal: r.montantTotal, anneeDebut: r.anneeDebut, perYear: r.perYear });
     });
-    return { rows, sansDate };
+    return { rows, sansDate, excluded };
   }
 
-  // Applies the Université/Entreprise/Année filters to the raw mapped
-  // records, before they're turned into enriched rows for the table/chart.
-  // Each filter is a set of allowed values; empty = no restriction.
+  // Applies the Université/Entreprise/Année/Laboratoire filters to the raw
+  // mapped records, before they're turned into enriched rows for the
+  // table/chart. Each filter is a set of allowed values; empty = no restriction.
   function filteredRecords() {
     return allRecords.filter(t => {
       const uni = formatValue(t.Universite) || 'Non renseigné';
       const ent = formatValue(t.Entreprise) || 'Non renseigné';
       const yr = String(yearOf(t.DateDebut));
+      const lab = formatValue(t.Laboratoire) || 'Non renseigné';
       if (activeFilters.universite.length && !activeFilters.universite.includes(uni)) return false;
       if (activeFilters.entreprise.length && !activeFilters.entreprise.includes(ent)) return false;
       if (activeFilters.annee.length && !activeFilters.annee.includes(yr)) return false;
+      if (activeFilters.laboratoire.length && !activeFilters.laboratoire.includes(lab)) return false;
       return true;
     });
   }
@@ -431,6 +459,14 @@
       return { label: cat, color, values };
     });
     return { stacked: false, series };
+  }
+
+  // On-screen amounts are shown in k€ (rounded) rather than raw euros —
+  // easier to read at a glance on a dashboard with lots of numbers. The CSV
+  // export still writes raw euros (precise figures for further processing).
+  function formatKEuros(v) {
+    if (v == null || v === '') return '';
+    return Math.round(Number(v) / 1000).toLocaleString('fr-FR') + ' k€';
   }
 
   function niceCeil(v) {
@@ -543,7 +579,7 @@
     const noteEl = document.getElementById('chart-note');
     noteEl.hidden = chartGroupBy === 'aucun';
     const { series, stacked } = computeChartSeries(rows, pivot.years, chartGroupBy, chartMetric);
-    const formatVal = chartMetric === 'montant' ? (v => formatMontant(Math.round(v))) : (v => String(Math.round(v)));
+    const formatVal = chartMetric === 'montant' ? formatKEuros : (v => String(Math.round(v)));
     renderChartSvg(document.getElementById('chart-svg'), pivot.years, series, { stacked, formatValue: formatVal });
     renderChartLegend(document.getElementById('chart-legend'), series);
   }
@@ -557,19 +593,30 @@
     const nbEntreprises = pivot.groupList.reduce((n, g) => n + g.rows.length, 0);
     document.getElementById('kpi-row').innerHTML = [
       kpiCard(pivot.totalNb, 'Thèses CIFRE'),
-      kpiCard(formatMontant(pivot.totalMontant), 'Montant total investi'),
+      kpiCard(formatKEuros(pivot.totalMontant), 'Montant total investi'),
       kpiCard(pivot.groupList.length, 'Universités'),
       kpiCard(nbEntreprises, 'Entreprises partenaires')
     ].join('');
   }
 
-  function renderWarnings(pivot) {
+  function renderWarnings(pivot, excluded) {
     const msgs = [];
     if (!currentMappings.EstCIFRE) {
       msgs.push('Le champ "Financement CIFRE" n’est pas mappé : toutes les lignes reçues sont comptées comme CIFRE. Si la table mélange plusieurs types de financement, mappe-le sur la colonne "Type de financement".');
     }
     if (pivot.sansDate > 0) {
       msgs.push(pivot.sansDate + ' thèse(s) sans date de début : comptée(s) dans les totaux mais absente(s) de la répartition par année.');
+    }
+    // Transparency for exactly this class of bug report ("je n'ai pas le bon
+    // nombre") — instead of guessing again, show precisely what got
+    // excluded and why, so a value that SHOULD count (stray whitespace, an
+    // unexpected label) jumps out immediately.
+    if (currentMappings.EstCIFRE && excluded && excluded.size > 0) {
+      const top = Array.from(excluded.entries()).sort((a, b) => b[1] - a[1]);
+      const shown = top.slice(0, 8).map(([v, n]) => v + ' (' + n + ')').join(', ');
+      const rest = top.length > 8 ? ', +' + (top.length - 8) + ' autre(s) valeur(s)' : '';
+      const totalExcluded = top.reduce((s, [, n]) => s + n, 0);
+      msgs.push(totalExcluded + ' ligne(s) exclue(s) (pas comptées comme CIFRE) — valeurs : ' + shown + rest + '.');
     }
     document.getElementById('warnings').innerHTML = msgs.map(m => '<div class="warn-banner">⚠ ' + escapeHtml(m) + '</div>').join('');
   }
@@ -591,10 +638,10 @@
       '<th rowspan="2">Établissement</th>' +
       '<th rowspan="2">Entreprise</th>' +
       '<th rowspan="2">Nbre de CIFRE</th>' +
-      '<th rowspan="2">Montant total</th>' +
+      '<th rowspan="2">Montant total (k€)</th>' +
       years.map(y => '<th colspan="2">' + y + '</th>').join('') +
       '</tr><tr>' +
-      years.map(() => '<th>Monétaire</th><th>In-kind</th>').join('') +
+      years.map(() => '<th>Monétaire (k€)</th><th>In-kind (k€)</th>').join('') +
       '</tr></thead>';
 
     let bodyRows = '';
@@ -613,11 +660,11 @@
           (i === 0 ? '<td rowspan="' + g.rows.length + '">' + escapeHtml(g.universite) + '</td>' : '') +
           '<td>' + escapeHtml(row.entreprise) + '</td>' +
           '<td>' + row.nbCIFRE + '</td>' +
-          '<td>' + formatMontant(row.montantTotal) + '</td>' +
+          '<td>' + formatKEuros(row.montantTotal) + '</td>' +
           years.map(y => {
             const cell = row.perYear[y];
-            return '<td>' + (cell ? formatMontant(Math.round(cell.monetaire)) : '—') + '</td>' +
-                   '<td>' + (cell ? formatMontant(Math.round(cell.inKind)) : '—') + '</td>';
+            return '<td>' + (cell ? formatKEuros(cell.monetaire) : '—') + '</td>' +
+                   '<td>' + (cell ? formatKEuros(cell.inKind) : '—') + '</td>';
           }).join('') +
           '</tr>';
       });
@@ -626,8 +673,8 @@
     const tfoot = '<tfoot><tr>' +
       '<td colspan="2">Total</td>' +
       '<td>' + pivot.totalNb + '</td>' +
-      '<td>' + formatMontant(pivot.totalMontant) + '</td>' +
-      years.map(y => '<td>' + formatMontant(Math.round(totalsByYear[y].monetaire)) + '</td><td>' + formatMontant(Math.round(totalsByYear[y].inKind)) + '</td>').join('') +
+      '<td>' + formatKEuros(pivot.totalMontant) + '</td>' +
+      years.map(y => '<td>' + formatKEuros(totalsByYear[y].monetaire) + '</td><td>' + formatKEuros(totalsByYear[y].inKind) + '</td>').join('') +
       '</tr></tfoot>';
 
     t.innerHTML = thead + '<tbody>' + bodyRows + '</tbody>' + tfoot;
@@ -641,10 +688,12 @@
     const universites = Array.from(new Set(rows.map(r => r.universite))).sort((a, b) => a.localeCompare(b, 'fr'));
     const entreprises = Array.from(new Set(rows.map(r => r.entreprise))).sort((a, b) => a.localeCompare(b, 'fr'));
     const annees = Array.from(new Set(rows.map(r => r.anneeDebut).filter(y => y != null))).sort((a, b) => a - b).map(String);
+    const laboratoires = Array.from(new Set(rows.map(r => r.laboratoire))).sort((a, b) => a.localeCompare(b, 'fr'));
 
     if (multiSelects.universite) multiSelects.universite.setOptions(universites);
     if (multiSelects.entreprise) multiSelects.entreprise.setOptions(entreprises);
     if (multiSelects.annee) multiSelects.annee.setOptions(annees);
+    if (multiSelects.laboratoire) multiSelects.laboratoire.setOptions(laboratoires);
   }
 
   // A checkbox dropdown filter: button shows "Toutes" or a count, panel has
@@ -722,17 +771,20 @@
   initMultiSelect('msf-universite', 'universite');
   initMultiSelect('msf-entreprise', 'entreprise');
   initMultiSelect('msf-annee', 'annee');
+  initMultiSelect('msf-laboratoire', 'laboratoire');
   document.addEventListener('click', () => {
     document.querySelectorAll('.ms-filter-panel').forEach(p => { p.hidden = true; });
   });
 
   function renderAll() {
     populateFilterOptions();
-    document.getElementById('filter-reset').hidden =
-      !(activeFilters.universite.length || activeFilters.entreprise.length || activeFilters.annee.length);
+    document.getElementById('filter-reset').hidden = !(
+      activeFilters.universite.length || activeFilters.entreprise.length ||
+      activeFilters.annee.length || activeFilters.laboratoire.length
+    );
 
     const filtered = filteredRecords();
-    const { rows, sansDate } = buildEnrichedRows(filtered, currentMappings, currentConfig);
+    const { rows, sansDate, excluded } = buildEnrichedRows(filtered, currentMappings, currentConfig);
     const pivot = computePivot(rows, sansDate);
     window.__lastPivot = pivot; // read by the export button and by tests
     window.__lastRows = rows; // read by the chart and by tests
@@ -747,7 +799,7 @@
     diagParts.push(pivot.totalNb + ' comptée(s) comme CIFRE');
     document.getElementById('diag-line').textContent = diagParts.join(' · ');
 
-    renderWarnings(pivot);
+    renderWarnings(pivot, excluded);
     renderKpis(pivot);
     renderTable(pivot);
     if (currentView === 'chart') renderChart(pivot, rows);
@@ -797,7 +849,7 @@
 
   // ---------- Filters ----------
   document.getElementById('filter-reset').addEventListener('click', () => {
-    activeFilters = { universite: [], entreprise: [], annee: [] };
+    activeFilters = { universite: [], entreprise: [], annee: [], laboratoire: [] };
     renderAll();
   });
 
