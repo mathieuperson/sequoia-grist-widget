@@ -1,0 +1,590 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Cartographie SequoIA</title>
+<link rel="stylesheet" href="common.css">
+<link rel="stylesheet" href="vendor/leaflet.css">
+<link rel="stylesheet" href="vendor/MarkerCluster.css">
+<style>
+  /* ---------- Carte ---------- */
+  #map {
+    flex: 1;
+    height: 100%;
+    background: var(--bg);
+  }
+
+  .map-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .map-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+
+  .map-toolbar .spacer { flex: 1; }
+
+  .map-toolbar button {
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text);
+    border-radius: 8px;
+    padding: 5px 10px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+
+  .map-toolbar button:hover { border-color: var(--sequoia-green); color: var(--sequoia-green); }
+
+  .count-strong { color: var(--text); font-weight: 600; }
+
+  /* ---------- Légende ---------- */
+  .legend {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 12px; }
+
+  .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+
+  /* ---------- Marqueurs (divIcon, pas d'image) ---------- */
+  .pin {
+    width: 22px;
+    height: 22px;
+    border-radius: 50% 50% 50% 0;
+    transform: rotate(-45deg);
+    border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, .35);
+    background: var(--text-muted);
+  }
+
+  .pin.core { background: var(--pilier-core); }
+  .pin.secu { background: var(--pilier-secu); }
+  .pin.env  { background: var(--pilier-env); }
+  .pin.multi { background: var(--cluster-gradient); }
+  .pin.autre { background: var(--text-muted); }
+
+  .pin.is-active {
+    outline: 3px solid var(--sequoia-green);
+    outline-offset: 1px;
+  }
+
+  .cluster-badge {
+    background: var(--sequoia-green);
+    color: #fff;
+    border: 3px solid var(--sequoia-green-light);
+    border-radius: 50%;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: inherit;
+  }
+
+  /* ---------- Bulle ---------- */
+  .leaflet-popup-content-wrapper { border-radius: 10px; }
+  .leaflet-popup-content { margin: 12px; width: 260px !important; }
+
+  .pop-head { display: flex; gap: 10px; align-items: flex-start; }
+
+  .pop-logo {
+    width: 46px;
+    height: 46px;
+    flex: none;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  .pop-logo img { max-width: 100%; max-height: 100%; object-fit: contain; }
+
+  .pop-logo .fallback {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+
+  .pop-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.25;
+  }
+
+  .pop-type { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+  .pop-pills { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+
+  .pop-desc {
+    margin-top: 8px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--text-muted);
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .pop-actions {
+    margin-top: 10px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .pop-actions a,
+  .pop-actions button {
+    font-size: 12px;
+    font-family: inherit;
+    border-radius: 7px;
+    padding: 5px 9px;
+    text-decoration: none;
+    cursor: pointer;
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--text);
+  }
+
+  .pop-actions .primary {
+    background: var(--sequoia-green);
+    border-color: var(--sequoia-green);
+    color: #fff;
+  }
+
+  .map-error {
+    padding: 16px;
+    margin: 16px;
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--danger);
+    border-radius: 8px;
+    background: var(--card-bg);
+    font-size: 13px;
+    line-height: 1.5;
+  }
+
+  .map-error code { background: var(--bg); padding: 1px 4px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-header">
+      <div class="search-box">
+        <input id="search" type="search" placeholder="Rechercher une structure…" autocomplete="off">
+      </div>
+      <div class="list-controls">
+        <label class="toggle-row">
+          <input type="checkbox" id="show-prospects">
+          Afficher les prospects
+        </label>
+        <button class="filter-toggle-btn" id="filter-toggle" type="button">Filtres ▾</button>
+      </div>
+      <div class="filter-panel" id="filter-panel" hidden>
+        <div class="filter-field">
+          <label for="filter-type_acteur">Type d'acteur</label>
+          <select id="filter-type_acteur" data-field="type_acteur"><option value="">Tous</option></select>
+        </div>
+        <div class="filter-field">
+          <label for="filter-acteur_categorie">Catégorie</label>
+          <select id="filter-acteur_categorie" data-field="acteur_categorie"><option value="">Toutes</option></select>
+        </div>
+        <div class="filter-field">
+          <label for="filter-entreprise_activite">Activité</label>
+          <select id="filter-entreprise_activite" data-field="entreprise_activite"><option value="">Toutes</option></select>
+        </div>
+        <div class="filter-field">
+          <label for="filter-entreprise_taille">Taille</label>
+          <select id="filter-entreprise_taille" data-field="entreprise_taille"><option value="">Toutes</option></select>
+        </div>
+        <div class="filter-field">
+          <label for="filter-pilier_sequoia">Pilier SequoIA</label>
+          <select id="filter-pilier_sequoia" data-field="pilier_sequoia"><option value="">Tous</option></select>
+        </div>
+        <div class="filter-field">
+          <label for="filter-axe_sequoia">Axe SequoIA</label>
+          <select id="filter-axe_sequoia" data-field="axe_sequoia"><option value="">Tous</option></select>
+        </div>
+        <button class="filter-reset" id="filter-reset" type="button">Réinitialiser les filtres</button>
+      </div>
+    </div>
+    <div class="list" id="list"></div>
+  </aside>
+
+  <div class="map-wrap">
+    <div class="map-toolbar">
+      <span><span class="count-strong" id="count">0</span> structure(s) affichée(s)</span>
+      <span id="nogeo" class="count-muted"></span>
+      <span class="spacer"></span>
+      <div class="legend">
+        <span class="legend-item"><i class="legend-dot" style="background:var(--pilier-core)"></i>IA fondamentale</span>
+        <span class="legend-item"><i class="legend-dot" style="background:var(--pilier-secu)"></i>IA &amp; sécurité</span>
+        <span class="legend-item"><i class="legend-dot" style="background:var(--pilier-env)"></i>IA &amp; environnement</span>
+      </div>
+      <button id="fit" type="button">Recadrer</button>
+    </div>
+    <div id="map"></div>
+  </div>
+</div>
+
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<!-- Leaflet est versionné dans vendor/ (pas de CDN) : le dépôt garde sa règle
+     "aucune dépendance runtime externe", et le widget marche même si un réseau
+     d'administration bloque les CDN. Mise à jour = npm pack + copie de dist/. -->
+<script src="vendor/leaflet.js"></script>
+<script src="vendor/leaflet.markercluster.js"></script>
+<script src="common.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // Les colonnes de Structures sont lues par leur identifiant réel, comme dans
+  // index.html (pas de mapping) — sauf la latitude/longitude, ajoutées après coup
+  // et dont le nom peut varier : on les détecte parmi ces candidats.
+  const LAT_CANDIDATES = ['latitude', 'Latitude', 'lat', 'Lat', 'geo_latitude', 'lat_wgs84'];
+  const LON_CANDIDATES = ['longitude', 'Longitude', 'lon', 'lng', 'Long', 'geo_longitude', 'lon_wgs84'];
+
+  // Suit la convention des autres widgets : Pilier SequoIA d'abord, Axe SequoIA ensuite.
+  const FILTER_FIELDS = ['type_acteur', 'acteur_categorie', 'entreprise_activite', 'entreprise_taille', 'pilier_sequoia', 'axe_sequoia'];
+  const activeFilters = {
+    type_acteur: '', acteur_categorie: '', entreprise_activite: '', entreprise_taille: '',
+    pilier_sequoia: '', axe_sequoia: ''
+  };
+
+  let allRecords = [];
+  let latCol = null;
+  let lonCol = null;
+  let currentId = null;
+  const markersById = {};
+
+  grist.ready({ requiredAccess: 'full', allowSelectBy: true });
+
+  // ---------- Carte ----------
+  const map = L.map('map', { zoomControl: true }).setView([48.1, -2.8], 7);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap'
+  }).addTo(map);
+
+  const cluster = L.markerClusterGroup({
+    showCoverageOnHover: false,
+    maxClusterRadius: 45,
+    iconCreateFunction: c => L.divIcon({
+      html: '<div class="cluster-badge">' + c.getChildCount() + '</div>',
+      className: '',
+      iconSize: [36, 36]
+    })
+  });
+  map.addLayer(cluster);
+
+  // ---------- Helpers ----------
+
+  // Une ChoiceList arrive sous la forme ['L', 'a', 'b'] : on la rend lisible
+  // (même helper que dans index.html).
+  function listText(value) {
+    if (!value) return '';
+    if (Array.isArray(value)) return value.filter(v => typeof v === 'string' && v !== 'L').join(', ');
+    return String(value);
+  }
+
+  function listValues(value) {
+    if (!value) return [];
+    if (Array.isArray(value)) return value.filter(v => typeof v === 'string' && v !== 'L');
+    return [String(value)];
+  }
+
+  // Latitude/longitude peuvent être numériques ou saisies en texte avec une
+  // virgule décimale : les deux doivent marcher.
+  function toNumber(value) {
+    if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+    if (typeof value !== 'string') return null;
+    const n = parseFloat(value.trim().replace(',', '.'));
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function detectGeoColumns(records) {
+    const keys = new Set();
+    records.forEach(r => Object.keys(r).forEach(k => keys.add(k)));
+    const pick = candidates => candidates.find(c => keys.has(c))
+      || Array.from(keys).find(k => candidates.some(c => k.toLowerCase() === c.toLowerCase()));
+    latCol = pick(LAT_CANDIDATES) || null;
+    lonCol = pick(LON_CANDIDATES) || null;
+  }
+
+  function coordsOf(record) {
+    if (!latCol || !lonCol) return null;
+    const lat = toNumber(record[latCol]);
+    const lon = toNumber(record[lonCol]);
+    if (lat === null || lon === null) return null;
+    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+    if (lat === 0 && lon === 0) return null;
+    return [lat, lon];
+  }
+
+  // Une structure peut porter plusieurs piliers : une seule couleur possible sur
+  // le pin, donc dégradé "multi" au-delà d'un pilier.
+  function pinClass(record) {
+    const values = listValues(record.pilier_sequoia);
+    if (values.length === 0) return 'autre';
+    const classes = Array.from(new Set(values.map(v => pilierClass(v)).filter(Boolean)));
+    if (classes.length === 0) return 'autre';
+    if (classes.length > 1) return 'multi';
+    return classes[0];
+  }
+
+  function matchesFilters(record) {
+    const showProspects = document.getElementById('show-prospects').checked;
+    if (!showProspects && listText(record.acteur_categorie).trim().toLowerCase() === 'prospect') return false;
+
+    const query = document.getElementById('search').value.trim().toLowerCase();
+    if (query && !String(record.nom_acteur || '').toLowerCase().includes(query)) return false;
+
+    return FILTER_FIELDS.every(field => {
+      const wanted = activeFilters[field];
+      if (!wanted) return true;
+      return listValues(record[field]).includes(wanted);
+    });
+  }
+
+  // ---------- Bulle ----------
+  function popupHtml(record) {
+    const name = escapeHtml(record.nom_acteur || 'Sans nom');
+    const logo = record.url_logo
+      ? '<img src="' + escapeHtml(record.url_logo) + '" alt="" '
+        + 'onerror="this.parentElement.innerHTML=\'<span class=&quot;fallback&quot;>'
+        + escapeHtml(initials(record.nom_acteur)) + '</span>\'">'
+      : '<span class="fallback">' + escapeHtml(initials(record.nom_acteur)) + '</span>';
+
+    const pills = listValues(record.pilier_sequoia)
+      .map(v => '<span class="value-pill ' + pilierClass(v) + '">' + escapeHtml(v) + '</span>')
+      .join('');
+
+    const site = record.url_site_web
+      ? '<a href="' + escapeHtml(record.url_site_web) + '" target="_blank" rel="noopener">Site ↗</a>'
+      : '';
+
+    const type = [listText(record.type_acteur), listText(record.entreprise_taille)]
+      .filter(Boolean).join(' · ');
+
+    return ''
+      + '<div class="pop">'
+      +   '<div class="pop-head">'
+      +     '<div class="pop-logo">' + logo + '</div>'
+      +     '<div><div class="pop-name">' + name + '</div>'
+      +       (type ? '<div class="pop-type">' + escapeHtml(type) + '</div>' : '')
+      +     '</div>'
+      +   '</div>'
+      +   (pills ? '<div class="pop-pills">' + pills + '</div>' : '')
+      +   (record.description ? '<div class="pop-desc">' + escapeHtml(record.description) + '</div>' : '')
+      +   '<div class="pop-actions">'
+      +     '<button class="primary" data-open="' + record.id + '" type="button">Ouvrir la fiche</button>'
+      +     site
+      +   '</div>'
+      + '</div>';
+  }
+
+  // Le bouton de la bulle déplace le curseur Grist : la fiche partenaire liée
+  // par "Sélectionner par" s'ouvre sur la structure cliquée.
+  function openRecord(id) {
+    currentId = id;
+    grist.setCursorPos({ rowId: id }).catch(err => console.error(err));
+    highlightActive();
+  }
+
+  map.on('popupopen', e => {
+    const btn = e.popup.getElement().querySelector('[data-open]');
+    if (btn) btn.addEventListener('click', () => openRecord(Number(btn.dataset.open)));
+  });
+
+  function highlightActive() {
+    Object.entries(markersById).forEach(([id, marker]) => {
+      const el = marker.getElement();
+      if (el) el.querySelector('.pin').classList.toggle('is-active', Number(id) === currentId);
+    });
+  }
+
+  // ---------- Rendu ----------
+  function render() {
+    const visible = allRecords.filter(matchesFilters);
+    const placed = [];
+
+    cluster.clearLayers();
+    Object.keys(markersById).forEach(k => delete markersById[k]);
+
+    visible.forEach(record => {
+      const coords = coordsOf(record);
+      if (!coords) return;
+      const marker = L.marker(coords, {
+        title: record.nom_acteur || '',
+        icon: L.divIcon({
+          className: '',
+          html: '<div class="pin ' + pinClass(record) + '"></div>',
+          iconSize: [22, 22],
+          iconAnchor: [11, 22],
+          popupAnchor: [0, -20]
+        })
+      });
+      marker.bindPopup(() => popupHtml(record), { closeButton: true });
+      markersById[record.id] = marker;
+      placed.push(marker);
+      cluster.addLayer(marker);
+    });
+
+    document.getElementById('count').textContent = placed.length;
+    const missing = visible.length - placed.length;
+    document.getElementById('nogeo').textContent = missing > 0
+      ? '· ' + missing + ' sans coordonnées'
+      : '';
+
+    renderList(visible);
+    highlightActive();
+    return placed;
+  }
+
+  function fitToMarkers() {
+    const layers = cluster.getLayers();
+    if (layers.length === 0) return;
+    map.fitBounds(L.featureGroup(layers).getBounds().pad(0.15));
+  }
+
+  function renderList(visible) {
+    const listEl = document.getElementById('list');
+    if (visible.length === 0) {
+      listEl.innerHTML = '<div class="empty-list">Aucune structure ne correspond aux filtres.</div>';
+      return;
+    }
+
+    listEl.innerHTML = '';
+    [...visible]
+      .sort((a, b) => String(a.nom_acteur || '').localeCompare(String(b.nom_acteur || ''), 'fr'))
+      .forEach(record => {
+        const item = document.createElement('div');
+        item.className = 'list-item' + (record.id === currentId ? ' active' : '');
+        const geo = coordsOf(record) ? '' : ' · sans coordonnées';
+        item.innerHTML = '<div class="name">' + escapeHtml(record.nom_acteur || 'Sans nom') + '</div>'
+          + '<div class="sub">' + escapeHtml(listText(record.type_acteur)) + escapeHtml(geo) + '</div>';
+        item.addEventListener('click', () => {
+          openRecord(record.id);
+          const marker = markersById[record.id];
+          if (marker) {
+            cluster.zoomToShowLayer(marker, () => marker.openPopup());
+          }
+        });
+        listEl.appendChild(item);
+      });
+  }
+
+  function populateFilterOptions() {
+    FILTER_FIELDS.forEach(field => {
+      const select = document.getElementById('filter-' + field);
+      const previous = select.value;
+      const values = Array.from(new Set(
+        allRecords.flatMap(r => listValues(r[field]))
+      )).filter(Boolean).sort((a, b) => a.localeCompare(b, 'fr'));
+
+      const placeholder = select.options[0];
+      select.innerHTML = '';
+      select.appendChild(placeholder);
+      values.forEach(value => {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        select.appendChild(option);
+      });
+      select.value = values.includes(previous) ? previous : '';
+      activeFilters[field] = select.value;
+    });
+  }
+
+  function showGeoError() {
+    document.getElementById('map').innerHTML =
+      '<div class="map-error"><strong>Colonnes de coordonnées introuvables.</strong><br>'
+      + 'Le widget cherche une latitude parmi <code>' + LAT_CANDIDATES.join('</code>, <code>') + '</code> '
+      + 'et une longitude parmi <code>' + LON_CANDIDATES.join('</code>, <code>') + '</code>.<br>'
+      + 'Renomme la colonne dans Grist, ou ajoute son identifiant en tête de <code>cartographie.html</code>.</div>';
+  }
+
+  // ---------- Événements ----------
+  document.getElementById('search').addEventListener('input', debounce(render, 200));
+  document.getElementById('show-prospects').addEventListener('change', render);
+  document.getElementById('fit').addEventListener('click', fitToMarkers);
+  document.getElementById('filter-toggle').addEventListener('click', () => {
+    const panel = document.getElementById('filter-panel');
+    panel.hidden = !panel.hidden;
+    document.getElementById('filter-toggle').textContent = panel.hidden ? 'Filtres ▾' : 'Filtres ▴';
+  });
+  document.getElementById('filter-reset').addEventListener('click', () => {
+    FILTER_FIELDS.forEach(field => {
+      document.getElementById('filter-' + field).value = '';
+      activeFilters[field] = '';
+    });
+    document.getElementById('search').value = '';
+    render();
+    fitToMarkers();
+  });
+  FILTER_FIELDS.forEach(field => {
+    document.getElementById('filter-' + field).addEventListener('change', event => {
+      activeFilters[field] = event.target.value;
+      render();
+      fitToMarkers();
+    });
+  });
+
+  // ---------- Grist ----------
+  let firstLoad = true;
+
+  grist.onRecords(function (records) {
+    allRecords = records || [];
+    detectGeoColumns(allRecords);
+    if (!latCol || !lonCol) {
+      showGeoError();
+      return;
+    }
+    populateFilterOptions();
+    render();
+    // Ne recadrer qu'au premier chargement : recadrer à chaque rafraîchissement
+    // annulerait le zoom que l'utilisateur vient de faire à la main.
+    if (firstLoad) {
+      firstLoad = false;
+      setTimeout(() => { map.invalidateSize(); fitToMarkers(); }, 0);
+    }
+  });
+
+  // Le curseur Grist (clic dans un autre widget de la page) suit la sélection,
+  // mais on n'ouvre pas la bulle automatiquement : seul un clic dans la carte
+  // ou dans la liste le fait.
+  grist.onRecord(function (record) {
+    if (record && record.id) {
+      currentId = record.id;
+      highlightActive();
+    }
+  });
+})();
+</script>
+</body>
+</html>

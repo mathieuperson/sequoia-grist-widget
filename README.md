@@ -12,6 +12,7 @@ Widgets personnalisés Grist pour le CRM SequoIA (déployés via GitHub Pages).
 | Fiche interaction | `/interactions.html` | Interactions | Lecture + écriture (CR, pièces jointes) |
 | Pipeline opportunités (Kanban) | `/opportunites.html` | Opportunités | Lecture + écriture (statut) |
 | Dashboard financement CIFRE | `/cifre-financement.html` | Thèses (ou toute table de thèses doctorales) | Lecture |
+| Cartographie | `/cartographie.html` | Structures | Complet (`allowSelectBy`, suit la sélection Grist) |
 
 URL de base : `https://mathieuperson.github.io/sequoia-grist-widget/`
 
@@ -59,6 +60,18 @@ Colonnes attendues sur la table source (mappage Grist classique) : Université, 
 début de thèse. Optionnelles : un champ "Financement CIFRE (oui/non)" pour filtrer si la table contient aussi des
 thèses non-CIFRE (sinon toutes les lignes sont comptées), une durée en années si différente de 3, un montant total
 si différent de 200k€ pour une thèse donnée.
+
+### Cartographie (`cartographie.html`)
+
+Carte des structures (Leaflet, regroupement en clusters) construite à partir de colonnes latitude/longitude —
+détectées automatiquement parmi plusieurs noms candidats, avec support des coordonnées saisies en texte
+(virgule décimale comprise). Les vignettes affichent le logo (avec repli sur les initiales si l'image ne charge
+pas), le site web et un bouton "Ouvrir la fiche" qui synchronise la sélection Grist (`setCursorPos`). Un panneau
+de filtres repliable (case "Afficher les prospects" + filtres Type d'acteur, Catégorie, Activité, Taille, Pilier
+SequoIA, Axe SequoIA) suit la même convention que les autres widgets : **Pilier SequoIA d'abord, Axe SequoIA
+ensuite**. Liste synchronisée avec la carte (clic sur un élément = zoom + ouverture de la bulle).
+
+Leaflet et Leaflet.markercluster sont vendorisés dans `vendor/` (pas de CDN), comme le reste du projet.
 
 ## Mise en place dans Grist
 
