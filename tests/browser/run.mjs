@@ -1255,8 +1255,18 @@ async function testCartographieStatistiques(browser) {
   const ifValueWithProspect = await page.locator('#chart-pilier_sequoia .bar-row:has-text("IA fondamentale") .bar-row-value').textContent();
   ok(ifValueWithProspect === '2', 'afficher les prospects fait passer IA fondamentale de 1 (Orange) à 2 (+ Prospect SAS)');
 
-  // Un filtre du panneau de gauche s'applique aussi aux statistiques.
+  // Secteur d'activité et Taille ne portent que sur les entreprises (Type
+  // d'acteur = Économique) : Inria Rennes (Recherche, activité/taille vides)
+  // doit être exclue de ces 2 graphiques, pas comptée en "Non renseigné".
   await page.uncheck('#show-prospects');
+  await page.waitForTimeout(50);
+  ok((await page.locator('#stat-total-entreprise_activite').textContent()).includes('2'),
+    "Secteur d'activité ne compte que les entreprises (Orange, Cooperl), pas Inria Rennes");
+  const activiteLabels = await page.locator('#chart-entreprise_activite .bar-row-label').allTextContents();
+  ok(!activiteLabels.includes('Non renseigné'),
+    'Inria Rennes (Recherche, sans activité) est exclue au lieu de compter en "Non renseigné"');
+
+  // Un filtre du panneau de gauche s'applique aussi aux statistiques.
   await page.click('#filter-toggle');
   await page.selectOption('#filter-type_acteur', 'Recherche');
   await page.waitForTimeout(50);
