@@ -459,31 +459,33 @@ async function testCifreDashboard(browser) {
   await context.close();
 }
 
-async function testCifreDashboardNumericYear(browser) {
-  console.log('\n=== cifre-financement.html : régression "Année" en colonne Numeric (pas une vraie Date Grist) ===');
+async function testCifreDashboardTypeFinancementColumn(browser) {
+  console.log('\n=== cifre-financement.html : régression "Type de financement" (colonne multi-valeurs, pas oui/non) ===');
   const cfg = {
     widgetTableId: 'Theses',
     baseUrl: 'https://mock.grist.local/api/docs/mockdoc',
     tables: {
       Theses: {
-        colIds: ['Universite', 'Entreprise', 'Annee_debut', 'EstCIFRE', 'DureeAnnees', 'MontantTotal'],
+        colIds: ['Universite', 'Entreprise', 'DateDebut', 'TypeFinancement', 'DureeAnnees', 'MontantTotal'],
         data: {
-          id: [1, 2],
-          Universite: ['IMT Atlantique', 'IMT Atlantique'],
-          Entreprise: ['Orange Labs', 'Canon CRF'],
-          // A bare Numeric "Année" column holding the calendar year (2022,
-          // 2023) — not a real Grist Date (epoch seconds). Reproduces the
-          // reported "1970/1971/1972" bug.
-          Annee_debut: [2022, 2023],
-          EstCIFRE: ['Oui', 'Oui'],
-          DureeAnnees: [null, null],
-          MontantTotal: [null, null]
+          id: [1, 2, 3, 4, 5],
+          Universite: ['Rennes', 'Rennes', 'Rennes', 'Rennes', 'Rennes'],
+          Entreprise: ['Orange', 'Thales', 'InterDigital', 'Orange', 'Thales'],
+          DateDebut: [epoch(2023, 9, 1), epoch(2023, 9, 1), epoch(2023, 9, 1), epoch(2023, 9, 1), epoch(2023, 9, 1)],
+          // A real "Type de financement" category column: CIFRE is only ONE
+          // of many values (EUROPEEN, CDD STANDARD, a combo...). The old
+          // "anything that isn't a negative marker counts as CIFRE" logic
+          // would have wrongly counted all 5 rows instead of just the 3 that
+          // are actually CIFRE — this is the reported 56-vs-64 root cause.
+          TypeFinancement: ['CIFRE', 'CDD STANDARD', 'CIFRE', 'EUROPEEN', 'CIFRE + ANR'],
+          DureeAnnees: [null, null, null, null, null],
+          MontantTotal: [null, null, null, null, null]
         }
       }
     },
     mappings: {
-      Universite: 'Universite', Entreprise: 'Entreprise', DateDebut: 'Annee_debut',
-      EstCIFRE: 'EstCIFRE', DureeAnnees: 'DureeAnnees', MontantTotal: 'MontantTotal'
+      Universite: 'Universite', Entreprise: 'Entreprise', DateDebut: 'DateDebut',
+      EstCIFRE: 'TypeFinancement', DureeAnnees: 'DureeAnnees', MontantTotal: 'MontantTotal'
     }
   };
 
@@ -491,9 +493,11 @@ async function testCifreDashboardNumericYear(browser) {
   await page.waitForTimeout(100);
   const pivot = await page.evaluate(() => window.__lastPivot);
 
-  ok(JSON.stringify(pivot.years) === JSON.stringify([2022, 2023, 2024, 2025]),
-    'les années sont 2022-2025 (pas 1970/1971/1972) quand "Année" est une colonne Numeric');
-  ok(pivot.sansDate === 0, 'aucune thèse n\'est comptée "sans date" — la valeur Numeric est bien reconnue comme année');
+  ok(pivot.totalNb === 3,
+    '"Type de financement" mappé : seules les 3 lignes valant CIFRE / "CIFRE + ANR" comptent (pas EUROPEEN ni CDD STANDARD)');
+  const diagText = await page.locator('#diag-line').textContent();
+  ok(diagText.includes('5 ligne(s) reçue(s) de Grist') && diagText.includes('3 comptée(s) comme CIFRE'),
+    'le diagnostic confirme 5 lignes reçues mais seulement 3 réellement CIFRE');
 
   ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
   await context.close();
@@ -552,6 +556,7 @@ try {
   await testContactsCreateFlow(browser);
   await testOpportunitesDateSave(browser);
   await testCifreDashboard(browser);
+  await testCifreDashboardTypeFinancementColumn(browser);
   await testCifreDashboardNumericYear(browser);
 } finally {
   await browser.close();
