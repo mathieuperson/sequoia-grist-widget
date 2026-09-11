@@ -532,6 +532,7 @@ body {
 @media (max-width: 640px) {
   .sidebar { width: 200px; }
   .info-grid { grid-template-columns: 1fr; }
+  .filter-panel { grid-template-columns: 1fr; }
 }
 
 /* Filter panel / list controls — shared pattern (see index.html) */
@@ -555,6 +556,9 @@ body {
 .toggle-row input { cursor: pointer; }
 
 .filter-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   border: none;
   background: none;
   color: var(--sequoia-green-dark, var(--sequoia-green));
@@ -563,16 +567,34 @@ body {
   padding: 2px 0;
 }
 
+.filter-toggle-btn .filter-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--sequoia-green);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+}
+
 .filter-panel {
   margin-top: 10px;
-  padding-top: 10px;
-  border-top: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 12px;
 }
 
 .filter-panel[hidden] { display: none; }
+
+.filter-field { min-width: 0; }
 
 .filter-field label {
   display: block;
@@ -589,12 +611,31 @@ body {
   border: 1px solid var(--border);
   border-radius: 6px;
   font-size: 12.5px;
-  background: var(--bg);
+  background: #fff;
   color: var(--text);
+  transition: border-color .15s, box-shadow .15s;
+}
+
+.filter-field select:hover { border-color: var(--sequoia-green); }
+
+.filter-field select:focus {
+  outline: none;
+  border-color: var(--sequoia-green);
+  box-shadow: 0 0 0 3px var(--sequoia-green-light);
+}
+
+/* Marque visuellement un filtre actif (posée par le JS via une classe, pas
+   via :has() — pas de garantie de support). */
+.filter-field select.is-active {
+  border-color: var(--sequoia-green);
+  background: var(--sequoia-green-light);
+  color: var(--sequoia-green-dark);
+  font-weight: 600;
 }
 
 .filter-reset {
-  align-self: flex-start;
+  grid-column: 1 / -1;
+  justify-self: start;
   border: none;
   background: none;
   color: var(--text-muted);
@@ -603,5 +644,53 @@ body {
   cursor: pointer;
   padding: 0;
 }
+
+/* Puces de filtres actifs — visibles même panneau replié, chacune retirable. */
+.active-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.active-chips[hidden] { display: none; }
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 3px 6px 3px 10px;
+  border-radius: 999px;
+  background: var(--sequoia-green-light);
+  color: var(--sequoia-green-dark);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chip button {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: inherit;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+.chip button:hover { background: rgba(0, 0, 0, 0.1); }
 
 .count-muted { color: var(--text-muted); }

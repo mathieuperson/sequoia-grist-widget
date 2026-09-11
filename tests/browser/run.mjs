@@ -1117,7 +1117,7 @@ async function testCartographieFiltres(browser) {
         data: {
           id: [1, 2, 3],
           nom_acteur: ['Orange', 'Cooperl', 'Prospect SAS'],
-          type_acteur: ['Entreprise', 'Entreprise', 'Entreprise'],
+          type_acteur: ['Entreprise', 'Institution', 'Association'],
           acteur_categorie: ['Partenaire', 'Partenaire', 'Prospect'],
           entreprise_activite: ['Télécoms', 'Agroalimentaire', 'Télécoms'],
           entreprise_taille: ['Grand groupe', 'ETI', 'PME'],
@@ -1159,6 +1159,24 @@ async function testCartographieFiltres(browser) {
   ok((await page.locator('#count').textContent()) === '1', 'filtrer par Axe SequoIA = "Axe 2" ne garde que Cooperl');
   ok((await page.locator('.list-item .name').first().textContent()) === 'Cooperl', 'la liste reflète le filtre par axe');
 
+  // Modern filter UX: active-filter badge on the toggle button, a removable chip,
+  // and a highlighted <select>.
+  ok((await page.locator('#filter-toggle').textContent()).includes('1'),
+    'le bouton "Filtres" affiche le nombre de filtres actifs (pastille)');
+  ok(await page.locator('#filter-axe_sequoia').evaluate(el => el.classList.contains('is-active')),
+    'le <select> Axe SequoIA actif est surligné');
+  const chipText = await page.locator('#active-chips .chip').textContent();
+  ok(chipText.includes('Axe SequoIA') && chipText.includes('Axe 2'), 'une puce de filtre actif apparaît (Axe SequoIA : Axe 2)');
+
+  // Removing the filter via the chip's × button clears it, same as the reset button.
+  await page.click('#active-chips .chip button');
+  await page.waitForTimeout(50);
+  ok((await page.locator('#count').textContent()) === '3', 'retirer la puce réaffiche toutes les structures cochées');
+  ok(await page.locator('#active-chips').isHidden(), 'plus de puce une fois le filtre retiré');
+  ok(!(await page.locator('#filter-toggle').textContent()).match(/\d/), 'le bouton "Filtres" ne montre plus de pastille');
+
+  await page.selectOption('#filter-axe_sequoia', 'Axe 2');
+  await page.waitForTimeout(50);
   await page.click('#filter-reset');
   await page.waitForTimeout(50);
   ok((await page.locator('#count').textContent()) === '3', 'réinitialiser les filtres réaffiche toutes les structures cochées');
@@ -1166,6 +1184,12 @@ async function testCartographieFiltres(browser) {
   // List item markup follows the shared .list-item/.name/.sub convention (contacts.html).
   ok(await page.locator('.list-item .name').count() === 3, 'chaque structure a un .name dans la liste');
   ok(await page.locator('.list-item .sub').count() === 3, 'chaque structure a un .sub dans la liste');
+
+  // Markers are colored by Type d'acteur (dedicated palette), not by Pilier SequoIA
+  // (which will become multi-select and can't drive a single pin color).
+  ok(await page.locator('.pin').count() === 3, 'les 3 structures affichées ont un marqueur .pin');
+  const pinBackgrounds = await page.locator('.pin').evaluateAll(els => els.map(el => getComputedStyle(el).backgroundImage + getComputedStyle(el).backgroundColor));
+  ok(new Set(pinBackgrounds).size > 1, "des couleurs différentes selon le Type d'acteur (pas une couleur unique)");
 
   ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
   await context.close();

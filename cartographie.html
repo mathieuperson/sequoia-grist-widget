@@ -7,6 +7,24 @@
 <link rel="stylesheet" href="vendor/leaflet.css">
 <link rel="stylesheet" href="vendor/MarkerCluster.css">
 <style>
+  /* Couleurs des marqueurs, par Type d'acteur — dédiées et distinctes des
+     couleurs de piliers SequoIA (--pilier-core/-secu/-env, réservées aux
+     badges de pilier). Progression Institution → Académique → Recherche →
+     Innovation → Économique → Association, vérifiée avec le validateur de
+     palette (scripts/validate_palette.js du skill dataviz) : bande de
+     luminosité, plancher de chroma, séparation daltonisme et contraste OK,
+     y compris paire à paire contre les 3 couleurs de pilier.
+     --pilier-core (#8c62b3), --pilier-secu (#4fa5d8) et --pilier-env (#4cae8c)
+     restent réservées aux badges de pilier — ne pas les réutiliser ici. */
+  :root {
+    --type-institution: #1d4ed8;
+    --type-academique: #d97706;
+    --type-recherche: #be185d;
+    --type-innovation: #854d0e;
+    --type-economique: #047857;
+    --type-association: #b91c1c;
+  }
+
   /* ---------- Carte ---------- */
   #map {
     flex: 1;
@@ -23,8 +41,10 @@
 
   .map-toolbar {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 10px;
+    row-gap: 6px;
     padding: 8px 12px;
     background: var(--card-bg);
     border-bottom: 1px solid var(--border);
@@ -76,11 +96,10 @@
     background: var(--text-muted);
   }
 
-  .pin.core { background: var(--pilier-core); }
-  .pin.secu { background: var(--pilier-secu); }
-  .pin.env  { background: var(--pilier-env); }
-  .pin.multi { background: var(--cluster-gradient); }
-  .pin.autre { background: var(--text-muted); }
+  /* La couleur (Type d'acteur) est posée en style inline par le JS
+     (pinBackground()) : ChoiceList possible côté Grist, dégradé si plusieurs
+     types reconnus, gris de repli sinon — trop de combinaisons pour des
+     classes CSS figées. */
 
   .pin.is-active {
     outline: 3px solid var(--sequoia-green);
@@ -136,7 +155,21 @@
     line-height: 1.25;
   }
 
-  .pop-type { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+  .pop-type {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-top: 2px;
+  }
+
+  .pop-type-dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
 
   .pop-pills { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
 
@@ -232,6 +265,7 @@
         </div>
         <button class="filter-reset" id="filter-reset" type="button">Réinitialiser les filtres</button>
       </div>
+      <div class="active-chips" id="active-chips" hidden></div>
     </div>
     <div class="list" id="list"></div>
   </aside>
@@ -242,9 +276,12 @@
       <span id="nogeo" class="count-muted"></span>
       <span class="spacer"></span>
       <div class="legend">
-        <span class="legend-item"><i class="legend-dot" style="background:var(--pilier-core)"></i>IA fondamentale</span>
-        <span class="legend-item"><i class="legend-dot" style="background:var(--pilier-secu)"></i>IA &amp; sécurité</span>
-        <span class="legend-item"><i class="legend-dot" style="background:var(--pilier-env)"></i>IA &amp; environnement</span>
+        <span class="legend-item"><i class="legend-dot" style="background:var(--type-institution)"></i>Institution</span>
+        <span class="legend-item"><i class="legend-dot" style="background:var(--type-academique)"></i>Académique</span>
+        <span class="legend-item"><i class="legend-dot" style="background:var(--type-recherche)"></i>Recherche</span>
+        <span class="legend-item"><i class="legend-dot" style="background:var(--type-innovation)"></i>Innovation</span>
+        <span class="legend-item"><i class="legend-dot" style="background:var(--type-economique)"></i>Économique</span>
+        <span class="legend-item"><i class="legend-dot" style="background:var(--type-association)"></i>Association</span>
       </div>
       <button id="fit" type="button">Recadrer</button>
     </div>
@@ -271,6 +308,10 @@
 
   // Suit la convention des autres widgets : Pilier SequoIA d'abord, Axe SequoIA ensuite.
   const FILTER_FIELDS = ['type_acteur', 'acteur_categorie', 'entreprise_activite', 'entreprise_taille', 'pilier_sequoia', 'axe_sequoia'];
+  const FILTER_LABELS = {
+    type_acteur: "Type d'acteur", acteur_categorie: 'Catégorie', entreprise_activite: 'Activité',
+    entreprise_taille: 'Taille', pilier_sequoia: 'Pilier SequoIA', axe_sequoia: 'Axe SequoIA'
+  };
   const activeFilters = {
     type_acteur: '', acteur_categorie: '', entreprise_activite: '', entreprise_taille: '',
     pilier_sequoia: '', axe_sequoia: ''
@@ -346,15 +387,42 @@
     return [lat, lon];
   }
 
-  // Une structure peut porter plusieurs piliers : une seule couleur possible sur
-  // le pin, donc dégradé "multi" au-delà d'un pilier.
-  function pinClass(record) {
-    const values = listValues(record.pilier_sequoia);
-    if (values.length === 0) return 'autre';
-    const classes = Array.from(new Set(values.map(v => pilierClass(v)).filter(Boolean)));
-    if (classes.length === 0) return 'autre';
-    if (classes.length > 1) return 'multi';
-    return classes[0];
+  // Couleur des marqueurs = Type d'acteur (pas Pilier SequoIA : ce dernier
+  // pourra bientôt être multi-sélection côté Grist, donc pas une bonne source
+  // pour une couleur unique de pin — les piliers restent affichés en badges
+  // dans la bulle). Palette dédiée dans :root (--type-*), distincte des
+  // couleurs de piliers.
+  const TYPE_COLORS = {
+    institution: 'var(--type-institution)',
+    academique: 'var(--type-academique)',
+    recherche: 'var(--type-recherche)',
+    innovation: 'var(--type-innovation)',
+    economique: 'var(--type-economique)',
+    association: 'var(--type-association)'
+  };
+
+  function typeActeurClass(value) {
+    if (!value) return '';
+    const v = String(value).toLowerCase();
+    if (v.includes('institution')) return 'institution';
+    if (v.includes('académique') || v.includes('academique') || v.includes('formation')) return 'academique';
+    if (v.includes('recherche')) return 'recherche';
+    if (v.includes('innovation')) return 'innovation';
+    if (v.includes('économique') || v.includes('economique') || v.includes('entreprise')) return 'economique';
+    if (v.includes('association')) return 'association';
+    return '';
+  }
+
+  // Un acteur peut porter plusieurs types (ChoiceList) : dégradé si plusieurs
+  // couleurs reconnues, chaîne vide (repli gris du CSS) si aucune.
+  function pinBackground(record) {
+    const classes = Array.from(new Set(listValues(record.type_acteur).map(typeActeurClass).filter(Boolean)));
+    if (classes.length === 0) return '';
+    if (classes.length === 1) return TYPE_COLORS[classes[0]];
+    const step = 100 / classes.length;
+    const stops = classes.map((c, i) =>
+      TYPE_COLORS[c] + ' ' + Math.round(i * step) + '%, ' + TYPE_COLORS[c] + ' ' + Math.round((i + 1) * step) + '%');
+    return 'linear-gradient(135deg, ' + stops.join(', ') + ')';
   }
 
   function matchesFilters(record) {
@@ -390,13 +458,14 @@
 
     const type = [listText(record.type_acteur), listText(record.entreprise_taille)]
       .filter(Boolean).join(' · ');
+    const typeColor = pinBackground(record) || 'var(--text-muted)';
 
     return ''
       + '<div class="pop">'
       +   '<div class="pop-head">'
       +     '<div class="pop-logo">' + logo + '</div>'
       +     '<div><div class="pop-name">' + name + '</div>'
-      +       (type ? '<div class="pop-type">' + escapeHtml(type) + '</div>' : '')
+      +       (type ? '<div class="pop-type"><i class="pop-type-dot" style="background:' + typeColor + '"></i>' + escapeHtml(type) + '</div>' : '')
       +     '</div>'
       +   '</div>'
       +   (pills ? '<div class="pop-pills">' + pills + '</div>' : '')
@@ -439,11 +508,12 @@
     visible.forEach(record => {
       const coords = coordsOf(record);
       if (!coords) return;
+      const bg = pinBackground(record);
       const marker = L.marker(coords, {
         title: record.nom_acteur || '',
         icon: L.divIcon({
           className: '',
-          html: '<div class="pin ' + pinClass(record) + '"></div>',
+          html: '<div class="pin"' + (bg ? ' style="background:' + bg + '"' : '') + '></div>',
           iconSize: [22, 22],
           iconAnchor: [11, 22],
           popupAnchor: [0, -20]
@@ -519,7 +589,43 @@
       select.value = values.includes(previous) ? previous : '';
       activeFilters[field] = select.value;
     });
+    updateFilterUI();
   }
+
+  // Puces de filtres actifs (retirables) + pastille de compte sur le bouton
+  // "Filtres" + surlignage des <select> actifs — tout est dérivé d'une seule
+  // fonction pour rester synchronisé quel que soit le point d'entrée
+  // (sélection, réinitialisation, repeuplement des options).
+  function updateFilterUI() {
+    FILTER_FIELDS.forEach(field => {
+      document.getElementById('filter-' + field).classList.toggle('is-active', !!activeFilters[field]);
+    });
+
+    const active = FILTER_FIELDS.filter(field => activeFilters[field]);
+    const toggleBtn = document.getElementById('filter-toggle');
+    const panelHidden = document.getElementById('filter-panel').hidden;
+    toggleBtn.innerHTML = 'Filtres'
+      + (active.length ? ' <span class="filter-count">' + active.length + '</span>' : '')
+      + ' ' + (panelHidden ? '▾' : '▴');
+
+    const chipsEl = document.getElementById('active-chips');
+    chipsEl.hidden = active.length === 0;
+    chipsEl.innerHTML = active.map(field =>
+      '<span class="chip"><span>' + escapeHtml(FILTER_LABELS[field]) + ' : ' + escapeHtml(activeFilters[field]) + '</span>'
+      + '<button type="button" data-field="' + field + '" aria-label="Retirer le filtre ' + escapeHtml(FILTER_LABELS[field]) + '">×</button></span>'
+    ).join('');
+  }
+
+  document.getElementById('active-chips').addEventListener('click', event => {
+    const btn = event.target.closest('button[data-field]');
+    if (!btn) return;
+    const field = btn.dataset.field;
+    document.getElementById('filter-' + field).value = '';
+    activeFilters[field] = '';
+    updateFilterUI();
+    render();
+    fitToMarkers();
+  });
 
   function showGeoError() {
     document.getElementById('map').innerHTML =
@@ -536,7 +642,7 @@
   document.getElementById('filter-toggle').addEventListener('click', () => {
     const panel = document.getElementById('filter-panel');
     panel.hidden = !panel.hidden;
-    document.getElementById('filter-toggle').textContent = panel.hidden ? 'Filtres ▾' : 'Filtres ▴';
+    updateFilterUI();
   });
   document.getElementById('filter-reset').addEventListener('click', () => {
     FILTER_FIELDS.forEach(field => {
@@ -544,12 +650,14 @@
       activeFilters[field] = '';
     });
     document.getElementById('search').value = '';
+    updateFilterUI();
     render();
     fitToMarkers();
   });
   FILTER_FIELDS.forEach(field => {
     document.getElementById('filter-' + field).addEventListener('change', event => {
       activeFilters[field] = event.target.value;
+      updateFilterUI();
       render();
       fitToMarkers();
     });
