@@ -127,9 +127,17 @@
   }
 
   // ---------- Pure computation (testable without Grist) ----------
-  function yearOf(dateEpochSeconds) {
-    if (dateEpochSeconds == null || dateEpochSeconds === '') return null;
-    const iso = gristDateToInputValue(dateEpochSeconds); // 'YYYY-MM-DD'
+  // "Date de début" can be mapped to either a real Grist Date column (epoch
+  // seconds — huge numbers, e.g. ~1.6e9 for 2022) or a plain "Année" Numeric
+  // column holding the calendar year directly (e.g. 2022). Treating the
+  // latter as epoch-seconds lands on 1970-01-01 plus a few minutes — that's
+  // the "1970/1971/1972" bug. Anything already in a plausible calendar-year
+  // range is used as-is; only larger numbers go through the epoch-seconds
+  // conversion.
+  function yearOf(value) {
+    if (value == null || value === '') return null;
+    if (typeof value === 'number' && value >= 1900 && value <= 2100) return Math.trunc(value);
+    const iso = gristDateToInputValue(value); // 'YYYY-MM-DD'
     return iso ? Number(iso.slice(0, 4)) : null;
   }
 
