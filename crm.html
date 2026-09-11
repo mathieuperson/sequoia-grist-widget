@@ -690,7 +690,7 @@
     if (!query) return true;
     const haystack = [
       structField(s, 'Nom'), structField(s, 'Categorie'), structField(s, 'TypeActeur'),
-      structField(s, 'Activite'), structField(s, 'AxeSequoia'), structField(s, 'PilierSequoia')
+      structField(s, 'Activite'), structField(s, 'PilierSequoia'), structField(s, 'AxeSequoia')
     ].join(' ').toLowerCase();
     return haystack.includes(query);
   }
@@ -1160,8 +1160,8 @@
         selectField('m-categorie', 'Catégorie', structField(s, 'Categorie')) +
         selectField('m-activite', 'Activité', structField(s, 'Activite')) +
         selectField('m-taille', 'Taille', structField(s, 'Taille')) +
-        textField('m-axe', 'Axe SequoIA', structField(s, 'AxeSequoia')) +
         textField('m-pilier', 'Pilier SequoIA', structField(s, 'PilierSequoia')) +
+        textField('m-axe', 'Axe SequoIA', structField(s, 'AxeSequoia')) +
         textField('m-site', 'Site web', structField(s, 'SiteWeb'), true) +
         textField('m-logo', 'URL du logo', structField(s, 'Logo'), true) +
         textField('m-rstructure', 'Structure de recherche', structField(s, 'RechercheStructure')) +
@@ -1179,8 +1179,8 @@
       bind('m-categorie', 'Categorie');
       bind('m-activite', 'Activite');
       bind('m-taille', 'Taille');
-      bind('m-axe', 'AxeSequoia');
       bind('m-pilier', 'PilierSequoia');
+      bind('m-axe', 'AxeSequoia');
       bind('m-site', 'SiteWeb');
       bind('m-logo', 'Logo');
       bind('m-rstructure', 'RechercheStructure');

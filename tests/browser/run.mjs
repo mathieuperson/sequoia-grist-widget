@@ -53,6 +53,14 @@ async function openWidget(browser, file, cfg) {
   await page.route('**/cdn.jsdelivr.net/**/purify*', (route) => {
     route.fulfill({ contentType: 'application/javascript', body: 'window.DOMPurify = { sanitize: (s) => s };' });
   });
+  // OSM tile requests (cartographie.html) are blocked by this sandbox's egress
+  // proxy — stub a 1x1 transparent PNG so tile loads don't surface as failed
+  // resource loads in the console-errors assertion.
+  const BLANK_PNG = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
+  await page.route('**openstreetmap.org**', (route) => {
+    route.fulfill({ contentType: 'image/png', body: BLANK_PNG });
+  });
 
   await page.goto('file://' + path.join(REPO, file));
   await page.waitForTimeout(150); // let the async onRecords/onRecord fire
@@ -1094,6 +1102,75 @@ async function testCrmSuggestionsRecherche(browser) {
   await context.close();
 }
 
+async function testCartographieFiltres(browser) {
+  console.log('\n=== cartographie.html : filtres (catégorie, axe SequoIA) + panneau ===');
+  const cfg = {
+    widgetTableId: 'Structures',
+    baseUrl: 'https://mock.grist.local/api/docs/mockdoc',
+    tables: {
+      Structures: {
+        colIds: [
+          'nom_acteur', 'type_acteur', 'acteur_categorie', 'entreprise_activite',
+          'entreprise_taille', 'pilier_sequoia', 'axe_sequoia', 'latitude', 'longitude',
+          'url_logo', 'url_site_web'
+        ],
+        data: {
+          id: [1, 2, 3],
+          nom_acteur: ['Orange', 'Cooperl', 'Prospect SAS'],
+          type_acteur: ['Entreprise', 'Entreprise', 'Entreprise'],
+          acteur_categorie: ['Partenaire', 'Partenaire', 'Prospect'],
+          entreprise_activite: ['Télécoms', 'Agroalimentaire', 'Télécoms'],
+          entreprise_taille: ['Grand groupe', 'ETI', 'PME'],
+          pilier_sequoia: [['L', 'IA fondamentale'], ['L', 'Sécurité'], ['L', 'IA fondamentale']],
+          axe_sequoia: [['L', 'Axe 1'], ['L', 'Axe 2'], ['L', 'Axe 1']],
+          latitude: [48.11, 48.2, 47.9],
+          longitude: [-1.68, -2.9, -1.5],
+          url_logo: [null, null, null],
+          url_site_web: [null, null, null]
+        }
+      }
+    },
+    mappings: {}
+  };
+
+  const { page, context, consoleErrors } = await openWidget(browser, 'cartographie.html', cfg);
+  await page.waitForTimeout(150);
+
+  ok(await page.locator('.map-error').count() === 0, 'les colonnes latitude/longitude sont détectées (pas de bandeau d\'erreur)');
+  ok((await page.locator('#count').textContent()) === '2', 'le prospect est masqué par défaut (2 structures affichées sur 3)');
+
+  await page.check('#show-prospects');
+  await page.waitForTimeout(50);
+  ok((await page.locator('#count').textContent()) === '3', 'cocher "Afficher les prospects" fait apparaître la 3e structure');
+
+  // Filter panel starts collapsed and toggles via the shared .filter-toggle-btn.
+  ok(await page.locator('#filter-panel').isHidden(), 'le panneau de filtres est replié par défaut');
+  await page.click('#filter-toggle');
+  await page.waitForTimeout(30);
+  ok(await page.locator('#filter-panel').isVisible(), 'cliquer sur "Filtres" déplie le panneau');
+
+  const axeOptions = await page.locator('#filter-axe_sequoia option').allTextContents();
+  ok(axeOptions.includes('Axe 1') && axeOptions.includes('Axe 2'), 'le filtre Axe SequoIA liste bien les axes présents');
+  const catOptions = await page.locator('#filter-acteur_categorie option').allTextContents();
+  ok(catOptions.includes('Partenaire') && catOptions.includes('Prospect'), 'le filtre Catégorie liste bien les catégories présentes');
+
+  await page.selectOption('#filter-axe_sequoia', 'Axe 2');
+  await page.waitForTimeout(50);
+  ok((await page.locator('#count').textContent()) === '1', 'filtrer par Axe SequoIA = "Axe 2" ne garde que Cooperl');
+  ok((await page.locator('.list-item .name').first().textContent()) === 'Cooperl', 'la liste reflète le filtre par axe');
+
+  await page.click('#filter-reset');
+  await page.waitForTimeout(50);
+  ok((await page.locator('#count').textContent()) === '3', 'réinitialiser les filtres réaffiche toutes les structures cochées');
+
+  // List item markup follows the shared .list-item/.name/.sub convention (contacts.html).
+  ok(await page.locator('.list-item .name').count() === 3, 'chaque structure a un .name dans la liste');
+  ok(await page.locator('.list-item .sub').count() === 3, 'chaque structure a un .sub dans la liste');
+
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
 // PLAYWRIGHT_CHROMIUM_PATH lets a sandboxed/offline environment point at a
 // pre-installed browser (no network access to download one); omit it to use
 // Playwright's own managed install (after `npx playwright install chromium`).
@@ -1118,6 +1195,7 @@ try {
   await testCrmLiensMultiColonnes(browser);
   await testCrmContactsCluster(browser);
   await testCrmSuggestionsRecherche(browser);
+  await testCartographieFiltres(browser);
 } finally {
   await browser.close();
 }

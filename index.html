@@ -735,10 +735,10 @@
           '<div class="info-grid">' +
             economiqueFields +
             rechercheFields +
-            '<div class="info-item"><div class="label">Axe Sequoia</div><div class="value">' + axe + '</div></div>' +
             '<div class="info-item"><div class="label">Pilier Sequoia</div><div class="value">' +
               (pilier ? '<span class="value-pill ' + pilierClass(pilier) + '">' + pilier + '</span>' : '') +
             '</div></div>' +
+            '<div class="info-item"><div class="label">Axe Sequoia</div><div class="value">' + axe + '</div></div>' +
             '<div class="info-item"><div class="label">Site web</div><div class="value">' +
               (record.url_site_web ? '<a href="' + record.url_site_web + '" target="_blank" rel="noopener">' + record.url_site_web + ' ↗</a>' : '') +
             '</div></div>' +
@@ -783,8 +783,8 @@
             '<div class="info-item"><div class="label">Structure de recherche</div><input class="editable-input" id="f-recherche-structure" value="' + (record.recherche_structure || '') + '"></div>' +
             '<div class="info-item"><div class="label">Équipe / activité</div><input class="editable-input" id="f-recherche-equipe-activite" value="' + (record.recherche_equipe_activite || '') + '"></div>' +
             '<div class="info-item"><div class="label">Laboratoire</div><input class="editable-input" id="f-recherche-equipe-labo" value="' + (record.recherche_equipe_labo || '') + '"></div>' +
-            '<div class="info-item"><div class="label">Axe Sequoia</div><input class="editable-input" id="f-axe-sequoia" value="' + pilierText(record.axe_sequoia) + '"></div>' +
             '<div class="info-item"><div class="label">Pilier Sequoia</div><input class="editable-input" id="f-pilier-sequoia" value="' + pilierText(record.pilier_sequoia) + '"></div>' +
+            '<div class="info-item"><div class="label">Axe Sequoia</div><input class="editable-input" id="f-axe-sequoia" value="' + pilierText(record.axe_sequoia) + '"></div>' +
             '<div class="info-item"><div class="label">Site web</div><input class="editable-input" id="f-url-site-web" value="' + (record.url_site_web || '') + '"></div>' +
           '</div>' +
         '</div>' +
@@ -804,8 +804,8 @@
     bindInput('f-recherche-structure', record.id, 'recherche_structure', statusEl);
     bindInput('f-recherche-equipe-activite', record.id, 'recherche_equipe_activite', statusEl);
     bindInput('f-recherche-equipe-labo', record.id, 'recherche_equipe_labo', statusEl);
-    bindInput('f-axe-sequoia', record.id, 'axe_sequoia', statusEl);
     bindInput('f-pilier-sequoia', record.id, 'pilier_sequoia', statusEl);
+    bindInput('f-axe-sequoia', record.id, 'axe_sequoia', statusEl);
     bindInput('f-url-site-web', record.id, 'url_site_web', statusEl);
 
     document.getElementById('toggle-edit').addEventListener('click', () => {
