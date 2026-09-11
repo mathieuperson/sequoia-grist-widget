@@ -6,6 +6,10 @@ export function choiceCol(id, choices) {
   return { id, fields: { type: 'Choice', widgetOptions: JSON.stringify({ choices }) } };
 }
 
+export function refCol(id, type, label) {
+  return { id, fields: { type, label } };
+}
+
 export const D = (y, m, d) => Date.UTC(y, m - 1, d) / 1000;
 
 export function crmConfig() {
@@ -18,20 +22,21 @@ export function crmConfig() {
           'entreprise_taille', 'axe_sequoia', 'pilier_sequoia', 'url_site_web', 'url_logo',
           'recherche_structure', 'recherche_equipe_activite', 'recherche_equipe_labo'],
         data: {
-          id: [1, 2, 3],
-          nom_acteur: ['Thales', 'Zenika', 'Inria Rennes'],
-          description: ['Groupe de défense et aéronautique', '', ''],
-          type_acteur: ['Economique', 'Economique', 'Recherche'],
-          acteur_categorie: ['Partenaire', 'Prospect', 'Partenaire'],
-          entreprise_activite: ['Défense', 'Conseil IT', ''],
-          entreprise_taille: ['Grand groupe', 'PME', ''],
-          axe_sequoia: ['IA de confiance', '', ''],
-          pilier_sequoia: ['IA & sécurité', '', 'IA fondamentale'],
-          url_site_web: ['https://www.thalesgroup.com', '', ''],
-          url_logo: ['', '', ''],
-          recherche_structure: ['', '', 'Inria'],
-          recherche_equipe_activite: ['', '', ''],
-          recherche_equipe_labo: ['', '', '']
+          // #4 (b<>com) n'a strictement rien de lié : c'est le cas "fiche vide".
+          id: [1, 2, 3, 4],
+          nom_acteur: ['Thales', 'Zenika', 'Inria Rennes', 'b<>com'],
+          description: ['Groupe de défense et aéronautique', '', '', ''],
+          type_acteur: ['Economique', 'Economique', 'Recherche', 'Recherche'],
+          acteur_categorie: ['Partenaire', 'Prospect', 'Partenaire', 'Partenaire'],
+          entreprise_activite: ['Défense', 'Conseil IT', '', ''],
+          entreprise_taille: ['Grand groupe', 'PME', '', ''],
+          axe_sequoia: ['IA de confiance', '', '', ''],
+          pilier_sequoia: ['IA & sécurité', '', 'IA fondamentale', ''],
+          url_site_web: ['https://www.thalesgroup.com', '', '', ''],
+          url_logo: ['', '', '', ''],
+          recherche_structure: ['', '', 'Inria', 'IRT'],
+          recherche_equipe_activite: ['', '', '', ''],
+          recherche_equipe_labo: ['', '', '', '']
         }
       },
       Contacts: {
@@ -54,22 +59,28 @@ export function crmConfig() {
         }
       },
       Interactions: {
-        colIds: ['Date', 'Type', 'Partenaires', 'Objet', 'ContactPartenaire', 'ProchaineEcheance',
-          'Suites', 'Opportunites', 'CR', 'PJ'],
+        colIds: ['Date', 'Type', 'Partenaires', 'Objet', 'ContactPartenaire', 'ContactCluster',
+          'LaboratoireCluster', 'ProchaineEcheance', 'Suites', 'Opportunites', 'CR', 'PJ'],
         data: {
-          id: [20, 21, 22],
-          Date: [D(2026, 3, 14), D(2026, 1, 28), D(2025, 12, 9)],
-          Type: ['Réunion', 'Appel', 'Atelier'],
-          Partenaires: [['L', 1], ['L', 1], ['L', 2]],
-          Objet: ['Revue annuelle du partenariat', 'Calage du budget', 'Atelier sécurité'],
-          ContactPartenaire: [['L', 10, 11], ['L', 11], ['L', 12]],
+          id: [20, 21, 22, 23],
+          Date: [D(2026, 3, 14), D(2026, 1, 28), D(2025, 12, 9), D(2026, 5, 20)],
+          Type: ['Réunion', 'Appel', 'Atelier', 'Visio'],
+          // #23 est saisie depuis la fiche Zenika : Inria Rennes (#3) n'y
+          // apparaît que comme laboratoire, jamais comme partenaire.
+          Partenaires: [['L', 1], ['L', 1], ['L', 2], ['L', 2]],
+          Objet: ['Revue annuelle du partenariat', 'Calage du budget', 'Atelier sécurité',
+            'Montage thèse CIFRE'],
+          ContactPartenaire: [['L', 10, 11], ['L', 11], ['L', 12], ['L', 12]],
+          ContactCluster: [null, null, null, null],
+          LaboratoireCluster: [null, null, null, ['L', 3]],
           // Far enough out that "prochaine action" stays in the future whenever
           // the suite runs.
-          ProchaineEcheance: [D(2030, 3, 1), null, null],
-          Suites: ['Envoyer la note de cadrage', '', ''],
-          Opportunites: [null, null, null],
-          CR: ['<p>Thales confirme son intérêt pour la chaire IA de confiance.</p>', '<p>Budget prévisionnel calé.</p>', ''],
-          PJ: [['L', 501], null, null]
+          ProchaineEcheance: [D(2030, 3, 1), null, null, null],
+          Suites: ['Envoyer la note de cadrage', '', '', ''],
+          Opportunites: [null, null, null, null],
+          CR: ['<p>Thales confirme son intérêt pour la chaire IA de confiance.</p>',
+            '<p>Budget prévisionnel calé.</p>', '', '<p>Co-encadrement avec le laboratoire.</p>'],
+          PJ: [['L', 501], null, null, null]
         }
       },
       Opportunites: {
@@ -106,9 +117,21 @@ export function crmConfig() {
         choiceCol('entreprise_activite', ['Défense', 'Conseil IT', 'Cybersécurité']),
         choiceCol('entreprise_taille', ['PME', 'ETI', 'Grand groupe'])
       ],
-      Interactions: [choiceCol('Type', ['Réunion', 'Appel', 'Visio', 'Webinaire'])],
-      Opportunites: [choiceCol('Statut', ['Prospection', 'Qualification', 'Montage',
-        'Contractualisation', 'Concrétisé', 'Abandonné'])]
+      Interactions: [
+        choiceCol('Type', ['Réunion', 'Appel', 'Visio', 'Webinaire']),
+        refCol('Partenaires', 'RefList:Structures', 'Partenaire(s)'),
+        refCol('LaboratoireCluster', 'RefList:Structures', 'Laboratoire Cluster'),
+        refCol('ContactPartenaire', 'RefList:Contacts', 'Contact(s) partenaire'),
+        refCol('ContactCluster', 'RefList:Contacts', 'Contact(s) cluster')
+      ],
+      Opportunites: [
+        choiceCol('Statut', ['Prospection', 'Qualification', 'Montage',
+          'Contractualisation', 'Concrétisé', 'Abandonné']),
+        refCol('Partenaires', 'RefList:Structures', 'Partenaire(s)'),
+        refCol('ContactPartenaire', 'RefList:Contacts', 'Contact(s) partenaire'),
+        refCol('ContactCluster', 'RefList:Contacts', 'Contact(s) Cluster')
+      ],
+      Contacts: [refCol('Structures', 'RefList:Structures', 'Structure(s)')]
     }
   };
 }

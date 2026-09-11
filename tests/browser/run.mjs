@@ -627,7 +627,7 @@ async function testCrmFiche(browser) {
   console.log('\n=== crm.html : fiche 360 (lecture) ===');
   const { page, context, consoleErrors } = await openCrm(browser);
 
-  ok((await page.locator('.list-item').count()) === 3, 'les 3 structures sont listées');
+  ok((await page.locator('.list-item').count()) === 4, 'les 4 structures sont listées');
 
   // Column resolution across tables the widget isn't mapped onto.
   const cols = await page.evaluate(() => window.__crm.related);
@@ -684,7 +684,7 @@ async function testCrmFiche(browser) {
   ok((await page.locator('.tl-item').textContent()).includes('Calage du budget'), 'avec son objet');
 
   // Structure sans données liées
-  await page.locator('.list-item', { hasText: 'Inria' }).click();
+  await page.locator('.list-item', { hasText: 'b<>com' }).click();
   await page.waitForTimeout(200);
   const mainText = await page.locator('#main').textContent();
   ok(mainText.includes('Aucun contact rattaché'), 'structure sans contact : état vide explicite');
@@ -700,7 +700,7 @@ async function testCrmFiche(browser) {
     'le filtre "Prospects" ne garde que les structures de catégorie Prospect');
   await page.click('.filter-chip[data-filter="relancer"]');
   await page.waitForTimeout(100);
-  ok((await page.locator('.list-item').count()) === 3,
+  ok((await page.locator('.list-item').count()) === 4,
     'le filtre "À relancer" remonte les structures sans contact récent');
   await page.click('.filter-chip[data-filter="tous"]');
   await page.fill('#search', 'zenika');
@@ -957,6 +957,116 @@ async function testCifreDashboardNumericYear(browser) {
   await context.close();
 }
 
+
+async function testCrmLiensMultiColonnes(browser) {
+  console.log('\n=== crm.html : interaction rattachée par une autre colonne que Partenaire(s) ===');
+  const { page, context, consoleErrors } = await openCrm(browser);
+
+  // Le bug remonté : une interaction saisie depuis la fiche d'un partenaire
+  // (Zenika) qui cite Inria Rennes en "Laboratoire Cluster" n'apparaissait pas
+  // du tout sur la fiche d'Inria.
+  await page.locator('.list-item', { hasText: 'Inria' }).click();
+  await page.waitForTimeout(300);
+
+  const kpis = await page.evaluate(() => window.__crm.kpis);
+  ok(kpis.nbInteractions === 1,
+    'la fiche Inria compte l\'interaction où elle figure comme laboratoire');
+  const timeline = await page.locator('#main').textContent();
+  ok(timeline.includes('Montage thèse CIFRE'), 'l\'interaction apparaît dans l\'historique');
+  ok(timeline.includes('Laboratoire Cluster'),
+    'une pastille indique par quelle colonne la ligne est rattachée (Laboratoire Cluster)');
+
+  // Elle reste visible sur la fiche du partenaire qui la porte, sans pastille
+  // (c'est le rattachement normal).
+  await page.locator('.list-item', { hasText: 'Zenika' }).click();
+  await page.waitForTimeout(300);
+  ok((await page.evaluate(() => window.__crm.kpis.nbInteractions)) === 2,
+    'elle reste comptée sur la fiche du partenaire porteur (Zenika)');
+  const lastBlock = await page.locator('.tl-last').textContent();
+  ok(lastBlock.includes('Montage thèse CIFRE') && !lastBlock.includes('Laboratoire Cluster'),
+    'sur la fiche du partenaire, pas de pastille : le rattachement y est le rattachement normal');
+
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
+async function testCrmContactsCluster(browser) {
+  console.log('\n=== crm.html : contacts cluster dans les popups ===');
+  const { page, context, consoleErrors } = await openCrm(browser);
+  await page.locator('.list-item', { hasText: 'Thales' }).click();
+  await page.waitForTimeout(250);
+
+  await page.click('#btn-new-interaction');
+  await page.waitForTimeout(250);
+  ok((await page.locator('#m-ref-contacts-cluster').count()) === 1,
+    'la popup interaction propose un champ Contact(s) cluster');
+
+  // Contacts partenaire : seulement ceux de Thales. Contacts cluster : tout le
+  // carnet (Paul Martin est chez Zenika, mais peut être côté cluster).
+  const partenaireOpts = await page.locator('#m-ref-contacts datalist option').evaluateAll(els => els.map(e => e.value));
+  const clusterOpts = await page.locator('#m-ref-contacts-cluster datalist option').evaluateAll(els => els.map(e => e.value));
+  ok(!partenaireOpts.includes('Paul Martin'), 'les contacts partenaire restent limités à la structure ouverte');
+  ok(clusterOpts.includes('Paul Martin') && clusterOpts.includes('Marie Lorrain'),
+    'les contacts cluster sont cherchés dans tout le carnet');
+
+  await page.fill('#m-objet', 'Atelier de cadrage');
+  await page.fill('#m-ref-contacts-cluster .ref-input', 'Paul Martin');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(100);
+  await page.click('#m-create');
+  await page.waitForTimeout(400);
+
+  const add = (await userActions(page)).find(a => a[0] === 'AddRecord' && a[1] === 'Interactions');
+  ok(!!add && JSON.stringify(add[3].ContactCluster) === JSON.stringify(['L', 12]),
+    'le contact cluster choisi est enregistré à la création');
+
+  // Ajout d'un contact cluster sur une interaction existante : enregistrement immédiat.
+  await page.fill('#m-ref-contacts-cluster .ref-input', 'Marie Lorrain');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(300);
+  const clusterUpdate = (await userActions(page)).find(a =>
+    a[0] === 'UpdateRecord' && a[1] === 'Interactions' && a[3] && 'ContactCluster' in a[3]);
+  ok(!!clusterUpdate && clusterUpdate[3].ContactCluster.includes(10),
+    'ajouter un contact cluster sur une interaction existante l\'enregistre aussitôt');
+  await page.click('.form-modal-actions [data-close]');
+  await page.waitForTimeout(300);
+
+  // Même chose côté opportunité.
+  await page.click('#btn-new-opp');
+  await page.waitForTimeout(250);
+  ok((await page.locator('#m-ref-contacts').count()) === 1 &&
+     (await page.locator('#m-ref-contacts-cluster').count()) === 1,
+    'la popup opportunité propose les deux champs de contacts');
+  await page.fill('#m-sujet', 'Chaire commune');
+  await page.fill('#m-ref-contacts .ref-input', 'Julien Bertin');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(100);
+  await page.click('#m-create');
+  await page.waitForTimeout(400);
+  const addOpp = (await userActions(page)).find(a => a[0] === 'AddRecord' && a[1] === 'Opportunites');
+  ok(!!addOpp && JSON.stringify(addOpp[3].ContactPartenaire) === JSON.stringify(['L', 11]),
+    'le contact partenaire est enregistré à la création de l\'opportunité');
+
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
+async function testCrmSuggestionsRecherche(browser) {
+  console.log('\n=== crm.html : suggestions de recherche ===');
+  const { page, context, consoleErrors } = await openCrm(browser);
+  const input = page.locator('#search');
+  ok((await input.getAttribute('autocomplete')) === 'off',
+    'le champ de recherche désactive l\'autocomplétion du navigateur (plus de suggestions hors sujet)');
+  ok((await input.getAttribute('list')) === 'dl-structures',
+    'il est relié à une liste de suggestions propre au widget');
+  const options = await page.locator('#dl-structures option').evaluateAll(els => els.map(e => e.value));
+  ok(options.includes('Thales') && options.includes('Zenika') && options.includes('Inria Rennes') &&
+     options.includes('b<>com'),
+    'les suggestions sont les structures du document (échappement compris)');
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
 // PLAYWRIGHT_CHROMIUM_PATH lets a sandboxed/offline environment point at a
 // pre-installed browser (no network access to download one); omit it to use
 // Playwright's own managed install (after `npx playwright install chromium`).
@@ -978,6 +1088,9 @@ try {
   await testCrmContactsEtOpportunites(browser);
   await testCrmSchemaDifferent(browser);
   await testCrmTableManquante(browser);
+  await testCrmLiensMultiColonnes(browser);
+  await testCrmContactsCluster(browser);
+  await testCrmSuggestionsRecherche(browser);
 } finally {
   await browser.close();
 }

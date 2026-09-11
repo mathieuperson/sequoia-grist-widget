@@ -48,6 +48,7 @@
     width: 7px; height: 7px; border-radius: 50%;
     flex-shrink: 0; margin-left: auto;
   }
+  .list-item .dot-neutral { background: #fff; border: 1px solid var(--border); }
 
   /* ---------- Main ---------- */
   .crm-main { flex: 1; overflow-y: auto; padding: 20px 24px 32px; }
@@ -212,6 +213,19 @@
     color: var(--sequoia-green-dark); background: var(--sequoia-green-light);
     border-radius: 10px; padding: 2px 8px;
   }
+  /* Ligne rattachée à la structure par une autre colonne que Partenaire(s)
+     (Laboratoire Cluster, Etablissement Cluster…) : on dit laquelle. */
+  .via-pill {
+    display: inline-block;
+    padding: 1px 8px;
+    border-radius: 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 10.5px;
+    font-weight: 600;
+    vertical-align: middle;
+  }
   .tl-objet { font-size: 13.5px; font-weight: 700; margin-bottom: 6px; }
   .tl-cr {
     font-size: 13px; line-height: 1.55; color: var(--text);
@@ -351,7 +365,8 @@
   <aside class="sidebar">
     <div class="sidebar-header">
       <div class="search-box">
-        <input type="text" id="search" placeholder="Rechercher une structure...">
+        <input type="text" id="search" placeholder="Rechercher une structure..." autocomplete="off" list="dl-structures">
+        <datalist id="dl-structures"></datalist>
       </div>
       <div class="filter-chips" id="filter-chips">
         <button class="filter-chip active" data-filter="tous" type="button">Tous</button>
@@ -484,15 +499,32 @@
     for (const tableId of conf.tableCandidates) {
       try {
         const data = await fetchTableCached(tableId);
+        const cols = resolveColumns(dataColumns(data), conf.roles);
+        const meta = await fetchColumnMeta(tableId);
+
+        // A row can point at a structure through several columns — an
+        // interaction carries Partenaire(s) but also Etablissement /
+        // Laboratoire / Equipe Cluster, all references to Structures. The
+        // fiche must show it whichever column was used, so every
+        // Structures-referencing column counts as a link, with the
+        // configured one first (it stays the "normal" case, untagged).
+        const primary = cols[conf.linkRole];
+        const discovered = refColumnsTo(meta, structTableId);
+        const linkCols = [primary, ...discovered.filter(c => c !== primary)].filter(Boolean);
+        const colLabels = {};
+        meta.forEach(m => { colLabels[m.id] = m.label; });
+
         return {
           tableId,
-          cols: resolveColumns(dataColumns(data), conf.roles),
+          cols,
+          linkCols: linkCols.length ? linkCols : [primary].filter(Boolean),
+          colLabels,
           records: recordsFromTableData(data),
           error: null
         };
       } catch (err) { /* try the next candidate */ }
     }
-    return { tableId: null, cols: {}, records: [], error: 'Table introuvable (' + conf.tableCandidates.join(' / ') + ')' };
+    return { tableId: null, cols: {}, linkCols: [], colLabels: {}, records: [], error: 'Table introuvable (' + conf.tableCandidates.join(' / ') + ')' };
   }
 
   async function loadRelated() {
@@ -516,13 +548,25 @@
   // Sélecteurs
   // ---------------------------------------------------------------------
 
-  function rel(key) { return related[key] || { tableId: null, cols: {}, records: [] }; }
+  function rel(key) { return related[key] || { tableId: null, cols: {}, linkCols: [], colLabels: {}, records: [] }; }
 
   function linkedRecords(key, structureId) {
     const r = rel(key);
-    const colId = r.cols[RELATED[key].linkRole];
-    if (!colId || structureId == null) return [];
-    return r.records.filter(rec => recordLinksTo(rec, colId, structureId));
+    const linkCols = r.linkCols && r.linkCols.length ? r.linkCols : [r.cols[RELATED[key].linkRole]].filter(Boolean);
+    if (linkCols.length === 0 || structureId == null) return [];
+    return r.records.filter(rec => linkCols.some(col => recordLinksTo(rec, col, structureId)));
+  }
+
+  // Which column attached this row to the open structure, when it isn't the
+  // primary one — e.g. an interaction that lists IRISA as "Laboratoire
+  // Cluster" rather than as a partner. Used to label it in the fiche so the
+  // row doesn't look misfiled.
+  function linkedVia(key, rec, structureId) {
+    const r = rel(key);
+    const primary = r.cols[RELATED[key].linkRole];
+    const via = (r.linkCols || []).find(col => recordLinksTo(rec, col, structureId));
+    if (!via || via === primary) return '';
+    return r.colLabels[via] || via;
   }
 
   function contactsOf(id) {
@@ -659,6 +703,17 @@
     document.getElementById('list-count').textContent =
       visible.length + (visible.length > 1 ? ' structures' : ' structure');
 
+    // Suggestions de saisie = les structures du document. Sans ça, le
+    // navigateur propose son propre historique de formulaires, sans rapport.
+    const dl = document.getElementById('dl-structures');
+    const names = structures.map(x => structField(x, 'Nom')).filter(Boolean)
+      .sort((a, b) => a.localeCompare(b, 'fr'));
+    const signature = names.length + '|' + names[0] + '|' + names[names.length - 1];
+    if (dl.dataset.signature !== signature) {
+      dl.innerHTML = names.map(n => '<option value="' + escapeHtml(n) + '">').join('');
+      dl.dataset.signature = signature;
+    }
+
     if (visible.length === 0) {
       listEl.innerHTML = '<div class="empty-list">Aucune structure ne correspond.</div>';
       return;
@@ -697,12 +752,20 @@
       item.appendChild(avatar);
       item.appendChild(info);
 
-      // Amber dot = no contact logged for a while; nothing = recent enough.
-      if (k.joursDepuisContact === null || k.joursDepuisContact > RELANCE_DAYS) {
+      // Pastille ambre = relance due (un échange a eu lieu, mais il date) ;
+      // pastille grise = aucun échange enregistré ; rien = contact récent.
+      // Les deux états étaient ambre auparavant, ce qui rendait la liste
+      // illisible sur un CRM qui démarre : presque tout était orange.
+      if (k.joursDepuisContact === null) {
+        const dot = document.createElement('span');
+        dot.className = 'dot dot-neutral';
+        dot.title = 'Aucune interaction enregistrée';
+        item.appendChild(dot);
+      } else if (k.joursDepuisContact > RELANCE_DAYS) {
         const dot = document.createElement('span');
         dot.className = 'dot';
         dot.style.background = 'var(--status-montage)';
-        dot.title = k.joursDepuisContact === null ? 'Aucune interaction' : 'Dernier contact il y a ' + k.joursDepuisContact + ' j';
+        dot.title = 'À relancer — dernier contact il y a ' + k.joursDepuisContact + ' j';
         item.appendChild(dot);
       }
 
@@ -869,6 +932,7 @@
             '<div class="o-text">' +
               '<div class="o-title">' + escapeHtml(cols.Sujet ? formatValue(o[cols.Sujet]) || 'Sans sujet' : 'Sans sujet') + '</div>' +
               (statut ? '<span class="status-pill" style="background:' + statusColor(statut) + '">' + escapeHtml(statut) + '</span>' : '') +
+              (linkedVia('opportunites', o, s.id) ? ' <span class="via-pill">' + escapeHtml(linkedVia('opportunites', o, s.id)) + '</span>' : '') +
               (echeance ? '<div class="o-sub">échéance ' + escapeHtml(formatDate(echeance)) + '</div>' : '') +
             '</div>' +
             '<div class="o-amount">' + escapeHtml(formatMontantCompact(montant)) + '</div>' +
@@ -899,6 +963,7 @@
           (cols.Type && last[cols.Type] ? '<span class="type-pill">' + escapeHtml(formatValue(last[cols.Type])) + '</span>' : '') +
           '<span class="tl-date">' + escapeHtml(cols.Date ? formatDate(last[cols.Date]) : '') + '</span>' +
           '<span class="tl-who">' + escapeHtml(whoLast.join(', ')) + '</span>' +
+          (linkedVia('interactions', last, s.id) ? '<span class="via-pill">' + escapeHtml(linkedVia('interactions', last, s.id)) + '</span>' : '') +
           '<span class="tl-badge">Dernier CR</span>' +
         '</div>' +
         '<div class="tl-objet">' + escapeHtml(cols.Objet ? formatValue(last[cols.Objet]) || 'Sans objet' : 'Sans objet') + '</div>' +
@@ -912,7 +977,9 @@
       return '<div class="tl-item" data-interaction="' + i.id + '">' +
         '<div class="tl-when">' + escapeHtml(cols.Date ? formatDate(i[cols.Date]) : '') + '</div>' +
         '<div class="tl-body">' +
-          '<div class="tl-title">' + escapeHtml(title || 'Sans objet') + '</div>' +
+          '<div class="tl-title">' + escapeHtml(title || 'Sans objet') +
+            (linkedVia('interactions', i, s.id) ? ' <span class="via-pill">' + escapeHtml(linkedVia('interactions', i, s.id)) + '</span>' : '') +
+          '</div>' +
           '<div class="tl-excerpt">' + escapeHtml(who.length ? who.join(', ') + ' — ' : '') +
             escapeHtml(excerpt(cols.CR ? i[cols.CR] : '', 110)) + '</div>' +
         '</div>' +
@@ -1237,6 +1304,8 @@
         textField('m-montant', 'Montant (€)', rawGet('Montant') === null ? '' : rawGet('Montant'), false, 'number') +
         dateField('m-debut', 'Date de début', rawGet('DateDebut')) +
         dateField('m-echeance', 'Échéance', rawGet('Echeance')) +
+        '<div class="form-field full"><label>Contact(s) partenaire</label><div id="m-ref-contacts"></div></div>' +
+        '<div class="form-field full"><label>Contact(s) cluster</label><div id="m-ref-contacts-cluster"></div></div>' +
         areaField('m-commentaire', 'Commentaire', get('Commentaire'), true) +
         '<div class="form-modal-note">Rattachée à <strong>' + escapeHtml(structField(s, 'Nom')) + '</strong>.</div>' +
       '</div>' +
@@ -1248,6 +1317,11 @@
 
     openModal(html, () => {
       populateChoiceSelect('m-statut', r.tableId, cols.Statut, r.records, get('Statut'));
+
+      const getContacts = mountContactPicker('m-ref-contacts',
+        contactPickerOptions(s.id, 'structure'), o, r.tableId, cols.ContactPartenaire, isNew);
+      const getClusterContacts = mountContactPicker('m-ref-contacts-cluster',
+        contactPickerOptions(s.id, 'all'), o, r.tableId, cols.ContactCluster, isNew);
 
       if (isNew) {
         document.getElementById('m-sujet').focus();
@@ -1265,6 +1339,10 @@
           set('DateDebut', inputValueToGristDate(document.getElementById('m-debut').value));
           set('Echeance', inputValueToGristDate(document.getElementById('m-echeance').value));
           set('Commentaire', document.getElementById('m-commentaire').value.trim());
+          const contactChips = getContacts();
+          const clusterChips = getClusterContacts();
+          if (contactChips.length) set('ContactPartenaire', ['L', ...contactChips.map(c => c.id)]);
+          if (clusterChips.length) set('ContactCluster', ['L', ...clusterChips.map(c => c.id)]);
           set('Partenaires', ['L', s.id]);
           try {
             setModalStatus('Création…');
@@ -1315,6 +1393,7 @@
         dateField('m-echeance', 'Prochaine échéance', rawGet('ProchaineEcheance')) +
         textField('m-suites', 'Suites à donner', get('Suites')) +
         '<div class="form-field full"><label>Contact(s) partenaire</label><div id="m-ref-contacts"></div></div>' +
+        '<div class="form-field full"><label>Contact(s) cluster</label><div id="m-ref-contacts-cluster"></div></div>' +
         '<div class="form-modal-note">Liée à <strong>' + escapeHtml(structField(s, 'Nom')) + '</strong>.</div>' +
       '</div>' +
       (isNew ? '' :
@@ -1341,19 +1420,10 @@
     openModal(html, () => {
       populateChoiceSelect('m-type', r.tableId, cols.Type, r.records, get('Type'));
 
-      // The contact picker only offers this structure's own contacts — the
-      // point of the fiche is to stay inside one partner's world.
-      const contactOptions = contactsOf(s.id).map(c => ({ id: c.id, label: contactName(c) }));
-      const currentContactIds = i && cols.ContactPartenaire ? refIdsFromValue(i[cols.ContactPartenaire]) : [];
-      let contactChips = contactOptions.filter(o => currentContactIds.includes(o.id));
-      renderLocalPicker(document.getElementById('m-ref-contacts'), contactOptions, contactChips, (chips) => {
-        contactChips = chips;
-        if (!isNew && cols.ContactPartenaire) {
-          updateRecord(r.tableId, i.id, { [cols.ContactPartenaire]: ['L', ...chips.map(c => c.id)] })
-            .then(() => setModalStatus('Enregistré ✓'))
-            .catch(err => { console.error(err); setModalStatus('Erreur d’enregistrement'); });
-        }
-      });
+      const getContacts = mountContactPicker('m-ref-contacts',
+        contactPickerOptions(s.id, 'structure'), i, r.tableId, cols.ContactPartenaire, isNew);
+      const getClusterContacts = mountContactPicker('m-ref-contacts-cluster',
+        contactPickerOptions(s.id, 'all'), i, r.tableId, cols.ContactCluster, isNew);
 
       if (isNew) {
         document.getElementById('m-objet').focus();
@@ -1367,7 +1437,10 @@
           set('Type', document.getElementById('m-type').value);
           set('ProchaineEcheance', inputValueToGristDate(document.getElementById('m-echeance').value));
           set('Suites', document.getElementById('m-suites').value.trim());
+          const contactChips = getContacts();
+          const clusterChips = getClusterContacts();
           if (contactChips.length) set('ContactPartenaire', ['L', ...contactChips.map(c => c.id)]);
+          if (clusterChips.length) set('ContactCluster', ['L', ...clusterChips.map(c => c.id)]);
           // Without this link the interaction belongs to no fiche.
           set('Partenaires', ['L', s.id]);
           try {
@@ -1404,8 +1477,39 @@
     }, true);
   }
 
+  // Contacts proposés par un sélecteur : ceux de la structure ouverte pour
+  // les contacts partenaire, tout le carnet pour les contacts cluster (ce
+  // sont des gens du cluster, pas du partenaire).
+  function contactPickerOptions(structureId, scope) {
+    const list = scope === 'all' ? rel('contacts').records : contactsOf(structureId);
+    return list
+      .map(c => ({ id: c.id, label: contactName(c) }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'fr'));
+  }
+
+  // Monte un sélecteur de contacts dans une popup : en édition il enregistre
+  // à chaque ajout/retrait, en création il retient seulement la sélection
+  // (tous les champs sont écrits d'un bloc au moment du "Créer"). Renvoie un
+  // accesseur sur la sélection courante.
+  function mountContactPicker(elId, options, record, tableId, colId, isNew) {
+    let chips = [];
+    const el = document.getElementById(elId);
+    if (!el) return () => chips;
+    const currentIds = record && colId ? refIdsFromValue(record[colId]) : [];
+    chips = options.filter(o => currentIds.includes(o.id));
+    renderLocalPicker(el, options, chips, (next) => {
+      chips = next;
+      if (!isNew && colId && record) {
+        updateRecord(tableId, record.id, { [colId]: ['L', ...next.map(c => c.id)] })
+          .then(() => setModalStatus('Enregistré ✓'))
+          .catch(err => { console.error(err); setModalStatus('Erreur d’enregistrement'); });
+      }
+    });
+    return () => chips;
+  }
+
   // Lightweight chip picker over a fixed option list (no cross-table
-  // autocomplete needed: the options are this structure's contacts).
+  // autocomplete needed: the options are contacts already loaded).
   function renderLocalPicker(container, options, initialChips, onChange) {
     if (!container) return;
     let chips = [...(initialChips || [])];

@@ -150,7 +150,7 @@ const x = (() => {
   const sb = { console, window: {}, document: undefined };
   vm.createContext(sb);
   vm.runInContext(src + '\nwindow.x = { normalizeKey, dataColumns, resolveColumns, recordsFromTableData, ' +
-    'refIdsFromValue, recordLinksTo, daysSince, formatDaysSince, formatMontantCompact, stripHtml, excerpt };', sb);
+    'refIdsFromValue, recordLinksTo, daysSince, formatDaysSince, formatMontantCompact, stripHtml, excerpt, refColumnsTo };', sb);
   return sb.window.x;
 })();
 
@@ -205,6 +205,21 @@ eq(x.formatMontantCompact(1250000), '1,3 M€', 'formatMontantCompact: 1250000 -
 eq(x.formatMontantCompact(850), '850 €', 'formatMontantCompact: under 1k stays in euros');
 eq(x.formatMontantCompact(null), '', 'formatMontantCompact: null -> empty');
 eq(x.formatMontantCompact(0), '0 €', 'formatMontantCompact: 0 -> 0 €');
+
+// refColumnsTo — toutes les colonnes qui pointent vers une table donnée
+const META = [
+  { id: 'Objet', type: 'Text', label: 'Objet' },
+  { id: 'Partenaires', type: 'RefList:Structures', label: 'Partenaire(s)' },
+  { id: 'LaboratoireCluster', type: 'RefList:Structures', label: 'Laboratoire Cluster' },
+  { id: 'EtablissementCluster', type: 'Ref:Structures', label: 'Etablissement Cluster' },
+  { id: 'ContactPartenaire', type: 'RefList:Contacts', label: 'Contact(s) partenaire' }
+];
+eq(x.refColumnsTo(META, 'Structures'), ['Partenaires', 'LaboratoireCluster', 'EtablissementCluster'],
+  'refColumnsTo: Ref et RefList vers Structures, dans l\'ordre des colonnes');
+eq(x.refColumnsTo(META, 'Contacts'), ['ContactPartenaire'], 'refColumnsTo: ne confond pas les tables cibles');
+eq(x.refColumnsTo(META, 'Opportunites'), [], 'refColumnsTo: aucune colonne vers cette table -> []');
+eq(x.refColumnsTo([], 'Structures'), [], 'refColumnsTo: métadonnées vides -> []');
+eq(x.refColumnsTo(META, null), [], 'refColumnsTo: table cible inconnue -> [] (pas de faux positif)');
 
 // stripHtml / excerpt
 eq(x.stripHtml('<p>Bonjour <b>Marie</b></p><p>Suite</p>'), 'Bonjour Marie Suite', 'stripHtml: tags out, spacing kept');
