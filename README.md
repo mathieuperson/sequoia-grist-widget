@@ -67,9 +67,18 @@ Carte des structures (Leaflet, regroupement en clusters) construite à partir de
 détectées automatiquement parmi plusieurs noms candidats, avec support des coordonnées saisies en texte
 (virgule décimale comprise). Les vignettes affichent le logo (avec repli sur les initiales si l'image ne charge
 pas), le site web et un bouton "Ouvrir la fiche" qui synchronise la sélection Grist (`setCursorPos`). Un panneau
-de filtres repliable (case "Afficher les prospects" + filtres Type d'acteur, Catégorie, Activité, Taille, Pilier
-SequoIA, Axe SequoIA) suit la même convention que les autres widgets : **Pilier SequoIA d'abord, Axe SequoIA
-ensuite**. Liste synchronisée avec la carte (clic sur un élément = zoom + ouverture de la bulle).
+de filtres repliable en grille (case "Afficher les prospects" + filtres Type d'acteur, Catégorie, Activité,
+Taille, Pilier SequoIA, Axe SequoIA — suit la même convention que les autres widgets : **Pilier SequoIA d'abord,
+Axe SequoIA ensuite**) avec pastille de comptage sur le bouton, `<select>` actif surligné, et puces de filtres
+actifs retirables d'un clic (visibles même panneau replié). Liste synchronisée avec la carte (clic sur un
+élément = zoom + ouverture de la bulle).
+
+Les marqueurs sont colorés par **Type d'acteur** (dégradé si un acteur porte plusieurs types), dans une palette
+dédiée et validée (contraste, daltonisme) suivant une progression Institution → Académique → Recherche →
+Innovation → Économique → Association — volontairement distincte des couleurs de piliers SequoIA
+(violet/bleu/vert du logo Cluster), réservées aux badges de pilier affichés dans la bulle. Le pilier n'est plus
+utilisé pour la couleur des points : un acteur pourra bientôt être rattaché à plusieurs piliers, ce qui rendrait
+une couleur de point unique par pilier trompeuse.
 
 Leaflet et Leaflet.markercluster sont vendorisés dans `vendor/` (pas de CDN), comme le reste du projet.
 
