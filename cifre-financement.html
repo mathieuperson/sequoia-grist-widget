@@ -311,16 +311,17 @@
     const v = raw.toLowerCase();
     if (NEGATIVE_MARKERS.includes(v)) return false;
     if (POSITIVE_MARKERS.includes(v)) return true;
-    // Substring match rather than exact-token matching: robust to every
-    // separator/spacing variant a real "Type de financement" column can
-    // throw at it ("CIFRE", "CIFRE + ANR", "CIFRE, PARTENAIRE", "CIFRE-UE"…)
-    // without having to special-case each one. A value would need to
-    // literally spell out "cifre" while NOT being CIFRE-related to produce
-    // a false positive — not a real risk for this specific a word — and a
-    // genuine "non/hors/pas CIFRE" is still caught by the negative-marker
-    // check above when that's the *whole* value.
-    return v.includes('cifre');
+    // A "Type de financement" category column: count a row only when the
+    // value IS the "CIFRE" choice, exactly — same modality Grist's own
+    // column filter checks. A combo value ("CIFRE + ANR") is a different,
+    // distinct choice and does NOT count here; if that's wrong for a given
+    // document, list its exact value to whoever maintains this widget so it
+    // can be added as a recognised alias, next to CIFRE_ALIASES below.
+    return v === 'cifre' || CIFRE_ALIASES.includes(v);
   }
+  // Exact "Type de financement" values, beyond the literal "CIFRE" choice,
+  // that should also count. Empty by default — extend on request.
+  const CIFRE_ALIASES = [];
 
   function computeRow(t, cfg) {
     const duree = Number(t.DureeAnnees) > 0 ? Number(t.DureeAnnees) : cfg.dureeAnnees;

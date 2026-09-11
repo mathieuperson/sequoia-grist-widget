@@ -497,15 +497,12 @@ async function testCifreDashboardTypeFinancementColumn(browser) {
           Entreprise: ['Orange', 'Thales', 'InterDigital', 'Orange', 'Thales', 'Naval Group', 'Safran'],
           DateDebut: Array(7).fill(epoch(2023, 9, 1)),
           // A real "Type de financement" category column: CIFRE is only ONE
-          // of many values (EUROPEEN, CDD STANDARD, a combo...). The old
-          // "anything that isn't a negative marker counts as CIFRE" logic
-          // would have wrongly counted all rows instead of just the ones
-          // that are actually CIFRE — this is the reported 56-vs-64 root
-          // cause. Row 6's blank value is the follow-up off-by-one (65 vs
-          // 64): a blank Type de financement must NOT be assumed to be
-          // CIFRE. Row 7 ("CIFRE-INDUSTRIE", no space/separator before the
-          // suffix) is the substring-match regression: an exact-token
-          // splitter would have missed it.
+          // of many values (EUROPEEN, CDD STANDARD, a combo...). Only the
+          // exact "CIFRE" modality counts — same as Grist's own column
+          // filter — a combo like "CIFRE + ANR" is a distinct choice and is
+          // NOT counted (explicit product decision: exact match, no
+          // substring/token guessing). Row 6's blank value must not be
+          // assumed to be CIFRE either.
           TypeFinancement: ['CIFRE', 'CDD STANDARD', 'CIFRE', 'EUROPEEN', 'CIFRE + ANR', '', 'CIFRE-INDUSTRIE'],
           DureeAnnees: Array(7).fill(null),
           MontantTotal: Array(7).fill(null)
@@ -522,18 +519,19 @@ async function testCifreDashboardTypeFinancementColumn(browser) {
   await page.waitForTimeout(100);
   const pivot = await page.evaluate(() => window.__lastPivot);
 
-  ok(pivot.totalNb === 4,
-    '"Type de financement" mappé : les 4 lignes contenant "cifre" comptent (CIFRE, CIFRE + ANR, CIFRE-INDUSTRIE), pas EUROPEEN/CDD STANDARD/la ligne vide');
+  ok(pivot.totalNb === 2,
+    '"Type de financement" mappé : seules les 2 lignes valant exactement "CIFRE" comptent (pas EUROPEEN/CDD STANDARD/la ligne vide/les combos)');
   const diagText = await page.locator('#diag-line').textContent();
-  ok(diagText.includes('7 ligne(s) reçue(s) de Grist') && diagText.includes('4 comptée(s) comme CIFRE'),
-    'le diagnostic confirme 7 lignes reçues mais seulement 4 réellement CIFRE (dont 1 avec Type de financement vide, exclue)');
+  ok(diagText.includes('7 ligne(s) reçue(s) de Grist') && diagText.includes('2 comptée(s) comme CIFRE'),
+    'le diagnostic confirme 7 lignes reçues mais seulement 2 valent exactement CIFRE');
 
   // Transparency banner: the excluded raw values must be visible on-page,
   // not just inferred from the totals — this is what turns "je n'ai pas le
   // bon nombre" into something the user can read off the screen themselves.
   const warningsText = await page.locator('#warnings').textContent();
-  ok(warningsText.includes('CDD STANDARD') && warningsText.includes('EUROPEEN') && warningsText.includes('(vide)'),
-    'le bandeau liste les valeurs exclues (CDD STANDARD, EUROPEEN, (vide)...)');
+  ok(warningsText.includes('CDD STANDARD') && warningsText.includes('EUROPEEN') && warningsText.includes('(vide)') &&
+     warningsText.includes('CIFRE + ANR') && warningsText.includes('CIFRE-INDUSTRIE'),
+    'le bandeau liste les valeurs exclues, y compris les combos "CIFRE + ..." (ce ne sont pas la modalité "CIFRE")');
 
   ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
   await context.close();
@@ -548,16 +546,17 @@ async function testCifreDashboardLabAndKEuros(browser) {
       Theses: {
         colIds: ['Universite', 'Entreprise', 'DateDebut', 'TypeFinancement', 'Laboratoire', 'DureeAnnees', 'MontantTotal'],
         data: {
-          id: [1, 2],
-          Universite: ['Rennes', 'Rennes'],
-          Entreprise: ['Orange', 'Thales'],
-          DateDebut: [epoch(2023, 9, 1), epoch(2023, 9, 1)],
-          // A ChoiceList-style rendering ("CIFRE, PARTENAIRE") must still
-          // match on the "cifre" token (comma is a valid separator too).
-          TypeFinancement: ['CIFRE', 'CIFRE, PARTENAIRE'],
-          Laboratoire: ['IRISA', 'Lab-STICC'],
-          DureeAnnees: [null, null],
-          MontantTotal: [null, null]
+          id: [1, 2, 3],
+          Universite: ['Rennes', 'Rennes', 'Rennes'],
+          Entreprise: ['Orange', 'Thales', 'Naval Group'],
+          DateDebut: Array(3).fill(epoch(2023, 9, 1)),
+          // Row 3 ("CIFRE, PARTENAIRE", a ChoiceList-style combo) is a
+          // distinct modality from the exact "CIFRE" choice and must NOT
+          // count — only rows 1 and 2 do.
+          TypeFinancement: ['CIFRE', 'CIFRE', 'CIFRE, PARTENAIRE'],
+          Laboratoire: ['IRISA', 'Lab-STICC', 'IRISA'],
+          DureeAnnees: Array(3).fill(null),
+          MontantTotal: Array(3).fill(null)
         }
       }
     },
@@ -570,7 +569,7 @@ async function testCifreDashboardLabAndKEuros(browser) {
   const { page, context, consoleErrors } = await openWidget(browser, 'cifre-financement.html', cfg);
   await page.waitForTimeout(100);
   const pivot = await page.evaluate(() => window.__lastPivot);
-  ok(pivot.totalNb === 2, '"CIFRE, PARTENAIRE" (rendu ChoiceList) compte bien comme CIFRE (virgule acceptée comme séparateur)');
+  ok(pivot.totalNb === 2, '"CIFRE, PARTENAIRE" (combo) ne compte PAS — seule la modalité exacte "CIFRE" compte (2 lignes, pas 3)');
 
   // Laboratoire filter
   await page.click('#msf-laboratoire .ms-filter-btn');
