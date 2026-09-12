@@ -34,6 +34,11 @@ visible ("Enregistrement…" / "Enregistré ✓"). Sur la fiche structure, Activ
 sont eux aussi des sélecteurs multiples (puces + recherche parmi les choix configurés dans Grist) : une
 structure peut porter plusieurs valeurs sur chacun de ces champs.
 
+La liste de gauche se filtre par catégorie via des chips rapides (**Partenaires** actif par défaut — les prospects
+sont exclus tant qu'on ne choisit pas "Tous" ou "Prospects" — puis "À relancer"), et par un panneau de filtres
+repliable (Type d'acteur, Pilier SequoIA, Axe SequoIA), avec pastille de comptage sur le bouton "Filtres" et
+puces de filtres actifs retirables d'un clic — même composant que celui de `cartographie.html`.
+
 Une structure apparaît dans sa fiche dès qu'une ligne la référence, **quelle que soit la colonne** : une
 interaction saisie depuis la fiche d'un partenaire mais qui cite un laboratoire en « Laboratoire Cluster »
 remonte aussi sur la fiche de ce laboratoire, avec une pastille indiquant par quel champ elle est rattachée.
