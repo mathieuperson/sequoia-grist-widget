@@ -369,11 +369,31 @@
         <datalist id="dl-structures"></datalist>
       </div>
       <div class="filter-chips" id="filter-chips">
-        <button class="filter-chip active" data-filter="tous" type="button">Tous</button>
-        <button class="filter-chip" data-filter="partenaires" type="button">Partenaires</button>
+        <button class="filter-chip active" data-filter="partenaires" type="button">Partenaires</button>
+        <button class="filter-chip" data-filter="tous" type="button">Tous</button>
         <button class="filter-chip" data-filter="prospects" type="button">Prospects</button>
         <button class="filter-chip" data-filter="relancer" type="button">À relancer</button>
       </div>
+      <div class="list-controls">
+        <span></span>
+        <button class="filter-toggle-btn" id="filter-toggle" type="button">Filtres ▾</button>
+      </div>
+      <div class="filter-panel" id="filter-panel" hidden>
+        <div class="filter-field">
+          <label for="filter-type">Type d'acteur</label>
+          <select id="filter-type"><option value="">Tous</option></select>
+        </div>
+        <div class="filter-field">
+          <label for="filter-pilier">Pilier SequoIA</label>
+          <select id="filter-pilier"><option value="">Tous</option></select>
+        </div>
+        <div class="filter-field">
+          <label for="filter-axe">Axe SequoIA</label>
+          <select id="filter-axe"><option value="">Tous</option></select>
+        </div>
+        <button class="filter-reset" id="filter-reset" type="button">Réinitialiser les filtres</button>
+      </div>
+      <div class="active-chips" id="active-chips" hidden></div>
     </div>
     <div class="list" id="list">
       <div class="empty-list">Chargement…</div>
@@ -483,8 +503,12 @@
   let structTableId = null;
   let current = null;         // selected structure (mapped record)
   let related = {};           // key -> { tableId, cols, records, error }
-  let filterMode = 'tous';
+  // Par défaut, tout sauf les prospects — comme les autres widgets.
+  let filterMode = 'partenaires';
   let query = '';
+  const PANEL_FILTERS = { type: 'TypeActeur', pilier: 'PilierSequoia', axe: 'AxeSequoia' };
+  const PANEL_FILTER_LABELS = { type: "Type d'acteur", pilier: 'Pilier SequoIA', axe: 'Axe SequoIA' };
+  const activeFilters = { type: '', pilier: '', axe: '' };
 
   grist.ready({ requiredAccess: 'full', columns: COLUMNS, allowSelectBy: true });
 
@@ -692,11 +716,29 @@
     return value === '' ? [] : [String(value)];
   }
 
+  // populateChoiceSelect/renderChoiceListPicker/le panneau de filtres
+  // travaillent sur des enregistrements bruts (vrais colIds Grist) ; on les
+  // reconstruit à partir des enregistrements mappés (rôle -> colId) pour
+  // qu'une valeur Choice en cours d'utilisation ailleurs remonte quand même.
+  function rawStructures() {
+    return structures.map(x => {
+      const o = { id: x.id };
+      Object.keys(mappings).forEach(role => { if (mappings[role]) o[mappings[role]] = x[role]; });
+      return o;
+    });
+  }
+
   function matchesFilters(s) {
     const cat = normalizeKey(structField(s, 'Categorie'));
     if (filterMode === 'partenaires' && cat === 'prospect') return false;
     if (filterMode === 'prospects' && cat !== 'prospect') return false;
     if (filterMode === 'relancer' && !needsRelance(s.id)) return false;
+
+    for (const key in PANEL_FILTERS) {
+      const wanted = activeFilters[key];
+      if (!wanted) continue;
+      if (!choiceListValues(s[PANEL_FILTERS[key]]).includes(wanted)) return false;
+    }
 
     if (!query) return true;
     const haystack = [
@@ -798,6 +840,7 @@
   function render() {
     renderList();
     renderMain();
+    populateFilterPanel();
     window.__crm = {
       structureId: current ? current.id : null,
       kpis: current ? computeKpis(current.id) : null,
@@ -1148,6 +1191,58 @@
     }
   }
 
+  // Même principe que populateChoiceSelect, mais pour un filtre sur une
+  // colonne Choice/ChoiceList : chaque valeur individuelle doit devenir une
+  // option (un "IA fondamentale, Sécurité" fusionné ne serait sélectionnable
+  // pour aucun des deux piliers pris seul).
+  async function populateChoiceListFilterSelect(selectId, colId, records, currentValue) {
+    const el = document.getElementById(selectId);
+    if (!el || !colId) return;
+    try {
+      const configured = await fetchColumnChoices(structTableId, colId);
+      const used = Array.from(new Set((records || []).flatMap(r => choiceListValues(r[colId]))));
+      const merged = Array.from(new Set([...(configured || []), ...used]));
+      if (currentValue && !merged.includes(currentValue)) merged.push(currentValue);
+      if (merged.length === 0) return;
+      merged.sort((a, b) => String(a).localeCompare(String(b), 'fr'));
+      el.innerHTML = '<option value="">Tous</option>' + merged.map(v =>
+        '<option value="' + escapeHtml(v) + '"' + (v === currentValue ? ' selected' : '') + '>' + escapeHtml(v) + '</option>').join('');
+    } catch (err) {
+      console.error('populateChoiceListFilterSelect', colId, err);
+    }
+  }
+
+  function populateFilterPanel() {
+    const raw = rawStructures();
+    populateChoiceListFilterSelect('filter-type', mappings && mappings.TypeActeur, raw, activeFilters.type);
+    populateChoiceListFilterSelect('filter-pilier', mappings && mappings.PilierSequoia, raw, activeFilters.pilier);
+    populateChoiceListFilterSelect('filter-axe', mappings && mappings.AxeSequoia, raw, activeFilters.axe);
+    updateFilterPanelUI();
+  }
+
+  // Pastille de comptage sur "Filtres" + puces retirables — même logique que
+  // le panneau de filtres de cartographie.html, pour rester cohérent.
+  function updateFilterPanelUI() {
+    Object.keys(PANEL_FILTERS).forEach(key => {
+      const el = document.getElementById('filter-' + key);
+      if (el) el.classList.toggle('is-active', !!activeFilters[key]);
+    });
+
+    const active = Object.keys(PANEL_FILTERS).filter(key => activeFilters[key]);
+    const toggleBtn = document.getElementById('filter-toggle');
+    const panelHidden = document.getElementById('filter-panel').hidden;
+    toggleBtn.innerHTML = 'Filtres'
+      + (active.length ? ' <span class="filter-count">' + active.length + '</span>' : '')
+      + ' ' + (panelHidden ? '▾' : '▴');
+
+    const chipsEl = document.getElementById('active-chips');
+    chipsEl.hidden = active.length === 0;
+    chipsEl.innerHTML = active.map(key =>
+      '<span class="chip"><span>' + escapeHtml(PANEL_FILTER_LABELS[key]) + ' : ' + escapeHtml(activeFilters[key]) + '</span>'
+      + '<button type="button" data-key="' + key + '" aria-label="Retirer le filtre ' + escapeHtml(PANEL_FILTER_LABELS[key]) + '">×</button></span>'
+    ).join('');
+  }
+
   function choiceListFieldHtml(id, label, full) {
     return fieldHtml(id, label, '<div id="' + id + '" class="choice-list-field"></div>', full);
   }
@@ -1268,14 +1363,7 @@
       bind('m-requipe', 'RechercheEquipeActivite');
       bind('m-rlabo', 'RechercheEquipeLabo');
 
-      const raw = structures.map(x => {
-        // populateChoiceSelect/renderChoiceListPicker work on raw records;
-        // rebuild them from the mapped ones so a Choice value in use
-        // elsewhere still shows up.
-        const o = { id: x.id };
-        Object.keys(mappings).forEach(role => { if (mappings[role]) o[mappings[role]] = x[role]; });
-        return o;
-      });
+      const raw = rawStructures();
       populateChoiceSelect('m-type', structTableId, mappings.TypeActeur, raw, typeActeur);
       populateChoiceSelect('m-categorie', structTableId, mappings.Categorie, raw, structField(s, 'Categorie'));
       populateChoiceSelect('m-taille', structTableId, mappings.Taille, raw, structField(s, 'Taille'));
@@ -1859,6 +1947,39 @@
     if (!btn) return;
     filterMode = btn.dataset.filter;
     document.querySelectorAll('.filter-chip').forEach(b => b.classList.toggle('active', b === btn));
+    renderList();
+  });
+
+  document.getElementById('filter-toggle').addEventListener('click', () => {
+    const panel = document.getElementById('filter-panel');
+    panel.hidden = !panel.hidden;
+    updateFilterPanelUI();
+  });
+  document.getElementById('filter-reset').addEventListener('click', () => {
+    Object.keys(PANEL_FILTERS).forEach(key => {
+      activeFilters[key] = '';
+      const el = document.getElementById('filter-' + key);
+      if (el) el.value = '';
+    });
+    updateFilterPanelUI();
+    renderList();
+  });
+  Object.keys(PANEL_FILTERS).forEach(key => {
+    const el = document.getElementById('filter-' + key);
+    if (el) el.addEventListener('change', () => {
+      activeFilters[key] = el.value;
+      updateFilterPanelUI();
+      renderList();
+    });
+  });
+  document.getElementById('active-chips').addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-key]');
+    if (!btn) return;
+    const key = btn.dataset.key;
+    activeFilters[key] = '';
+    const el = document.getElementById('filter-' + key);
+    if (el) el.value = '';
+    updateFilterPanelUI();
     renderList();
   });
 

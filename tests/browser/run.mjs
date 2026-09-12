@@ -658,11 +658,62 @@ async function openCrm(browser, cfg) {
 const userActions = (page) => page.evaluate(() =>
   window.__mockCalls.filter(c => c.fn === 'applyUserActions').flatMap(c => c.actions));
 
+async function testCrmFilterPanel(browser) {
+  console.log('\n=== crm.html : panneau de filtres (Type, Pilier, Axe SequoIA) ===');
+  const { page, context, consoleErrors } = await openCrm(browser);
+  await page.waitForTimeout(150);
+
+  ok(await page.locator('#filter-panel').isHidden(), 'le panneau de filtres est replié par défaut');
+  await page.click('#filter-toggle');
+  await page.waitForTimeout(50);
+  ok(await page.locator('#filter-panel').isVisible(), 'cliquer sur "Filtres" déplie le panneau');
+
+  const typeOptions = await page.locator('#filter-type option').allTextContents();
+  ok(typeOptions.includes('Economique') && typeOptions.includes('Recherche'),
+    'le filtre Type d\'acteur liste les types présents');
+  const pilierOptions = await page.locator('#filter-pilier option').allTextContents();
+  ok(pilierOptions.includes('IA & sécurité') && pilierOptions.includes('IA fondamentale'),
+    'le filtre Pilier SequoIA liste chaque pilier séparément (pas un texte fusionné)');
+
+  // Filtre + case "Partenaires" par défaut (Zenika, Prospect, resterait de
+  // toute façon exclue) : Recherche = Inria Rennes + b<>com.
+  await page.selectOption('#filter-type', 'Recherche');
+  await page.waitForTimeout(50);
+  ok((await page.locator('.list-item').count()) === 2, 'filtrer par Type = "Recherche" ne garde que 2 structures');
+
+  ok((await page.locator('#filter-toggle').textContent()).includes('1'),
+    'le bouton "Filtres" affiche le nombre de filtres actifs');
+  const chipText = await page.locator('#active-chips .chip').textContent();
+  ok(chipText.includes("Type d'acteur") && chipText.includes('Recherche'), 'une puce de filtre actif apparaît');
+
+  // Pilier = IA fondamentale ne garde qu'Inria Rennes.
+  await page.selectOption('#filter-pilier', 'IA fondamentale');
+  await page.waitForTimeout(50);
+  ok((await page.locator('.list-item').count()) === 1 &&
+     (await page.locator('.list-item').first().textContent()).includes('Inria'),
+    'combiné à Pilier = "IA fondamentale", seule Inria Rennes reste');
+
+  await page.click('#filter-reset');
+  await page.waitForTimeout(50);
+  ok((await page.locator('.list-item').count()) === 3, 'réinitialiser les filtres réaffiche les structures (hors prospects)');
+  ok(await page.locator('#active-chips').isHidden(), 'plus de puce une fois les filtres réinitialisés');
+
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
 async function testCrmFiche(browser) {
   console.log('\n=== crm.html : fiche 360 (lecture) ===');
   const { page, context, consoleErrors } = await openCrm(browser);
 
-  ok((await page.locator('.list-item').count()) === 4, 'les 4 structures sont listées');
+  // Filtre "Partenaires" actif par défaut (tout sauf les prospects, comme les
+  // autres widgets) : Zenika (Prospect) est exclue tant qu'on ne clique pas
+  // ailleurs — 3 des 4 structures du fixture, pas 4.
+  ok((await page.locator('.list-item').count()) === 3, 'les structures sont listées, prospects exclus par défaut');
+  ok(!(await page.locator('.list-item', { hasText: 'Zenika' }).count()), 'Zenika (Prospect) est masquée par défaut');
+  await page.click('.filter-chip[data-filter="tous"]');
+  await page.waitForTimeout(100);
+  ok((await page.locator('.list-item').count()) === 4, "\"Tous\" réaffiche les 4 structures, prospects compris");
 
   // Column resolution across tables the widget isn't mapped onto.
   const cols = await page.evaluate(() => window.__crm.related);
@@ -864,6 +915,10 @@ async function testCrmPartenairesMultiStructures(browser) {
 
   // Elle doit apparaître sur la fiche Zenika aussi, sans y avoir été créée —
   // c'est exactement le scénario "réunion avec 2 partenaires" du bug rapporté.
+  // (Zenika est un Prospect, masqué par le filtre "Partenaires" actif par
+  // défaut : on repasse sur "Tous" pour la retrouver dans la liste.)
+  await page.click('.filter-chip[data-filter="tous"]');
+  await page.waitForTimeout(100);
   await page.locator('.list-item', { hasText: 'Zenika' }).click();
   await page.waitForTimeout(250);
   ok((await page.locator('.tl-last').textContent()).includes('Réunion commune'),
@@ -1153,7 +1208,10 @@ async function testCrmLiensMultiColonnes(browser) {
     'une pastille indique par quelle colonne la ligne est rattachée (Laboratoire Cluster)');
 
   // Elle reste visible sur la fiche du partenaire qui la porte, sans pastille
-  // (c'est le rattachement normal).
+  // (c'est le rattachement normal). Zenika est un Prospect, masqué par le
+  // filtre "Partenaires" actif par défaut : on repasse sur "Tous".
+  await page.click('.filter-chip[data-filter="tous"]');
+  await page.waitForTimeout(100);
   await page.locator('.list-item', { hasText: 'Zenika' }).click();
   await page.waitForTimeout(300);
   ok((await page.evaluate(() => window.__crm.kpis.nbInteractions)) === 2,
@@ -1449,6 +1507,7 @@ try {
   await testCifreDashboardTypeFinancementColumn(browser);
   await testCifreDashboardLabAndKEuros(browser);
   await testCifreDashboardNumericYear(browser);
+  await testCrmFilterPanel(browser);
   await testCrmFiche(browser);
   await testCrmEdition(browser);
   await testCrmStructureMultiSelect(browser);
