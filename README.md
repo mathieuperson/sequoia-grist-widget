@@ -26,10 +26,13 @@ avec ses pièces jointes.
 Tout se modifie depuis cette vue, dans des popups : fiche structure, fiche contact, opportunité (statut compris),
 et interaction avec l'éditeur de compte-rendu (gras/italique/titre/liste/lien, collage d'image téléversée
 automatiquement) et le dépôt de pièces jointes. Les enregistrements créés sont rattachés d'office à la structure
-ouverte, donc jamais orphelins. Chaque champ s'enregistre seul, avec un retour visible ("Enregistrement…" /
-"Enregistré ✓"). Sur la fiche structure, Activité, Pilier SequoIA et Axe SequoIA sont des sélecteurs multiples
-(puces + recherche parmi les choix configurés dans Grist) : une structure peut porter plusieurs valeurs sur
-chacun de ces champs.
+ouverte par défaut — mais **Partenaire(s)** (interaction/opportunité) et **Structure(s)** (contact) restent des
+sélecteurs multiples éditables : on peut y ajouter d'autres structures présentes (ex. une réunion avec deux
+partenaires, un contact rattaché aussi à son laboratoire de recherche), et la ligne apparaît alors sur toutes
+les fiches concernées, pas seulement celle où elle a été créée. Chaque champ s'enregistre seul, avec un retour
+visible ("Enregistrement…" / "Enregistré ✓"). Sur la fiche structure, Activité, Pilier SequoIA et Axe SequoIA
+sont eux aussi des sélecteurs multiples (puces + recherche parmi les choix configurés dans Grist) : une
+structure peut porter plusieurs valeurs sur chacun de ces champs.
 
 Une structure apparaît dans sa fiche dès qu'une ligne la référence, **quelle que soit la colonne** : une
 interaction saisie depuis la fiche d'un partenaire mais qui cite un laboratoire en « Laboratoire Cluster »

@@ -1319,7 +1319,8 @@
           '<input type="checkbox" id="m-principal" style="width:auto;margin-right:6px;"' +
           (c && c[cols.ContactPrincipal] ? ' checked' : '') + '>★ Contact principal</label></div>' : '') +
         areaField('m-commentaire', 'Commentaire', get('Commentaire'), true) +
-        '<div class="form-modal-note">Rattaché à <strong>' + escapeHtml(structField(s, 'Nom')) + '</strong>.</div>' +
+        '<div class="form-field full"><label>Structure(s)</label><div id="m-ref-structures"></div></div>' +
+        '<div class="form-modal-note">Créé depuis la fiche <strong>' + escapeHtml(structField(s, 'Nom')) + '</strong> — ajoutez d\'autres structures ci-dessus si besoin (ex. son laboratoire de recherche).</div>' +
       '</div>' +
       '<div class="form-modal-actions">' +
         (isNew ? '' : '<button class="btn-danger modal-actions-left" id="m-delete">Supprimer</button>') +
@@ -1328,6 +1329,10 @@
       '</div>';
 
     openModal(html, () => {
+      const getStructures = mountRefPicker('m-ref-structures',
+        structurePickerOptions(), c, r.tableId, cols.Structures, isNew,
+        [{ id: s.id, label: structField(s, 'Nom') || 'Sans nom' }]);
+
       if (isNew) {
         document.getElementById('m-nom').focus();
         document.getElementById('m-create').addEventListener('click', async () => {
@@ -1344,9 +1349,10 @@
           set('Commentaire', document.getElementById('m-commentaire').value.trim());
           const principalEl = document.getElementById('m-principal');
           if (principalEl) set('ContactPrincipal', principalEl.checked);
-          // Always link the new contact to the open structure — an unlinked
-          // contact would show up in no fiche at all.
-          set('Structures', ['L', s.id]);
+          // Sans lien le contact n'apparaîtrait sur aucune fiche : la
+          // structure ouverte reste le repli si la puce en a été retirée.
+          const structureChips = getStructures();
+          set('Structures', ['L', ...(structureChips.length ? structureChips.map(x => x.id) : [s.id])]);
           try {
             setModalStatus('Création…');
             await addRecord(r.tableId, fields);
@@ -1400,10 +1406,11 @@
         textField('m-montant', 'Montant (€)', rawGet('Montant') === null ? '' : rawGet('Montant'), false, 'number') +
         dateField('m-debut', 'Date de début', rawGet('DateDebut')) +
         dateField('m-echeance', 'Échéance', rawGet('Echeance')) +
+        '<div class="form-field full"><label>Partenaire(s)</label><div id="m-ref-partenaires"></div></div>' +
         '<div class="form-field full"><label>Contact(s) partenaire</label><div id="m-ref-contacts"></div></div>' +
         '<div class="form-field full"><label>Contact(s) cluster</label><div id="m-ref-contacts-cluster"></div></div>' +
         areaField('m-commentaire', 'Commentaire', get('Commentaire'), true) +
-        '<div class="form-modal-note">Rattachée à <strong>' + escapeHtml(structField(s, 'Nom')) + '</strong>.</div>' +
+        '<div class="form-modal-note">Créée depuis la fiche <strong>' + escapeHtml(structField(s, 'Nom')) + '</strong> — ajoutez les autres structures présentes ci-dessus si besoin.</div>' +
       '</div>' +
       '<div class="form-modal-actions">' +
         (isNew ? '' : '<button class="btn-danger modal-actions-left" id="m-delete">Supprimer</button>') +
@@ -1414,9 +1421,12 @@
     openModal(html, () => {
       populateChoiceSelect('m-statut', r.tableId, cols.Statut, r.records, get('Statut'));
 
-      const getContacts = mountContactPicker('m-ref-contacts',
+      const getPartenaires = mountRefPicker('m-ref-partenaires',
+        structurePickerOptions(), o, r.tableId, cols.Partenaires, isNew,
+        [{ id: s.id, label: structField(s, 'Nom') || 'Sans nom' }]);
+      const getContacts = mountRefPicker('m-ref-contacts',
         contactPickerOptions(s.id, 'structure'), o, r.tableId, cols.ContactPartenaire, isNew);
-      const getClusterContacts = mountContactPicker('m-ref-contacts-cluster',
+      const getClusterContacts = mountRefPicker('m-ref-contacts-cluster',
         contactPickerOptions(s.id, 'all'), o, r.tableId, cols.ContactCluster, isNew);
 
       if (isNew) {
@@ -1439,7 +1449,8 @@
           const clusterChips = getClusterContacts();
           if (contactChips.length) set('ContactPartenaire', ['L', ...contactChips.map(c => c.id)]);
           if (clusterChips.length) set('ContactCluster', ['L', ...clusterChips.map(c => c.id)]);
-          set('Partenaires', ['L', s.id]);
+          const partenaireChips = getPartenaires();
+          set('Partenaires', ['L', ...(partenaireChips.length ? partenaireChips.map(c => c.id) : [s.id])]);
           try {
             setModalStatus('Création…');
             await addRecord(r.tableId, fields);
@@ -1488,9 +1499,10 @@
         selectField('m-type', 'Type', get('Type')) +
         dateField('m-echeance', 'Prochaine échéance', rawGet('ProchaineEcheance')) +
         textField('m-suites', 'Suites à donner', get('Suites')) +
+        '<div class="form-field full"><label>Partenaire(s)</label><div id="m-ref-partenaires"></div></div>' +
         '<div class="form-field full"><label>Contact(s) partenaire</label><div id="m-ref-contacts"></div></div>' +
         '<div class="form-field full"><label>Contact(s) cluster</label><div id="m-ref-contacts-cluster"></div></div>' +
-        '<div class="form-modal-note">Liée à <strong>' + escapeHtml(structField(s, 'Nom')) + '</strong>.</div>' +
+        '<div class="form-modal-note">Créée depuis la fiche <strong>' + escapeHtml(structField(s, 'Nom')) + '</strong> — ajoutez les autres structures présentes ci-dessus si besoin.</div>' +
       '</div>' +
       (isNew ? '' :
         '<div class="modal-section">Compte-rendu</div>' +
@@ -1516,9 +1528,12 @@
     openModal(html, () => {
       populateChoiceSelect('m-type', r.tableId, cols.Type, r.records, get('Type'));
 
-      const getContacts = mountContactPicker('m-ref-contacts',
+      const getPartenaires = mountRefPicker('m-ref-partenaires',
+        structurePickerOptions(), i, r.tableId, cols.Partenaires, isNew,
+        [{ id: s.id, label: structField(s, 'Nom') || 'Sans nom' }]);
+      const getContacts = mountRefPicker('m-ref-contacts',
         contactPickerOptions(s.id, 'structure'), i, r.tableId, cols.ContactPartenaire, isNew);
-      const getClusterContacts = mountContactPicker('m-ref-contacts-cluster',
+      const getClusterContacts = mountRefPicker('m-ref-contacts-cluster',
         contactPickerOptions(s.id, 'all'), i, r.tableId, cols.ContactCluster, isNew);
 
       if (isNew) {
@@ -1537,8 +1552,10 @@
           const clusterChips = getClusterContacts();
           if (contactChips.length) set('ContactPartenaire', ['L', ...contactChips.map(c => c.id)]);
           if (clusterChips.length) set('ContactCluster', ['L', ...clusterChips.map(c => c.id)]);
-          // Without this link the interaction belongs to no fiche.
-          set('Partenaires', ['L', s.id]);
+          // Sans lien l'interaction n'apparaîtrait sur aucune fiche : la
+          // structure ouverte reste le repli si la puce en a été retirée.
+          const partenaireChips = getPartenaires();
+          set('Partenaires', ['L', ...(partenaireChips.length ? partenaireChips.map(c => c.id) : [s.id])]);
           try {
             setModalStatus('Création…');
             const newId = await addRecord(r.tableId, fields);
@@ -1583,16 +1600,32 @@
       .sort((a, b) => a.label.localeCompare(b.label, 'fr'));
   }
 
-  // Monte un sélecteur de contacts dans une popup : en édition il enregistre
-  // à chaque ajout/retrait, en création il retient seulement la sélection
-  // (tous les champs sont écrits d'un bloc au moment du "Créer"). Renvoie un
+  // Toutes les structures du document, pour taguer une interaction/
+  // opportunité/contact sur plusieurs partenaires présents (ex. une réunion
+  // avec deux structures), pas seulement celle depuis laquelle on l'a créée.
+  function structurePickerOptions() {
+    return structures
+      .map(s => ({ id: s.id, label: structField(s, 'Nom') || 'Sans nom' }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'fr'));
+  }
+
+  // Monte un sélecteur de références (contacts, structures…) dans une
+  // popup : en édition il enregistre à chaque ajout/retrait, en création il
+  // retient seulement la sélection (tous les champs sont écrits d'un bloc
+  // au moment du "Créer"). `defaultChipsWhenNew` pré-sélectionne une valeur
+  // à la création (ex. la structure ouverte) — sans effet en édition, où le
+  // point de départ est toujours la valeur déjà enregistrée. Renvoie un
   // accesseur sur la sélection courante.
-  function mountContactPicker(elId, options, record, tableId, colId, isNew) {
+  function mountRefPicker(elId, options, record, tableId, colId, isNew, defaultChipsWhenNew) {
     let chips = [];
     const el = document.getElementById(elId);
     if (!el) return () => chips;
-    const currentIds = record && colId ? refIdsFromValue(record[colId]) : [];
-    chips = options.filter(o => currentIds.includes(o.id));
+    if (record && colId) {
+      const currentIds = refIdsFromValue(record[colId]);
+      chips = options.filter(o => currentIds.includes(o.id));
+    } else {
+      chips = defaultChipsWhenNew || [];
+    }
     renderLocalPicker(el, options, chips, (next) => {
       chips = next;
       if (!isNew && colId && record) {

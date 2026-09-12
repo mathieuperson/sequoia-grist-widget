@@ -832,6 +832,84 @@ async function testCrmEdition(browser) {
   await context.close();
 }
 
+async function testCrmPartenairesMultiStructures(browser) {
+  console.log('\n=== crm.html : Partenaire(s) / Structure(s) en sélecteurs multiples ===');
+  const { page, context, consoleErrors } = await openCrm(browser);
+
+  // ---- Interaction : la structure ouverte est pré-cochée par défaut ----
+  await page.locator('.list-item', { hasText: 'Thales' }).click();
+  await page.waitForTimeout(200);
+  await page.click('#btn-new-interaction');
+  await page.waitForTimeout(150);
+  ok(await page.locator('#m-ref-partenaires .ref-chip').count() === 1,
+    'Thales (structure ouverte) est déjà coché par défaut dans Partenaire(s)');
+  ok((await page.locator('#m-ref-partenaires .ref-chip').first().textContent()).includes('Thales'),
+    'la puce par défaut porte bien le nom de la structure ouverte');
+
+  // On peut en tagger une 2e (ex. une réunion commune avec 2 structures).
+  await page.fill('#m-objet', 'Réunion commune');
+  await page.fill('#m-ref-partenaires .ref-input', 'Zenika');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(100);
+  ok(await page.locator('#m-ref-partenaires .ref-chip').count() === 2, 'Zenika a été ajoutée en 2e partenaire');
+
+  await page.click('#m-create');
+  await page.waitForTimeout(300);
+  let actions = await userActions(page);
+  const add = actions.find(a => a[0] === 'AddRecord' && a[1] === 'Interactions');
+  ok(!!add && JSON.stringify(add[3].Partenaires) === JSON.stringify(['L', 1, 2]),
+    "l'interaction est créée avec les 2 structures (Partenaires = [\"L\", 1, 2])");
+  await page.click('.form-modal-actions [data-close]');
+  await page.waitForTimeout(250);
+
+  // Elle doit apparaître sur la fiche Zenika aussi, sans y avoir été créée —
+  // c'est exactement le scénario "réunion avec 2 partenaires" du bug rapporté.
+  await page.locator('.list-item', { hasText: 'Zenika' }).click();
+  await page.waitForTimeout(250);
+  ok((await page.locator('.tl-last').textContent()).includes('Réunion commune'),
+    "l'interaction apparaît bien sur la fiche Zenika sans y avoir été créée");
+
+  // ---- Éditer une interaction existante : ajouter un partenaire enregistre aussitôt ----
+  await page.locator('.list-item', { hasText: 'Thales' }).click();
+  await page.waitForTimeout(200);
+  await page.locator('[data-interaction]', { hasText: 'Revue annuelle' }).first().click();
+  await page.waitForTimeout(200);
+  ok(await page.locator('#m-ref-partenaires .ref-chip').count() === 1,
+    "l'interaction existante montre son seul partenaire enregistré (Thales)");
+  await page.fill('#m-ref-partenaires .ref-input', 'Zenika');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(100);
+  actions = await userActions(page);
+  const partenairesUpdate = actions
+    .filter(a => a[0] === 'UpdateRecord' && a[1] === 'Interactions' && a[3] && 'Partenaires' in a[3]).pop();
+  ok(!!partenairesUpdate && JSON.stringify(partenairesUpdate[3].Partenaires) === JSON.stringify(['L', 1, 2]),
+    'ajouter un partenaire sur une interaction existante l\'enregistre aussitôt (UpdateRecord)');
+  await page.click('.form-modal-actions [data-close]');
+  await page.waitForTimeout(200);
+
+  // ---- Contact : Structure(s) pré-rempli avec la fiche ouverte, ajout d'un labo ----
+  await page.click('#btn-new-contact');
+  await page.waitForTimeout(150);
+  ok(await page.locator('#m-ref-structures .ref-chip').count() === 1,
+    'la fiche Structure(s) du nouveau contact est pré-remplie avec la structure ouverte');
+  await page.fill('#m-nom', 'Facca');
+  await page.fill('#m-prenom', 'Léo');
+  await page.fill('#m-ref-structures .ref-input', 'Inria Rennes');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(100);
+  ok(await page.locator('#m-ref-structures .ref-chip').count() === 2,
+    'un 2e établissement (son laboratoire) peut être ajouté avant la création');
+  await page.click('#m-create');
+  await page.waitForTimeout(200);
+  actions = await userActions(page);
+  const addContact = actions.find(a => a[0] === 'AddRecord' && a[1] === 'Contacts');
+  ok(!!addContact && JSON.stringify(addContact[3].Structures) === JSON.stringify(['L', 1, 3]),
+    'le contact est créé rattaché aux 2 structures (Structures = ["L", 1, 3])');
+
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
 async function testCrmContactsEtOpportunites(browser) {
   console.log('\n=== crm.html : contacts et opportunités depuis la vue ===');
   const { page, context, consoleErrors } = await openCrm(browser);
@@ -1374,6 +1452,7 @@ try {
   await testCrmFiche(browser);
   await testCrmEdition(browser);
   await testCrmStructureMultiSelect(browser);
+  await testCrmPartenairesMultiStructures(browser);
   await testCrmContactsEtOpportunites(browser);
   await testCrmSchemaDifferent(browser);
   await testCrmTableManquante(browser);
