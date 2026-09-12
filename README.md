@@ -40,9 +40,12 @@ repliable (Type d'acteur, Pilier SequoIA, Axe SequoIA), avec pastille de comptag
 puces de filtres actifs retirables d'un clic — même composant que celui de `cartographie.html`.
 
 Une structure apparaît dans sa fiche dès qu'une ligne la référence, **quelle que soit la colonne** : une
-interaction saisie depuis la fiche d'un partenaire mais qui cite un laboratoire en « Laboratoire Cluster »
-remonte aussi sur la fiche de ce laboratoire, avec une pastille indiquant par quel champ elle est rattachée.
-Les colonnes de référence sont découvertes à la lecture du type Grist (`Ref:Structures` / `RefList:Structures`).
+interaction ou une opportunité saisie depuis la fiche d'un partenaire mais qui cite un laboratoire en
+« Laboratoire Cluster » (ou un établissement/une équipe cluster) remonte aussi sur la fiche de ce laboratoire,
+avec une pastille indiquant par quel champ elle est rattachée. Les colonnes de référence sont découvertes à la
+lecture du type Grist (`Ref:Structures` / `RefList:Structures`) — et chacune, hors colonne formule, devient
+automatiquement un sélecteur multiple éditable dans la popup (Établissement Cluster, Laboratoire Cluster, Équipe
+Cluster…), en plus de Partenaire(s) : les tagger fait apparaître la ligne sur la fiche correspondante.
 
 Particularité technique : un widget Grist n'est mappé que sur **une** table (ici Structures). Les trois autres
 tables sont lues via `docApi.fetchTable` et écrites via `docApi.applyUserActions`, et leurs colonnes sont

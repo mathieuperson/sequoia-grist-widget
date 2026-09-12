@@ -246,10 +246,12 @@ async function fetchColumnChoices(tableId, colId) {
   }
 }
 
-// Column metadata (id, type, label) of a table, from the REST /columns
-// endpoint. A reference column's type carries its target table:
-// "Ref:Structures", "RefList:Contacts". Returns [] on any failure so
-// callers fall back to whatever they know statically.
+// Column metadata (id, type, label, isFormula) of a table, from the REST
+// /columns endpoint. A reference column's type carries its target table:
+// "Ref:Structures", "RefList:Contacts". isFormula distinguishes a computed
+// lookup (legitimate for display/matching, never writable) from a real data
+// column a picker could save to. Returns [] on any failure so callers fall
+// back to whatever they know statically.
 const _colMetaCache = {};
 async function fetchColumnMeta(tableId) {
   if (tableId in _colMetaCache) return _colMetaCache[tableId];
@@ -261,7 +263,8 @@ async function fetchColumnMeta(tableId) {
     const cols = (data.columns || []).map(c => ({
       id: c.id,
       type: (c.fields && c.fields.type) || '',
-      label: (c.fields && c.fields.label) || c.id
+      label: (c.fields && c.fields.label) || c.id,
+      isFormula: !!(c.fields && c.fields.isFormula)
     }));
     _colMetaCache[tableId] = cols;
     return cols;

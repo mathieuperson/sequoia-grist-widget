@@ -84,13 +84,14 @@ export function crmConfig() {
         }
       },
       Opportunites: {
-        colIds: ['Sujet', 'Type', 'Partenaires', 'AxeSequoia', 'Statut', 'DateDebut', 'Echeance',
+        colIds: ['Sujet', 'Type', 'Partenaires', 'EtablissementCluster', 'AxeSequoia', 'Statut', 'DateDebut', 'Echeance',
           'Montant', 'Commentaire', 'ContactPartenaire', 'ContactCluster'],
         data: {
           id: [30, 31, 32],
           Sujet: ['Chaire IA de confiance', 'POC détection d\'intrusion', 'Vieux projet'],
           Type: ['Chaire', 'POC', 'POC'],
           Partenaires: [['L', 1], ['L', 1], ['L', 1]],
+          EtablissementCluster: [null, null, null],
           AxeSequoia: ['IA de confiance', '', ''],
           Statut: ['Contractualisation', 'Montage', 'Abandonné'],
           DateDebut: [null, null, null],
@@ -128,6 +129,7 @@ export function crmConfig() {
         choiceCol('Statut', ['Prospection', 'Qualification', 'Montage',
           'Contractualisation', 'Concrétisé', 'Abandonné']),
         refCol('Partenaires', 'RefList:Structures', 'Partenaire(s)'),
+        refCol('EtablissementCluster', 'RefList:Structures', 'Établissement Cluster'),
         refCol('ContactPartenaire', 'RefList:Contacts', 'Contact(s) partenaire'),
         refCol('ContactCluster', 'RefList:Contacts', 'Contact(s) Cluster')
       ],

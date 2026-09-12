@@ -1224,6 +1224,76 @@ async function testCrmLiensMultiColonnes(browser) {
   await context.close();
 }
 
+async function testCrmLiensExtraEditable(browser) {
+  console.log('\n=== crm.html : colonnes de rattachement annexes éditables (Laboratoire/Établissement Cluster) ===');
+  const { page, context, consoleErrors } = await openCrm(browser);
+
+  // ---- Interaction : "Laboratoire Cluster" (déjà utilisée pour l'affichage,
+  // cf. testCrmLiensMultiColonnes) devient éditable dans la popup. ----
+  await page.click('.filter-chip[data-filter="tous"]');
+  await page.waitForTimeout(100);
+  await page.locator('.list-item', { hasText: 'Zenika' }).click();
+  await page.waitForTimeout(250);
+  await page.locator('[data-interaction]', { hasText: 'Montage thèse CIFRE' }).first().click();
+  await page.waitForTimeout(200);
+
+  const laboField = page.locator('.form-field', { hasText: 'Laboratoire Cluster' });
+  ok(await laboField.locator('.ref-chip').count() === 1,
+    'le champ "Laboratoire Cluster" affiche la valeur déjà enregistrée (Inria Rennes)');
+  ok((await laboField.locator('.ref-chip').first().textContent()).includes('Inria'),
+    'la puce porte bien le nom de la structure liée');
+
+  await laboField.locator('.ref-input').fill('b<>com');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(100);
+  let actions = await userActions(page);
+  const laboUpdate = actions
+    .filter(a => a[0] === 'UpdateRecord' && a[1] === 'Interactions' && a[3] && 'LaboratoireCluster' in a[3]).pop();
+  ok(!!laboUpdate && JSON.stringify(laboUpdate[3].LaboratoireCluster) === JSON.stringify(['L', 3, 4]),
+    'ajouter un 2e laboratoire cluster enregistre aussitôt (UpdateRecord)');
+  await page.click('.form-modal-actions [data-close]');
+  await page.waitForTimeout(200);
+
+  await page.locator('.list-item', { hasText: 'b<>com' }).click();
+  await page.waitForTimeout(250);
+  ok((await page.evaluate(() => window.__crm.kpis.nbInteractions)) === 1,
+    "la fiche b<>com voit désormais l'interaction, taguée via Laboratoire Cluster");
+
+  // ---- Opportunité : "Établissement Cluster" en sélecteur multiple, dès la création. ----
+  await page.locator('.list-item', { hasText: 'Thales' }).click();
+  await page.waitForTimeout(200);
+  await page.click('#btn-new-opp');
+  await page.waitForTimeout(150);
+  const etabField = page.locator('.form-field', { hasText: 'Établissement Cluster' });
+  ok(await etabField.count() === 1, 'le champ "Établissement Cluster" est proposé dans la popup Opportunité');
+
+  await page.fill('#m-sujet', 'Projet avec labo');
+  await etabField.locator('.ref-input').fill('Inria Rennes');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(100);
+  ok(await etabField.locator('.ref-chip').count() === 1, 'Inria Rennes a été ajoutée comme établissement cluster');
+
+  await page.click('#m-create');
+  await page.waitForTimeout(200);
+  actions = await userActions(page);
+  const addOpp = actions.find(a => a[0] === 'AddRecord' && a[1] === 'Opportunites');
+  ok(!!addOpp && JSON.stringify(addOpp[3].EtablissementCluster) === JSON.stringify(['L', 3]),
+    "l'opportunité est créée avec Établissement Cluster = Inria Rennes");
+  // La popup se referme d'elle-même après une création réussie.
+
+  // Elle doit apparaître sur la fiche Inria Rennes, avec la pastille dédiée —
+  // c'est exactement le comportement demandé : taguer un labo/établissement
+  // cluster fait apparaître l'opportunité sur sa fiche.
+  await page.locator('.list-item', { hasText: 'Inria' }).click();
+  await page.waitForTimeout(250);
+  const oppText = await page.locator('#main').textContent();
+  ok(oppText.includes('Projet avec labo'), "l'opportunité apparaît sur la fiche d'Inria Rennes");
+  ok(oppText.includes('Établissement Cluster'), 'une pastille indique le rattachement via Établissement Cluster');
+
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
 async function testCrmContactsCluster(browser) {
   console.log('\n=== crm.html : contacts cluster dans les popups ===');
   const { page, context, consoleErrors } = await openCrm(browser);
@@ -1516,6 +1586,7 @@ try {
   await testCrmSchemaDifferent(browser);
   await testCrmTableManquante(browser);
   await testCrmLiensMultiColonnes(browser);
+  await testCrmLiensExtraEditable(browser);
   await testCrmContactsCluster(browser);
   await testCrmSuggestionsRecherche(browser);
   await testCartographieFiltres(browser);
