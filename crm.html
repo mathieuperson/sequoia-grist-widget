@@ -536,19 +536,27 @@
         const discovered = refColumnsTo(meta, structTableId);
         const linkCols = [primary, ...discovered.filter(c => c !== primary)].filter(Boolean);
         const colLabels = {};
-        meta.forEach(m => { colLabels[m.id] = m.label; });
+        const formulaCols = new Set();
+        meta.forEach(m => { colLabels[m.id] = m.label; if (m.isFormula) formulaCols.add(m.id); });
+
+        // Discovered link columns beyond the primary one (Etablissement /
+        // Laboratoire / Equipe Cluster…) double as editable multi-select
+        // fields in the create/edit popups — except a formula/lookup column,
+        // which Grist would refuse to write to.
+        const extraEditableLinkCols = discovered.filter(c => c !== primary && !formulaCols.has(c));
 
         return {
           tableId,
           cols,
           linkCols: linkCols.length ? linkCols : [primary].filter(Boolean),
+          extraEditableLinkCols,
           colLabels,
           records: recordsFromTableData(data),
           error: null
         };
       } catch (err) { /* try the next candidate */ }
     }
-    return { tableId: null, cols: {}, linkCols: [], colLabels: {}, records: [], error: 'Table introuvable (' + conf.tableCandidates.join(' / ') + ')' };
+    return { tableId: null, cols: {}, linkCols: [], extraEditableLinkCols: [], colLabels: {}, records: [], error: 'Table introuvable (' + conf.tableCandidates.join(' / ') + ')' };
   }
 
   async function loadRelated() {
@@ -572,7 +580,7 @@
   // Sélecteurs
   // ---------------------------------------------------------------------
 
-  function rel(key) { return related[key] || { tableId: null, cols: {}, linkCols: [], colLabels: {}, records: [] }; }
+  function rel(key) { return related[key] || { tableId: null, cols: {}, linkCols: [], extraEditableLinkCols: [], colLabels: {}, records: [] }; }
 
   function linkedRecords(key, structureId) {
     const r = rel(key);
@@ -1495,6 +1503,7 @@
         dateField('m-debut', 'Date de début', rawGet('DateDebut')) +
         dateField('m-echeance', 'Échéance', rawGet('Echeance')) +
         '<div class="form-field full"><label>Partenaire(s)</label><div id="m-ref-partenaires"></div></div>' +
+        extraStructureFieldsHtml('opportunites') +
         '<div class="form-field full"><label>Contact(s) partenaire</label><div id="m-ref-contacts"></div></div>' +
         '<div class="form-field full"><label>Contact(s) cluster</label><div id="m-ref-contacts-cluster"></div></div>' +
         areaField('m-commentaire', 'Commentaire', get('Commentaire'), true) +
@@ -1512,6 +1521,7 @@
       const getPartenaires = mountRefPicker('m-ref-partenaires',
         structurePickerOptions(), o, r.tableId, cols.Partenaires, isNew,
         [{ id: s.id, label: structField(s, 'Nom') || 'Sans nom' }]);
+      const getExtraLinks = mountExtraStructureLinks('opportunites', o, r.tableId, isNew);
       const getContacts = mountRefPicker('m-ref-contacts',
         contactPickerOptions(s.id, 'structure'), o, r.tableId, cols.ContactPartenaire, isNew);
       const getClusterContacts = mountRefPicker('m-ref-contacts-cluster',
@@ -1539,6 +1549,10 @@
           if (clusterChips.length) set('ContactCluster', ['L', ...clusterChips.map(c => c.id)]);
           const partenaireChips = getPartenaires();
           set('Partenaires', ['L', ...(partenaireChips.length ? partenaireChips.map(c => c.id) : [s.id])]);
+          Object.entries(getExtraLinks).forEach(([colId, getChips]) => {
+            const chips = getChips();
+            if (chips.length) fields[colId] = ['L', ...chips.map(c => c.id)];
+          });
           try {
             setModalStatus('Création…');
             await addRecord(r.tableId, fields);
@@ -1588,6 +1602,7 @@
         dateField('m-echeance', 'Prochaine échéance', rawGet('ProchaineEcheance')) +
         textField('m-suites', 'Suites à donner', get('Suites')) +
         '<div class="form-field full"><label>Partenaire(s)</label><div id="m-ref-partenaires"></div></div>' +
+        extraStructureFieldsHtml('interactions') +
         '<div class="form-field full"><label>Contact(s) partenaire</label><div id="m-ref-contacts"></div></div>' +
         '<div class="form-field full"><label>Contact(s) cluster</label><div id="m-ref-contacts-cluster"></div></div>' +
         '<div class="form-modal-note">Créée depuis la fiche <strong>' + escapeHtml(structField(s, 'Nom')) + '</strong> — ajoutez les autres structures présentes ci-dessus si besoin.</div>' +
@@ -1619,6 +1634,7 @@
       const getPartenaires = mountRefPicker('m-ref-partenaires',
         structurePickerOptions(), i, r.tableId, cols.Partenaires, isNew,
         [{ id: s.id, label: structField(s, 'Nom') || 'Sans nom' }]);
+      const getExtraLinks = mountExtraStructureLinks('interactions', i, r.tableId, isNew);
       const getContacts = mountRefPicker('m-ref-contacts',
         contactPickerOptions(s.id, 'structure'), i, r.tableId, cols.ContactPartenaire, isNew);
       const getClusterContacts = mountRefPicker('m-ref-contacts-cluster',
@@ -1640,6 +1656,10 @@
           const clusterChips = getClusterContacts();
           if (contactChips.length) set('ContactPartenaire', ['L', ...contactChips.map(c => c.id)]);
           if (clusterChips.length) set('ContactCluster', ['L', ...clusterChips.map(c => c.id)]);
+          Object.entries(getExtraLinks).forEach(([colId, getChips]) => {
+            const chips = getChips();
+            if (chips.length) fields[colId] = ['L', ...chips.map(c => c.id)];
+          });
           // Sans lien l'interaction n'apparaîtrait sur aucune fiche : la
           // structure ouverte reste le repli si la puce en a été retirée.
           const partenaireChips = getPartenaires();
@@ -1695,6 +1715,34 @@
     return structures
       .map(s => ({ id: s.id, label: structField(s, 'Nom') || 'Sans nom' }))
       .sort((a, b) => a.label.localeCompare(b.label, 'fr'));
+  }
+
+  // Une interaction/opportunité peut référencer une structure par d'autres
+  // colonnes que la principale (Etablissement Cluster, Laboratoire Cluster,
+  // Equipe Cluster…) — déjà prises en compte pour l'affichage sur la fiche
+  // (linkCols/linkedVia), mais jusqu'ici pas éditables depuis la popup. On
+  // les monte ici en sélecteurs multiples génériques, un par colonne
+  // découverte, avec le libellé Grist réel de la colonne.
+  function extraStructureFieldId(colId) {
+    return 'm-ref-extra-' + colId.replace(/[^a-zA-Z0-9_-]/g, '_');
+  }
+
+  function extraStructureFieldsHtml(relKey) {
+    const r = rel(relKey);
+    return (r.extraEditableLinkCols || []).map(colId =>
+      '<div class="form-field full"><label>' + escapeHtml(r.colLabels[colId] || colId) + '</label>' +
+      '<div id="' + extraStructureFieldId(colId) + '"></div></div>'
+    ).join('');
+  }
+
+  // Renvoie { colId: getChips } pour lire leur contenu au moment du "Créer".
+  function mountExtraStructureLinks(relKey, record, tableId, isNew) {
+    const r = rel(relKey);
+    const getters = {};
+    (r.extraEditableLinkCols || []).forEach(colId => {
+      getters[colId] = mountRefPicker(extraStructureFieldId(colId), structurePickerOptions(), record, tableId, colId, isNew);
+    });
+    return getters;
   }
 
   // Monte un sélecteur de références (contacts, structures…) dans une
