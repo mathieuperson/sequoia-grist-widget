@@ -936,6 +936,69 @@ async function testCrmSchemaDifferent(browser) {
   await context.close();
 }
 
+async function testCrmStructureMultiSelect(browser) {
+  console.log('\n=== crm.html : sélecteurs multiples (Activité, Pilier SequoIA, Axe SequoIA) ===');
+  const cfg = crmConfig();
+  // Thales porte déjà 2 piliers (ChoiceList) : le cas réel qui motive la
+  // fonctionnalité (un fusible-string "IA fondamentale, IA & sécurité" dans
+  // un seul champ texte n'aurait jamais dû être éditable comme une valeur).
+  cfg.tables.Structures.data.pilier_sequoia[0] = ['L', 'IA & sécurité', 'IA fondamentale'];
+  cfg.columnsMeta.Structures.push(
+    choiceCol('pilier_sequoia', ['IA fondamentale', 'IA & sécurité', 'IA & environnement']),
+    choiceCol('axe_sequoia', ['IA de confiance', 'Axe 2', 'Axe 3'])
+  );
+
+  const { page, context, consoleErrors } = await openCrm(browser, cfg);
+  await page.locator('.list-item', { hasText: 'Thales' }).click();
+  await page.waitForTimeout(200);
+
+  // ---- Lecture : une pastille par pilier, pas un texte fusionné ----
+  ok(await page.locator('.head-pills .value-pill').count() === 2,
+    'la fiche affiche une pastille par pilier (pas un seul texte fusionné)');
+  const pillTexts = await page.locator('.head-pills .value-pill').allTextContents();
+  ok(pillTexts.includes('IA & sécurité') && pillTexts.includes('IA fondamentale'),
+    'les 2 pastilles portent chacune un seul pilier, lisible');
+
+  // ---- Édition ----
+  await page.click('#btn-edit-structure');
+  await page.waitForTimeout(200);
+  ok(await page.locator('#m-pilier .ref-chip').count() === 2,
+    'le champ Pilier SequoIA affiche les 2 valeurs existantes comme 2 puces');
+  ok(await page.locator('#m-activite .ref-chip').count() === 1,
+    'le champ Activité (valeur unique) affiche 1 puce, pas un <select>');
+
+  // Ajouter un 2e pilier parmi les choix configurés dans Grist.
+  await page.fill('#m-pilier .ref-input', 'IA & environnement');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(900); // autosave debounce
+  let actions = await userActions(page);
+  let pilierUpdate = actions.filter(a => a[0] === 'UpdateRecord' && a[1] === 'Structures' && a[3] && 'pilier_sequoia' in a[3]).pop();
+  ok(!!pilierUpdate && JSON.stringify(pilierUpdate[3].pilier_sequoia) === JSON.stringify(['L', 'IA & sécurité', 'IA fondamentale', 'IA & environnement']),
+    'ajouter un pilier écrit la liste complète en ChoiceList (["L", ...])');
+  ok(await page.locator('#m-pilier .ref-chip').count() === 3, 'la 3e puce apparaît dans le champ');
+
+  // Retirer un pilier.
+  await page.locator('#m-pilier .ref-chip', { hasText: 'IA fondamentale' }).locator('button').click();
+  await page.waitForTimeout(900);
+  actions = await userActions(page);
+  pilierUpdate = actions.filter(a => a[0] === 'UpdateRecord' && a[1] === 'Structures' && a[3] && 'pilier_sequoia' in a[3]).pop();
+  ok(!!pilierUpdate && JSON.stringify(pilierUpdate[3].pilier_sequoia) === JSON.stringify(['L', 'IA & sécurité', 'IA & environnement']),
+    'retirer une puce enregistre la liste réduite');
+
+  // Une valeur qui ne correspond à aucun choix configuré est refusée (pas de
+  // faute de frappe silencieusement ajoutée comme nouveau choix).
+  await page.fill('#m-axe .ref-input', 'Ce choix n\'existe pas');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(100);
+  ok(await page.locator('#m-axe .ref-input.ref-input-error').count() === 1,
+    'une valeur hors liste est signalée en erreur plutôt qu\'ajoutée');
+  ok(await page.locator('#m-axe .ref-chip').count() === 1,
+    'aucune puce n\'a été ajoutée pour la valeur invalide');
+
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
 async function testCrmTableManquante(browser) {
   console.log('\n=== crm.html : table liée absente du document ===');
   const cfg = crmConfig();
@@ -1310,6 +1373,7 @@ try {
   await testCifreDashboardNumericYear(browser);
   await testCrmFiche(browser);
   await testCrmEdition(browser);
+  await testCrmStructureMultiSelect(browser);
   await testCrmContactsEtOpportunites(browser);
   await testCrmSchemaDifferent(browser);
   await testCrmTableManquante(browser);
