@@ -27,7 +27,9 @@ Tout se modifie depuis cette vue, dans des popups : fiche structure, fiche conta
 et interaction avec l'éditeur de compte-rendu (gras/italique/titre/liste/lien, collage d'image téléversée
 automatiquement) et le dépôt de pièces jointes. Les enregistrements créés sont rattachés d'office à la structure
 ouverte, donc jamais orphelins. Chaque champ s'enregistre seul, avec un retour visible ("Enregistrement…" /
-"Enregistré ✓").
+"Enregistré ✓"). Sur la fiche structure, Activité, Pilier SequoIA et Axe SequoIA sont des sélecteurs multiples
+(puces + recherche parmi les choix configurés dans Grist) : une structure peut porter plusieurs valeurs sur
+chacun de ces champs.
 
 Une structure apparaît dans sa fiche dès qu'une ligne la référence, **quelle que soit la colonne** : une
 interaction saisie depuis la fiche d'un partenaire mais qui cite un laboratoire en « Laboratoire Cluster »

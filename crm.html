@@ -681,6 +681,17 @@
     return s ? formatValue(s[role]) : '';
   }
 
+  // A Choice value arrives as a plain string, a ChoiceList as ['L', ...values] —
+  // this always returns a clean array of strings, never the raw encoded form.
+  function choiceListValues(value) {
+    if (value === null || value === undefined) return [];
+    if (Array.isArray(value)) {
+      const list = value[0] === 'L' ? value.slice(1) : value;
+      return list.filter(v => typeof v === 'string' && v);
+    }
+    return value === '' ? [] : [String(value)];
+  }
+
   function matchesFilters(s) {
     const cat = normalizeKey(structField(s, 'Categorie'));
     if (filterMode === 'partenaires' && cat === 'prospect') return false;
@@ -811,8 +822,12 @@
     const k = computeKpis(s.id);
     const nom = structField(s, 'Nom') || 'Sans nom';
     const logo = structField(s, 'Logo');
-    const pilier = structField(s, 'PilierSequoia');
-    const axe = structField(s, 'AxeSequoia');
+    // Une structure peut porter plusieurs piliers/axes (ChoiceList) : une
+    // pastille par valeur, pas un seul pilule fourre-tout avec un texte
+    // "IA fondamentale, Sécurité" et une couleur qui ne représenterait que
+    // la première valeur trouvée.
+    const pilierValues = choiceListValues(s.PilierSequoia);
+    const axeValues = choiceListValues(s.AxeSequoia);
     const site = structField(s, 'SiteWeb');
 
     const metaParts = [structField(s, 'TypeActeur'), structField(s, 'Categorie'),
@@ -828,8 +843,8 @@
             '<h1 title="' + escapeHtml(nom) + '">' + escapeHtml(nom) + '</h1>' +
             '<div class="head-meta">' + escapeHtml(metaParts.join(' · ')) + '</div>' +
             '<div class="head-pills">' +
-              (pilier ? '<span class="value-pill ' + pilierClass(pilier) + '">' + escapeHtml(pilier) + '</span>' : '') +
-              (axe ? '<span class="type-pill">' + escapeHtml(axe) + '</span>' : '') +
+              pilierValues.map(v => '<span class="value-pill ' + pilierClass(v) + '">' + escapeHtml(v) + '</span>').join('') +
+              axeValues.map(v => '<span class="type-pill">' + escapeHtml(v) + '</span>').join('') +
               (site ? '<a class="site-link" href="' + escapeHtml(site) + '" target="_blank" rel="noopener">' + escapeHtml(site.replace(/^https?:\/\//, '')) + ' ↗</a>' : '') +
             '</div>' +
           '</div>' +
@@ -1133,6 +1148,75 @@
     }
   }
 
+  function choiceListFieldHtml(id, label, full) {
+    return fieldHtml(id, label, '<div id="' + id + '" class="choice-list-field"></div>', full);
+  }
+
+  // Multi-select for a Choice/ChoiceList column: chips + a search-to-add
+  // input, exactly like renderLocalPicker's contact picker below, except the
+  // "options" are the column's own configured choices (plain strings) rather
+  // than another table's rows. Only a value matching an existing choice can
+  // be added — a closed vocabulary, so no free text slips in as a stray
+  // near-duplicate. `onChange` is called with the full array on every
+  // add/remove; the caller is responsible for saving it.
+  async function renderChoiceListPicker(container, tableId, colId, records, currentValues, onChange) {
+    if (!container || !colId) { if (container) container.innerHTML = ''; return; }
+    let values = [...(currentValues || [])];
+    let options = [...(currentValues || [])]; // shown immediately, refined once choices are fetched
+    const datalistId = 'dl-' + Math.random().toString(36).slice(2);
+
+    function paint() {
+      container.innerHTML =
+        '<div class="ref-chips">' +
+          values.map((v, i) => '<span class="ref-chip">' + escapeHtml(v) +
+            '<button type="button" data-i="' + i + '" title="Retirer">✕</button></span>').join('') +
+        '</div>' +
+        '<input class="editable-input ref-input" list="' + datalistId + '" placeholder="Ajouter… (Entrée)">' +
+        '<datalist id="' + datalistId + '">' +
+          options.filter(o => !values.includes(o)).map(o => '<option value="' + escapeHtml(o) + '">').join('') +
+        '</datalist>';
+
+      container.querySelectorAll('.ref-chip button').forEach(btn => {
+        btn.addEventListener('click', () => {
+          values.splice(Number(btn.dataset.i), 1);
+          paint();
+          onChange([...values]);
+        });
+      });
+
+      const input = container.querySelector('.ref-input');
+      function tryAdd() {
+        const val = input.value.trim();
+        if (!val) return;
+        const match = options.find(o => o.toLowerCase() === val.toLowerCase());
+        if (!match) {
+          input.classList.add('ref-input-error');
+          setTimeout(() => input.classList.remove('ref-input-error'), 900);
+          return;
+        }
+        if (values.includes(match)) { input.value = ''; return; }
+        values.push(match);
+        input.value = '';
+        paint();
+        onChange([...values]);
+      }
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); tryAdd(); } });
+      input.addEventListener('change', tryAdd); // fires when picking a datalist suggestion
+    }
+
+    paint();
+
+    try {
+      const configured = await fetchColumnChoices(tableId, colId);
+      const used = Array.from(new Set((records || []).flatMap(r => choiceListValues(r[colId]))));
+      options = Array.from(new Set([...(configured || []), ...used, ...values]))
+        .sort((a, b) => String(a).localeCompare(String(b), 'fr'));
+      paint();
+    } catch (err) {
+      console.error('renderChoiceListPicker', colId, err);
+    }
+  }
+
   // Binds an input to a debounced autosave on `tableId`. `transform` adapts
   // the DOM value to what the column expects (date -> epoch, number, ...).
   function bindField(saver, tableId, rowId, elId, colId, transform) {
@@ -1158,10 +1242,10 @@
         areaField('m-description', 'Description', structField(s, 'Description'), true) +
         selectField('m-type', "Type d'acteur", typeActeur) +
         selectField('m-categorie', 'Catégorie', structField(s, 'Categorie')) +
-        selectField('m-activite', 'Activité', structField(s, 'Activite')) +
+        choiceListFieldHtml('m-activite', 'Activité') +
         selectField('m-taille', 'Taille', structField(s, 'Taille')) +
-        textField('m-pilier', 'Pilier SequoIA', structField(s, 'PilierSequoia')) +
-        textField('m-axe', 'Axe SequoIA', structField(s, 'AxeSequoia')) +
+        choiceListFieldHtml('m-pilier', 'Pilier SequoIA') +
+        choiceListFieldHtml('m-axe', 'Axe SequoIA') +
         textField('m-site', 'Site web', structField(s, 'SiteWeb'), true) +
         textField('m-logo', 'URL du logo', structField(s, 'Logo'), true) +
         textField('m-rstructure', 'Structure de recherche', structField(s, 'RechercheStructure')) +
@@ -1177,10 +1261,7 @@
       bind('m-description', 'Description');
       bind('m-type', 'TypeActeur');
       bind('m-categorie', 'Categorie');
-      bind('m-activite', 'Activite');
       bind('m-taille', 'Taille');
-      bind('m-pilier', 'PilierSequoia');
-      bind('m-axe', 'AxeSequoia');
       bind('m-site', 'SiteWeb');
       bind('m-logo', 'Logo');
       bind('m-rstructure', 'RechercheStructure');
@@ -1188,16 +1269,31 @@
       bind('m-rlabo', 'RechercheEquipeLabo');
 
       const raw = structures.map(x => {
-        // populateChoiceSelect works on raw records; rebuild them from the
-        // mapped ones so a Choice value in use elsewhere still shows up.
+        // populateChoiceSelect/renderChoiceListPicker work on raw records;
+        // rebuild them from the mapped ones so a Choice value in use
+        // elsewhere still shows up.
         const o = { id: x.id };
         Object.keys(mappings).forEach(role => { if (mappings[role]) o[mappings[role]] = x[role]; });
         return o;
       });
       populateChoiceSelect('m-type', structTableId, mappings.TypeActeur, raw, typeActeur);
       populateChoiceSelect('m-categorie', structTableId, mappings.Categorie, raw, structField(s, 'Categorie'));
-      populateChoiceSelect('m-activite', structTableId, mappings.Activite, raw, structField(s, 'Activite'));
       populateChoiceSelect('m-taille', structTableId, mappings.Taille, raw, structField(s, 'Taille'));
+
+      // Activité, Pilier SequoIA et Axe SequoIA : une structure peut porter
+      // plusieurs valeurs (ChoiceList), donc un sélecteur multiple plutôt
+      // qu'un champ à valeur unique.
+      const multiFields = [
+        ['m-activite', 'Activite'],
+        ['m-pilier', 'PilierSequoia'],
+        ['m-axe', 'AxeSequoia']
+      ];
+      multiFields.forEach(([elId, role]) => {
+        renderChoiceListPicker(
+          document.getElementById(elId), structTableId, mappings[role], raw, choiceListValues(s[role]),
+          (values) => saver(structTableId, s.id, mappings[role], ['L', ...values])
+        );
+      });
     });
   }
 
