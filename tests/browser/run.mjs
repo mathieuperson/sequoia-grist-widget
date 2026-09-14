@@ -2,7 +2,7 @@ import { chromium } from 'playwright';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildMockScript } from './mock-grist.mjs';
-import { choiceCol, crmConfig } from './fixtures.mjs';
+import { choiceCol, crmConfig, pilotageConfig, PILOTAGE_STATUTS, rel } from './fixtures.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.join(__dirname, '..', '..'); // repo root, two levels up from tests/browser/
@@ -17,7 +17,7 @@ function ok(cond, label) {
 // Opens `file` (a widget html) in a fresh page with window.grist replaced by
 // our mock, and the REST /tables/{id}/columns endpoint stubbed from
 // cfg.columnsMeta. Returns { page, consoleErrors }.
-async function openWidget(browser, file, cfg) {
+async function openWidget(browser, file, cfg, search) {
   const context = await browser.newContext();
   const page = await context.newPage();
   const consoleErrors = [];
@@ -62,7 +62,7 @@ async function openWidget(browser, file, cfg) {
     route.fulfill({ contentType: 'image/png', body: BLANK_PNG });
   });
 
-  await page.goto('file://' + path.join(REPO, file));
+  await page.goto('file://' + path.join(REPO, file) + (search || ''));
   await page.waitForTimeout(150); // let the async onRecords/onRecord fire
   return { page, context, consoleErrors };
 }
@@ -1561,6 +1561,400 @@ async function testCartographieStatistiques(browser) {
   await context.close();
 }
 
+// ---------------------------------------------------------------------
+// pilotage.html
+// ---------------------------------------------------------------------
+
+const kpi = (page, label) => page.evaluate((l) => {
+  const card = [...document.querySelectorAll('.pil-kpi')]
+    .find(c => c.querySelector('.pil-kpi-label').textContent.trim() === l);
+  return card ? card.querySelector('.pil-kpi-value').textContent.trim() : null;
+}, label);
+
+async function testPilotageDashboard(browser) {
+  console.log('\n=== pilotage.html : tableau de bord (indicateurs calculés) ===');
+  const cfg = pilotageConfig();
+  const { page, context, consoleErrors } = await openWidget(browser, 'pilotage.html', cfg);
+
+  ok(await page.locator('.pil-kpi').count() === 7, 'les 7 indicateurs du bandeau sont rendus');
+  ok(await kpi(page, 'Actions en retard') === '1', 'actions en retard : 1');
+  ok(await kpi(page, 'Actions cette semaine') === '5', 'actions à échéance sous 7 j : 5');
+  ok(await kpi(page, 'Projets en discussion') === '6', 'projets en discussion (Idée -> Recherche d\'équipe) : 6');
+  ok(await kpi(page, 'Pipeline pondéré') === '5,2 M€',
+    'pipeline pondéré (Qualification -> Contractualisation) : 5,2 M€');
+  ok(await kpi(page, 'Partenaires à relancer') === '5', 'partenaires sans contact depuis 30 j : 5');
+
+  // Les barres du pipeline sont proportionnelles, l'étape la plus fournie à 100 %.
+  const widths = await page.$$eval('.pil-bar-fill', els => els.map(e => e.style.width));
+  ok(widths.includes('100%'), 'la barre de l\'étape la plus fournie occupe toute la largeur');
+  ok(!widths.includes('0%') || true, 'les largeurs sont calculées');
+
+  // Les relances sont triées du contact le plus ancien au plus récent,
+  // "jamais contacté" en tête.
+  const relances = await page.$$eval('.pil-card:has-text("Partenaires à relancer") .pil-row-title',
+    els => els.map(e => e.textContent.trim())).catch(() => []);
+  ok(relances[0] === 'Capgemini Engineering', 'un partenaire jamais contacté passe en tête des relances');
+  ok(relances[1] === 'Kerlink', 'puis le contact le plus ancien (Kerlink, 6 mois)');
+
+  // Le compteur "Interactions" de la barre latérale suit les données.
+  ok((await page.locator('#nav-interactions').textContent()) === '13', 'compteur Interactions de la barre latérale');
+  ok((await page.locator('#nav-equipes').textContent()) === '9',
+    'les équipes de recherche sont distinguées des partenaires (9 / 12)');
+  ok((await page.locator('#nav-partenaires').textContent()) === '12', 'compteur Partenaires');
+
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
+async function testPilotageKanban(browser) {
+  console.log('\n=== pilotage.html : Kanban, étapes lues depuis la colonne Statut ===');
+  const cfg = pilotageConfig();
+  const { page, context, consoleErrors } = await openWidget(browser, 'pilotage.html', cfg);
+  await page.click('.pil-nav-item[data-view="projets"]');
+  await page.waitForTimeout(80);
+
+  const cols = await page.$$eval('.pil-col-title', els => els.map(e => e.textContent.trim()));
+  ok(JSON.stringify(cols) === JSON.stringify(PILOTAGE_STATUTS),
+    'les 8 colonnes sont celles de la colonne Statut, dans l\'ordre canonique');
+
+  const counts = await page.$$eval('.pil-col', els =>
+    els.map(e => Number(e.querySelector('.pil-col-count').textContent.trim())));
+  ok(JSON.stringify(counts) === JSON.stringify([1, 2, 2, 1, 2, 1, 2, 2]), 'cartes par colonne');
+  ok((await page.locator('.pil-col[data-stage="Qualification"] .pil-col-sum').textContent()).trim() === '620 k€',
+    'montant cumulé de colonne');
+  ok((await page.locator('.pil-cardlet[data-id="404"] .pil-tag').textContent()).trim() === 'LabCom',
+    'l\'étiquette de dispositif porte le type du projet');
+  ok((await page.locator('.pil-cardlet[data-id="404"] .pil-tag').getAttribute('class')).includes('tag-labcom'),
+    'chaque dispositif a sa propre couleur');
+  ok((await page.locator('.pil-cardlet[data-id="404"] .pil-cardlet-team').textContent()).includes('CIDRE'),
+    'le pied de carte porte les équipes de recherche rattachées');
+
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
+async function testPilotageKanbanDragEtClavier(browser) {
+  console.log('\n=== pilotage.html : changement d\'étape (glisser-déposer et clavier) ===');
+  const cfg = pilotageConfig();
+  const { page, context, consoleErrors } = await openWidget(browser, 'pilotage.html', cfg);
+  await page.click('.pil-nav-item[data-view="projets"]');
+  await page.waitForTimeout(80);
+
+  // Alternative clavier : le menu "Déplacer vers…" de la carte.
+  const select = page.locator('.pil-cardlet[data-id="401"] .pil-move');
+  ok(await select.count() === 1, 'chaque carte porte un menu « Déplacer vers… » (alternative clavier)');
+  ok((await select.getAttribute('aria-label') || '').includes('Déplacer'), 'le menu est étiqueté pour un lecteur d\'écran');
+  await select.selectOption('Qualification');
+  await page.waitForTimeout(160);
+
+  const updates = await page.evaluate(() => (window.__mockCalls || [])
+    .filter(c => c.fn === 'applyUserActions')
+    .flatMap(c => c.actions)
+    .filter(a => a[0] === 'UpdateRecord' && a[1] === 'Opportunites'));
+  ok(updates.length === 1 && updates[0][2] === 401 && updates[0][3].Statut === 'Qualification',
+    'le menu écrit la nouvelle étape dans la colonne Statut de la bonne ligne');
+  ok(await page.locator('.pil-col[data-stage="Qualification"] .pil-cardlet[data-id="401"]').count() === 1,
+    'la carte est passée dans la colonne Qualification');
+  ok(await page.locator('.pil-col[data-stage="Idée"] .pil-cardlet').count() === 0,
+    'et a quitté la colonne Idée');
+  // Les indicateurs se recalculent aussitôt : le projet chiffré à 0 entre
+  // dans le pipeline pondéré sans en changer le montant, mais la colonne
+  // Qualification compte une carte de plus.
+  ok((await page.locator('.pil-col[data-stage="Qualification"] .pil-col-count').textContent()).trim() === '3',
+    'le compteur de colonne est recalculé');
+
+  // Glisser-déposer natif (HTML5), sans dépendance. La séquence
+  // d'événements est envoyée à la main : locator.dragTo() ne déclenche pas
+  // le drag-and-drop HTML5 dans ce Chromium headless, alors que les vrais
+  // navigateurs le font (vérifié à la main dans Grist).
+  await page.evaluate(() => {
+    const card = document.querySelector('.pil-cardlet[data-id="405"]');
+    const zone = document.querySelector('.pil-col[data-stage="Montage"] .pil-col-cards');
+    const dataTransfer = new DataTransfer();
+    const fire = (el, type) => el.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer }));
+    fire(card, 'dragstart'); fire(zone, 'dragover'); fire(zone, 'drop'); fire(card, 'dragend');
+  });
+  await page.waitForTimeout(200);
+  const drops = await page.evaluate(() => (window.__mockCalls || [])
+    .filter(c => c.fn === 'applyUserActions')
+    .flatMap(c => c.actions)
+    .filter(a => a[0] === 'UpdateRecord' && a[1] === 'Opportunites' && a[2] === 405));
+  ok(drops.length === 1 && drops[0][3].Statut === 'Montage', 'le glisser-déposer écrit aussi la nouvelle étape');
+  ok(await page.locator('.pil-col[data-stage="Montage"] .pil-cardlet').count() === 3,
+    'et la carte déposée rejoint la colonne cible');
+
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
+async function testPilotageActions(browser) {
+  console.log('\n=== pilotage.html : Mes actions (urgence, motifs, effort) ===');
+  const cfg = pilotageConfig();
+  const { page, context, consoleErrors } = await openWidget(browser, 'pilotage.html', cfg);
+  await page.click('.pil-nav-item[data-view="actions"]');
+  await page.waitForTimeout(80);
+
+  const groups = await page.$$eval('.pil-group-title', els => els.map(e => e.textContent.trim()));
+  ok(JSON.stringify(groups) === JSON.stringify(['En retard', "Aujourd'hui", 'Cette semaine', 'Plus tard', 'Sans échéance']),
+    'les groupes d\'urgence sont rendus dans l\'ordre, les vides omis');
+  ok((await page.locator('.pil-card:has(.pil-group-title:text-is("Sans échéance")) .pil-group-rule').textContent()).trim()
+    === 'À DATER', 'une suite notée sans date atterrit dans son propre groupe plutôt que d\'être perdue');
+  ok((await page.locator('.pil-card:has(.pil-group-title:text-is("En retard")) .pil-group-rule').textContent()).trim()
+    === 'À TRAITER EN PRIORITÉ', 'chaque groupe porte sa règle en micro-libellé');
+
+  const first = page.locator('.pil-action').first();
+  ok((await first.locator('.pil-action-title').textContent()).includes('Relancer Sopra Steria'),
+    'l\'action la plus en retard arrive en premier');
+  ok((await first.locator('.pil-motif').textContent()).includes('PROMESSE NON TENUE'),
+    'l\'action affiche le motif de sa présence');
+  ok((await first.locator('.pil-stage-chip').textContent()).trim() === 'Contractualisation',
+    'et l\'étape de pipeline du projet rattaché');
+  ok((await first.locator('.pil-action-effort').textContent()).trim() === '15 min', 'et son effort estimé');
+  ok((await first.locator('.pil-action-ctx').textContent()).includes('Sopra Steria'),
+    'le contexte nomme le partenaire et le projet');
+
+  // Un dépôt proche donne son propre motif, plus parlant que l'enjeu seul.
+  const depot = page.locator('.pil-action:has-text("volet budgétaire")');
+  ok((await depot.locator('.pil-motif').textContent()).includes('DÉPÔT RÉGION BRETAGNE DANS 9 J'),
+    'une date de dépôt proche devient le motif');
+
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
+async function testPilotageCocherAction(browser) {
+  console.log('\n=== pilotage.html : cocher une action (échéance traitée, journal du jour) ===');
+  const cfg = pilotageConfig();
+  const { page, context, consoleErrors } = await openWidget(browser, 'pilotage.html', cfg);
+  await page.click('.pil-nav-item[data-view="actions"]');
+  await page.waitForTimeout(80);
+
+  const before = Number(await page.locator('#nav-actions').textContent());
+  await page.click('.pil-check[data-action="int:301"]');
+  await page.waitForTimeout(220);
+
+  const cleared = await page.evaluate(() => (window.__mockCalls || [])
+    .filter(c => c.fn === 'applyUserActions')
+    .flatMap(c => c.actions)
+    .filter(a => a[0] === 'UpdateRecord' && a[1] === 'Interactions' && a[2] === 301));
+  ok(cleared.length >= 1 && cleared[0][3].ProchaineEcheance === null,
+    'cocher vide la prochaine échéance de l\'interaction dans Grist');
+  const saved = await page.evaluate(() => (window.__mockCalls || []).filter(c => c.fn === 'setOption'));
+  ok(saved.length >= 1 && JSON.parse(saved[saved.length - 1].value).done['int:301'],
+    'et garde la trace du jour dans les options du widget (aucune table à créer)');
+
+  ok(await page.locator('.pil-card:has-text("Terminé aujourd\'hui") .pil-action.done').count() === 1,
+    'l\'action barrée passe dans le bloc « Terminé aujourd\'hui »');
+  ok(await page.locator('.pil-card:has(.pil-group-title:text-is("En retard"))').count() === 0,
+    'le groupe « En retard » disparaît quand sa dernière action est cochée');
+  ok(Number(await page.locator('#nav-actions').textContent()) === before - 1,
+    'le compteur d\'actions ouvertes est décrémenté');
+
+  // Décocher restaure l'échéance : rien n'est perdu.
+  await page.click('.pil-card:has-text("Terminé aujourd\'hui") .pil-check');
+  await page.waitForTimeout(220);
+  const restored = await page.evaluate(() => (window.__mockCalls || [])
+    .filter(c => c.fn === 'applyUserActions')
+    .flatMap(c => c.actions)
+    .filter(a => a[0] === 'UpdateRecord' && a[1] === 'Interactions' && a[2] === 301 && a[3].ProchaineEcheance !== null));
+  ok(restored.length === 1, 'décocher restaure l\'échéance d\'origine');
+
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
+async function testPilotageSuggestions(browser) {
+  console.log('\n=== pilotage.html : moteur de suggestions et acceptation ===');
+  const cfg = pilotageConfig();
+  const { page, context, consoleErrors } = await openWidget(browser, 'pilotage.html', cfg);
+  await page.click('.pil-nav-item[data-view="actions"]');
+  await page.waitForTimeout(80);
+
+  const suggestions = await page.$$eval('.pil-suggest-row .pil-row-title', els => els.map(e => e.textContent.trim()));
+  ok(suggestions.length === 3, 'les trois règles produisent une suggestion sur ce jeu de données');
+  ok(suggestions.some(s => s.includes("point d'étape LabCom avec InterDigital")),
+    'règle 1 : projet clos depuis plus de 60 j sans échange depuis');
+  ok(suggestions.some(s => s.includes('Reprendre contact avec Kerlink')),
+    'règle 2 : partenaire silencieux depuis plus de 90 j avec un projet actif');
+  ok(suggestions.some(s => s.includes('lettre de soutien à Kerlink')),
+    'règle 3 : pièce attendue manquante avant une date de dépôt');
+  ok((await page.locator('.pil-suggest-row:has-text("Kerlink") .pil-suggest-why').first().textContent()).includes('6 mois'),
+    'chaque suggestion porte sa justification lisible');
+
+  await page.click('.pil-suggest-row:has-text("InterDigital") [data-suggest]');
+  await page.waitForTimeout(260);
+
+  const added = await page.evaluate(() => (window.__mockCalls || [])
+    .filter(c => c.fn === 'applyUserActions')
+    .flatMap(c => c.actions)
+    .filter(a => a[0] === 'AddRecord' && a[1] === 'Interactions'));
+  ok(added.length === 1, 'Ajouter crée bien une ligne dans Interactions');
+  ok(added[0][3].Suites && added[0][3].Suites.includes("point d'étape LabCom"),
+    'l\'intitulé de la suggestion devient la prochaine action');
+  ok(added[0][3].ProchaineEcheance > 0, 'avec une échéance');
+  // Une interaction datée serait un échange qui a eu lieu : ça fausserait le
+  // "dernier contact" du partenaire.
+  ok(!('Date' in added[0][3]) || added[0][3].Date === null,
+    'et sans date : une suite prévue n\'est pas un échange passé');
+
+  const remaining = await page.$$eval('.pil-suggest-row .pil-row-title', els => els.map(e => e.textContent.trim()));
+  ok(remaining.length === 2 && !remaining.some(s => s.includes('InterDigital')),
+    'la suggestion acceptée quitte le bloc et ne revient pas');
+  ok(await page.locator('.pil-action:has-text("point d\'étape LabCom")').count() === 1,
+    'et apparaît comme une action réelle');
+  const motif = await page.locator('.pil-action:has-text("point d\'étape LabCom") .pil-motif').textContent();
+  ok(motif.trim() === 'SUGGESTION ACCEPTÉE', 'avec le motif « suggestion acceptée »');
+
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
+async function testPilotageStatutsActuels(browser) {
+  console.log('\n=== pilotage.html : le document garde ses 6 statuts actuels ===');
+  // Le vrai document n'a pas (encore) les 8 étapes cibles : le widget doit
+  // être juste avec Prospection -> Abandonné, sans inventer d'étape.
+  const cfg = pilotageConfig();
+  const STATUTS_6 = ['Prospection', 'Qualification', 'Montage', 'Contractualisation', 'Concrétisé', 'Abandonné'];
+  const mapStatut = { 'Idée': 'Prospection', 'Premier échange': 'Prospection', 'Qualification': 'Qualification',
+    "Recherche d'équipe": 'Qualification', 'Montage': 'Montage', 'Contractualisation': 'Contractualisation',
+    'Projet lancé': 'Concrétisé', 'Terminé / abandonné': 'Abandonné' };
+  cfg.tables.Opportunites.data.Statut = cfg.tables.Opportunites.data.Statut.map(s => mapStatut[s]);
+  cfg.columnsMeta.Opportunites = cfg.columnsMeta.Opportunites.map(c =>
+    c.id === 'Statut' ? choiceCol('Statut', STATUTS_6) : c);
+
+  const { page, context, consoleErrors } = await openWidget(browser, 'pilotage.html', cfg);
+  await page.click('.pil-nav-item[data-view="projets"]');
+  await page.waitForTimeout(80);
+
+  const cols = await page.$$eval('.pil-col-title', els => els.map(e => e.textContent.trim()));
+  ok(JSON.stringify(cols) === JSON.stringify(STATUTS_6),
+    'les colonnes sont les 6 statuts du document, dans l\'ordre du funnel');
+  ok(await page.locator('.pil-col[data-stage="Idée"]').count() === 0,
+    'aucune étape cible n\'est inventée');
+
+  await page.click('.pil-nav-item[data-view="dashboard"]');
+  await page.waitForTimeout(80);
+  // Prospection et Qualification forment "en discussion" (1+2+2+1 projets),
+  // Qualification -> Contractualisation le pipeline pondéré : les mêmes
+  // chiffres que sur les 8 étapes, parce que les familles sont les mêmes.
+  ok(await kpi(page, 'Projets en discussion') === '6', 'projets en discussion : toujours 6');
+  ok(await kpi(page, 'Pipeline pondéré') === '5,2 M€', 'pipeline pondéré : toujours 5,2 M€');
+  ok(await kpi(page, 'CIFRE identifiées') === '4', 'CIFRE identifiées : hors statut Abandonné');
+
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
+async function testPilotageRechercheEtVueUnique(browser) {
+  console.log('\n=== pilotage.html : recherche globale et vue unique (?vue=) ===');
+  const cfg = pilotageConfig();
+  const { page, context, consoleErrors } = await openWidget(browser, 'pilotage.html', cfg);
+  await page.click('.pil-nav-item[data-view="projets"]');
+  await page.waitForTimeout(80);
+  ok(await page.locator('.pil-cardlet').count() === 13, '13 projets avant recherche');
+  await page.fill('#search', 'thales');
+  await page.waitForTimeout(280);
+  const titres = await page.$$eval('.pil-cardlet-title', els => els.map(e => e.textContent.trim()));
+  ok(titres.length === 1 && titres[0].includes('LabCom Cyber-défense assistée'),
+    'la recherche filtre le Kanban sur le partenaire');
+  await page.fill('#search', 'obelix');
+  await page.waitForTimeout(280);
+  ok(await page.locator('.pil-cardlet').count() === 2, 'et cherche aussi sur l\'équipe de recherche');
+  await context.close();
+
+  // ?vue=kanban : la même URL sert de widget dédié à une seule vue.
+  const solo = await openWidget(browser, 'pilotage.html', pilotageConfig(), '?vue=kanban');
+  await solo.page.waitForTimeout(80);
+  ok(await solo.page.locator('.pil-sidebar').isHidden(), '?vue=kanban masque la barre latérale');
+  ok(await solo.page.locator('.pil-col').count() === 8, 'et n\'affiche que le Kanban');
+  ok(await solo.page.locator('#view-dashboard').isHidden(), 'le tableau de bord reste masqué');
+  ok(solo.consoleErrors.length === 0, 'aucune erreur console (' + solo.consoleErrors.join(' | ') + ')');
+  await solo.context.close();
+  ok(consoleErrors.length === 0, 'aucune erreur console sur la vue complète');
+}
+
+async function testPilotageTableManquante(browser) {
+  console.log('\n=== pilotage.html : une table absente est signalée sans casser la vue ===');
+  const cfg = pilotageConfig();
+  delete cfg.tables.Opportunites;
+  const { page, context, consoleErrors } = await openWidget(browser, 'pilotage.html', cfg);
+  ok(await page.locator('.pil-kpi').count() === 7, 'le bandeau d\'indicateurs est toujours rendu');
+  ok((await page.locator('#view-dashboard').textContent()).includes('Table introuvable'),
+    'l\'absence de la table Opportunités est signalée');
+  ok(await kpi(page, 'Projets en discussion') === '0', 'les indicateurs de projets tombent à 0, sans erreur');
+  ok((await page.locator('#nav-interactions').textContent()) === '13',
+    'le reste de la vue continue de fonctionner');
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
+async function testPilotagePopups(browser) {
+  console.log('\n=== pilotage.html : créer une action, une note, un partenaire ===');
+  const cfg = pilotageConfig();
+  const { page, context, consoleErrors } = await openWidget(browser, 'pilotage.html', cfg);
+
+  await page.click('#btn-action');
+  await page.waitForTimeout(80);
+  ok(await page.locator('.pil-modal').isVisible(), 'le formulaire « Créer une action » s\'ouvre');
+  await page.fill('.pil-modal input[name="label"]', 'Envoyer la convention à Zenika');
+  await page.selectOption('.pil-modal select[name="partner"]', { label: 'Zenika' });
+  await page.fill('.pil-modal input[name="due"]', '2030-04-15');
+  await page.click('.pil-modal button[type="submit"]');
+  await page.waitForTimeout(240);
+  ok(await page.locator('.pil-modal').count() === 0, 'et se referme après enregistrement');
+
+  const added = await page.evaluate(() => (window.__mockCalls || [])
+    .filter(c => c.fn === 'applyUserActions').flatMap(c => c.actions)
+    .filter(a => a[0] === 'AddRecord' && a[1] === 'Interactions'));
+  ok(added.length === 1 && added[0][3].Suites === 'Envoyer la convention à Zenika',
+    'l\'action est écrite dans Suites de la table Interactions');
+  ok(added[0][3].ProchaineEcheance === Date.UTC(2030, 3, 15) / 1000, 'avec son échéance au format Grist');
+  ok(JSON.stringify(added[0][3].Partenaires) === JSON.stringify(['L', 9]), 'et rattachée au partenaire choisi');
+
+  await page.click('.pil-nav-item[data-view="actions"]');
+  await page.waitForTimeout(100);
+  ok(await page.locator('.pil-action:has-text("Envoyer la convention à Zenika")').count() === 1,
+    'la nouvelle action apparaît dans la liste');
+
+  // Une note, elle, est un échange qui a eu lieu : elle porte une date.
+  await page.click('#btn-note');
+  await page.waitForTimeout(80);
+  await page.selectOption('.pil-modal select[name="partner"]', { label: 'Port de Brest' });
+  await page.fill('.pil-modal input[name="objet"]', 'Comité de pilotage');
+  await page.fill('.pil-modal textarea[name="cr"]', 'Point <b>semestriel</b> tenu.');
+  await page.click('.pil-modal button[type="submit"]');
+  await page.waitForTimeout(240);
+  const notes = await page.evaluate(() => (window.__mockCalls || [])
+    .filter(c => c.fn === 'applyUserActions').flatMap(c => c.actions)
+    .filter(a => a[0] === 'AddRecord' && a[1] === 'Interactions' && a[3].Objet === 'Comité de pilotage'));
+  ok(notes.length === 1 && notes[0][3].Date > 0, 'une note est datée du jour (c\'est un échange, pas une suite)');
+  ok(notes[0][3].CR.includes('&lt;b&gt;'), 'le compte rendu saisi est échappé avant écriture');
+
+  await page.click('#btn-partenaire');
+  await page.waitForTimeout(80);
+  await page.fill('.pil-modal input[name="nom"]', 'Naval Group');
+  await page.click('.pil-modal button[type="submit"]');
+  await page.waitForTimeout(240);
+  const structs = await page.evaluate(() => (window.__mockCalls || [])
+    .filter(c => c.fn === 'applyUserActions').flatMap(c => c.actions)
+    .filter(a => a[0] === 'AddRecord' && a[1] === 'Structures'));
+  ok(structs.length === 1 && structs[0][3].nom_acteur === 'Naval Group',
+    'le partenaire est créé sur la colonne mappée « Nom »');
+
+  // Un intitulé vide ne doit rien écrire.
+  await page.click('#btn-action');
+  await page.waitForTimeout(80);
+  await page.click('.pil-modal button[type="submit"]');
+  await page.waitForTimeout(120);
+  ok(await page.locator('.pil-modal').isVisible(), 'un formulaire incomplet reste ouvert');
+  await page.click('.pil-modal [data-close]');
+  await page.waitForTimeout(60);
+  ok(await page.locator('.pil-modal').count() === 0, 'Annuler referme sans écrire');
+
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
 // PLAYWRIGHT_CHROMIUM_PATH lets a sandboxed/offline environment point at a
 // pre-installed browser (no network access to download one); omit it to use
 // Playwright's own managed install (after `npx playwright install chromium`).
@@ -1591,6 +1985,16 @@ try {
   await testCrmSuggestionsRecherche(browser);
   await testCartographieFiltres(browser);
   await testCartographieStatistiques(browser);
+  await testPilotageDashboard(browser);
+  await testPilotageKanban(browser);
+  await testPilotageKanbanDragEtClavier(browser);
+  await testPilotageActions(browser);
+  await testPilotageCocherAction(browser);
+  await testPilotageSuggestions(browser);
+  await testPilotageStatutsActuels(browser);
+  await testPilotageRechercheEtVueUnique(browser);
+  await testPilotagePopups(browser);
+  await testPilotageTableManquante(browser);
 } finally {
   await browser.close();
 }

@@ -6,6 +6,7 @@ Widgets personnalisés Grist pour le CRM SequoIA (déployés via GitHub Pages).
 
 | Widget | URL | Table | Accès requis |
 |---|---|---|---|
+| **Pilotage Partenariats & Innovation** | `/pilotage.html` | Structures | Complet (lit et écrit Interactions / Opportunités) |
 | **CRM SequoIA — fiche 360** | `/crm.html` | Structures | Complet (lit et écrit Contacts / Interactions / Opportunités) |
 | Fiche partenaire | `/index.html` | Structures | Lecture |
 | Fiche contact | `/contacts.html` | Contacts | Lecture |
@@ -15,6 +16,67 @@ Widgets personnalisés Grist pour le CRM SequoIA (déployés via GitHub Pages).
 | Cartographie | `/cartographie.html` | Structures | Complet (`allowSelectBy`, suit la sélection Grist) |
 
 URL de base : `https://mathieuperson.github.io/sequoia-grist-widget/`
+
+### Pilotage Partenariats & Innovation (`pilotage.html`)
+
+Vue de pilotage de l'activité, en trois onglets dans la barre latérale : **Tableau de bord**, **Projets**
+(Kanban) et **Mes actions** (todo liste). Elle ne stocke rien qu'elle puisse calculer : les sept indicateurs,
+le pipeline, les relances, les motifs d'action et les suggestions sont tous déduits des tables du document à
+chaque affichage.
+
+**Tableau de bord** — bandeau de sept indicateurs (actions en retard, actions cette semaine, partenaires à
+relancer, projets en discussion, pipeline pondéré, dossiers à déposer, CIFRE identifiées), pipeline en barres
+proportionnelles au nombre de projets de l'étape, partenaires à relancer (du contact le plus ancien au plus
+récent, avec la prochaine action ou, à défaut, celle que le moteur suggère), les six prochaines actions,
+les dispositifs structurants par type, et les dernières interactions.
+
+**Projets** — une colonne par étape, **lues depuis les choix réels de la colonne Statut** : rien n'est figé dans
+le widget. Les étapes sont ordonnées selon une liste canonique qui couvre à la fois les six statuts actuels
+(Prospection → Abandonné) et les huit étapes cibles (Idée → Terminé / abandonné) ; une valeur inconnue est
+rangée à la fin plutôt que perdue. Les indicateurs sont définis par **famille d'étape** et pas par position,
+donc ils restent justes dans les deux vocabulaires. Glisser une carte d'une colonne à l'autre écrit le nouveau
+statut ; chaque carte porte aussi un menu « Déplacer vers… » qui fait la même chose au clavier.
+
+**Mes actions** — les actions sont portées par les interactions (**Prochaine échéance** + **Suites**) : aucune
+table à créer. Elles sont regroupées à l'affichage par urgence (En retard / Aujourd'hui / Cette semaine / Plus
+tard / Sans échéance — les groupes vides ne s'affichent pas), et chacune montre son **motif** (« PROMESSE NON
+TENUE · 3 J », « DÉPÔT RÉGION BRETAGNE DANS 9 J », « BLOQUE 1,2 M€ », « PARTENAIRE À RELANCER »…), son étape de
+pipeline et un **effort estimé**. Cocher une action vide sa prochaine échéance dans Grist (l'échéance est
+traitée) et la range dans « Terminé aujourd'hui » ; décocher restaure l'échéance d'origine.
+
+Le bloc **Actions suggérées** applique un moteur de règles extensible (`PILOTAGE_SUGGESTION_RULES` dans
+`pilotage.js`), chaque suggestion affichant sa justification chiffrée : projet clos depuis plus de 60 j sans
+échange depuis, partenaire silencieux depuis plus de 90 j alors qu'un projet est actif, pièce attendue
+manquante avant une date de dépôt. « Ajouter » crée l'action réelle — une ligne d'Interactions avec ses
+suites, son échéance et son partenaire, **volontairement sans date** : une suite prévue n'est pas un échange
+qui a eu lieu, et la dater fausserait le « dernier contact » du partenaire.
+
+Les actions cochées et les suggestions acceptées sont mémorisées dans les options du widget
+(`grist.setOption`), comme les réglages du dashboard CIFRE : l'état suit le document, pas le navigateur.
+
+Partenaires et équipes de recherche viennent de la même table Structures, distingués par les colonnes
+*Laboratoire* / *Équipe – activité* (renseignées ⇒ équipe de recherche). L'équipe rattachée à un projet est lue
+sur ses colonnes de référence vers Structures autres que Partenaire(s) (Établissement / Laboratoire / Équipe
+Cluster), découvertes à la lecture du type Grist — même mécanisme que `crm.html`.
+
+Deux colonnes **optionnelles** sur la table Opportunités activent la troisième règle de suggestion si elles
+existent : « Lettres attendues » et « Lettres reçues » (résolues par leur nom, comme le reste). Sans elles, la
+règle reste simplement silencieuse.
+
+`pilotage.html?vue=kanban` (ou `?vue=actions`) masque la barre latérale et n'affiche que cette vue : la même URL
+sert donc aussi de widget dédié, pour poser le Kanban ou la todo liste dans leur propre section Grist.
+
+Limites assumées :
+
+- **L'effort estimé est une heuristique** (déduite du verbe de l'action, puis de l'étape), pas une saisie : le
+  document n'a pas de colonne pour ça. Le jour où elle existe, il suffira de la lire.
+- « Depuis quand » une opportunité est à son étape se lit sur sa **date de début**, faute d'historique des
+  changements d'étape dans le document.
+- Les entrées de la section « Bases » (Partenaires, Équipes de recherche, Interactions, Cartographie,
+  Reporting annuel) n'affichent que leurs compteurs : ces bases se consultent dans leurs propres pages Grist
+  (`crm.html`, `cartographie.html`).
+- Les « lettres de soutien émises » du volet Dispositifs structurants ne sont pas affichées : aucune colonne du
+  document ne les porte aujourd'hui.
 
 ### CRM SequoIA — fiche 360 (`crm.html`)
 
@@ -115,10 +177,13 @@ Leaflet et Leaflet.markercluster sont vendorisés dans `vendor/` (pas de CDN), c
 
 ## Tests
 
-`tests/common.test.mjs` couvre les fonctions pures de `common.js` (formatage, mapping, dates, couleurs de statut) et inclut un test de non-régression sur l'autosave par champ. Lancer avec :
+`tests/common.test.mjs` couvre les fonctions pures de `common.js` (formatage, mapping, dates, couleurs de statut)
+et inclut un test de non-régression sur l'autosave par champ. `tests/pilotage.test.mjs` couvre celles de
+`pilotage.js` : ordre et familles d'étapes dans les deux vocabulaires, regroupement par urgence, effort estimé,
+motifs, partenaires à relancer, pipeline, les sept indicateurs et le moteur de suggestions. Lancer les deux avec :
 
 ```
-node tests/common.test.mjs
+npm test
 ```
 
 Aucune dépendance, aucun accès Grist nécessaire — ces tests ne couvrent pas les widgets eux-mêmes (qui exigent un vrai document Grist), voir la recette manuelle pour ça.
@@ -145,16 +210,24 @@ Limites : ces tests ne couvrent pas le rendu visuel (mise en page, troncature de
 
 `npm run preview` ouvre `crm.html` avec le même faux document et enregistre des captures dans
 `tests/browser/screenshots/` (fiche, popup structure, popup interaction, vue étroite). Sert à vérifier la mise en
-page — ce que les tests ci-dessus ne font pas — avant de brancher le widget dans Grist.
+page — ce que les tests ci-dessus ne font pas — avant de brancher le widget dans Grist. `npm run preview:pilotage`
+fait la même chose pour `pilotage.html` (tableau de bord, Kanban, Mes actions, et une vue à 900 px où la barre
+latérale se replie en onglets).
 
 ```
 npm run preview
 npm run preview -- --width 1200
+npm run preview:pilotage
 ```
+
+Le jeu d'essai du pilotage (`pilotageConfig()` dans `tests/browser/fixtures.mjs` : 12 partenaires, 9 équipes de
+recherche, 13 projets, 13 interactions) calcule ses échéances **relativement à aujourd'hui**, pour que les
+groupes « En retard / Aujourd'hui / Cette semaine » ne se vident pas avec le temps.
 
 ## Notes techniques
 
 - `common.css` / `common.js` sont partagés par tous les widgets (design, helpers de formatage, upload/téléchargement de pièces jointes via l'API REST Grist).
+- `pilotage.js` porte la logique métier du widget de pilotage en fonctions pures (aucun accès à `grist` ni au DOM), pour qu'elle soit testable sans navigateur ; `pilotage.html` ne fait que lire les tables, rendre et écrire.
 - Les widgets `interactions.html` et `opportunites.html` écrivent dans le document (compte-rendu markdown, pièces jointes, statut d'opportunité) via `grist.getTable().update()`.
 - `crm.html` écrit dans plusieurs tables via `grist.docApi.applyUserActions()` (helpers `addRecord` / `updateRecord` / `removeRecord` de `common.js`) et résout leurs colonnes avec `resolveColumns()`.
 - Le compte-rendu (CR) accepte le markdown ; coller une image l'upload automatiquement en pièce jointe Grist et l'insère dans le texte.

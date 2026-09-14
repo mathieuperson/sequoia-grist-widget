@@ -1,7 +1,7 @@
 // Builds a self-contained JS source string that stands in for
 // https://docs.getgrist.com/grist-plugin-api.js inside a Playwright page.
 // It implements just the surface the widgets actually use (grist.ready,
-// onRecord[s], getTable().create/update/getTableId, docApi.getAccessToken,
+// onRecord[s], onOptions, get/setOption, getTable().create/update/getTableId, docApi.getAccessToken,
 // docApi.fetchTable, docApi.applyUserActions) against an in-memory
 // "document" (`cfg.tables`), and records every call into window.__mockCalls
 // for assertions.
@@ -33,6 +33,7 @@ export function buildMockScript(cfg) {
   const calls = (window.__mockCalls = []);
   let readyOpts = null;
   let onRecordsCb = null;
+  let onOptionsCb = null;
   let onRecordCb = null;
 
   function widgetTable() { return CFG.tables[CFG.widgetTableId]; }
@@ -125,8 +126,12 @@ export function buildMockScript(cfg) {
     setOption(key, value) {
       calls.push({ fn: 'setOption', key, value });
       options[key] = value;
+      if (onOptionsCb) setTimeout(() => onOptionsCb(options), 0);
       return Promise.resolve();
     },
+    // Les widgets qui persistent un réglage dans le document s'abonnent à
+    // onOptions pour se resynchroniser après une écriture.
+    onOptions(cb) { onOptionsCb = cb; setTimeout(() => cb(options), 0); },
     setCursorPos(pos) {
       calls.push({ fn: 'setCursorPos', pos });
       CFG.cursorRowId = pos && pos.rowId;
