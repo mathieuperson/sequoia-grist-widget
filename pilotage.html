@@ -23,15 +23,17 @@
   --pil-suggest-border: #e4e2d2;
   --pil-bar: #8fae96;
   --pil-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
-  /* Palette de progression du pipeline : une couleur par étape, qui reprend
-     la progression de funnel des --status-* de common.css (gris-bleu tôt →
-     bleu → ambre → violet → vert gagné, rouge à part pour l'abandon). Une
-     opportunité garde ainsi la même couleur d'un widget à l'autre. */
-  --stage-idee: #94a3b8;
+  /* Palette de progression du pipeline — repli seulement : stageColor()
+     utilise d'abord les couleurs réelles des choix de la colonne Statut,
+     lues dans le document. Ces valeurs reprennent la même langue (gris →
+     bleu → orange → jaune → vert, rouge à part pour l'abandon) et servent
+     le temps de l'aller-retour, ou pour une étape cible que le document ne
+     connaît pas encore. */
+  --stage-idee: #9ca3af;
   --stage-prospection: var(--status-prospection);
-  --stage-premierechange: #4b7fa8;
+  --stage-premierechange: #60a5fa;
   --stage-qualification: var(--status-qualification);
-  --stage-recherchedequipe: #0d9488;
+  --stage-recherchedequipe: #fb923c;
   --stage-montage: var(--status-montage);
   --stage-contractualisation: var(--status-contractualisation);
   --stage-projetlance: var(--status-concretise);
@@ -285,11 +287,9 @@ body { overflow: hidden; }
 .pil-motif.warn { background: #f8f0e0; color: var(--pil-warn); }
 .pil-motif.ok { background: var(--sequoia-green-light); color: var(--sequoia-green-dark); }
 .pil-stage-chip {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: 11.5px; padding: 2px 7px; border-radius: 4px;
-  background: var(--pil-surface-2); border: 1px solid var(--border); color: var(--text-muted);
+  display: inline-flex; align-items: center;
+  font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 20px;
 }
-.pil-stage-chip i { width: 7px; height: 7px; border-radius: 20px; flex: none; }
 .pil-action-side { margin-left: auto; text-align: right; white-space: nowrap; }
 .pil-action-due { font-family: var(--pil-mono); font-size: 10.5px; color: var(--text-muted); }
 .pil-action-due.danger { color: var(--danger); }
@@ -551,6 +551,12 @@ body { overflow: hidden; }
       };
       stageChoices = choicesOf(opp.cols.Statut);
       typeChoices = choicesOf(opp.cols.Type);
+      // Les couleurs d'étape viennent du document, pas du widget : la même
+      // opportunité garde sa couleur de la table au Kanban.
+      const statut = columns.find(c => c.id === opp.cols.Statut);
+      let wo = statut && statut.fields && statut.fields.widgetOptions;
+      if (typeof wo === 'string') { try { wo = JSON.parse(wo); } catch (err) { wo = null; } }
+      registerStatusStyles(choiceStylesFromWidgetOptions(wo).styles);
     } catch (err) {
       console.error('Lecture des choix de la table Opportunités impossible', err);
     }
@@ -1051,8 +1057,8 @@ body { overflow: hidden; }
           H([a.partnerName || 'Interne', a.projectTitle].filter(Boolean).join(' · ')) + '</div>' +
         '<div class="pil-action-tags">' +
           (motif ? '<span class="pil-motif ' + motif.tone + '">' + H(motif.label) + '</span>' : '') +
-          (a.stage ? '<span class="pil-stage-chip"><i style="background:' + stageColor(a.stage) + '"></i>' +
-            H(a.stage) + '</span>' : '') +
+          (a.stage ? '<span class="pil-stage-chip" style="background:' + stageColor(a.stage) +
+            ';color:' + stageTextColor(a.stage) + '">' + H(a.stage) + '</span>' : '') +
         '</div>' +
       '</div>' +
       '<div class="pil-action-side">' +

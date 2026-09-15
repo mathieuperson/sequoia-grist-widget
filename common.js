@@ -105,25 +105,99 @@ function inputValueToGristDate(str) {
   return isNaN(d.getTime()) ? null : Math.floor(d.getTime() / 1000);
 }
 
-// Fixed color for each opportunity Statut — a "funnel" progression from
-// cool/neutral (early stage) to warm/green (won), red standing apart for
-// "Abandonné". Matches the --status-* tokens in common.css and should
-// mirror the choice colors set in Grist for the Statut column.
-const STATUS_COLORS = {
-  'prospection': 'var(--status-prospection)',
-  'qualification': 'var(--status-qualification)',
-  'montage': 'var(--status-montage)',
-  'contractualisation': 'var(--status-contractualisation)',
-  'concrétisé': 'var(--status-concretise)',
-  'concretise': 'var(--status-concretise)',
-  'abandonné': 'var(--status-abandonne)',
-  'abandonne': 'var(--status-abandonne)'
+// ---------- Couleur de statut d'opportunité ----------
+// La vérité, c'est le document : Grist enregistre la couleur de chaque choix
+// d'une colonne Choice dans ses widgetOptions
+// (`choiceOptions[label] = {fillColor, textColor}`). Les widgets lisent ces
+// couleurs et les utilisent telles quelles, pour qu'un statut ait la même
+// couleur dans la table et dans chaque widget — et suive si on la change
+// dans Grist, sans toucher au code.
+//
+// STATUS_FALLBACK ne sert donc que le temps de l'aller-retour REST, ou quand
+// la colonne ne porte pas de couleurs. Il est calé sur la palette du
+// document et pointe vers les tokens --status-* de common.css.
+const STATUS_FALLBACK = {
+  prospection:        { fill: 'var(--status-prospection)',        text: '#fff' },
+  qualification:      { fill: 'var(--status-qualification)',      text: '#fff' },
+  montage:            { fill: 'var(--status-montage)',            text: '#fff' },
+  // Jaune vif : c'est le texte qui doit être sombre, pas l'inverse.
+  contractualisation: { fill: 'var(--status-contractualisation)',  text: '#1c2321' },
+  concretise:         { fill: 'var(--status-concretise)',         text: '#fff' },
+  abandonne:          { fill: 'var(--status-abandonne)',          text: '#fff' }
 };
 
+// Couleurs lues dans le document, par statut normalisé.
+const _statusStyles = {};
+
+// Noir ou blanc selon la luminance du fond — utilisé quand le document donne
+// une couleur de remplissage sans couleur de texte.
+function readableTextOn(fill) {
+  const m = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(String(fill || '').trim());
+  if (!m) return '#fff';
+  let hex = m[1];
+  if (hex.length === 3) hex = hex.split('').map(c => c + c).join('');
+  const [r, g, b] = [0, 2, 4].map(i => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const lin = (c) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+  const luminance = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+  return luminance > 0.45 ? '#1c2321' : '#fff';
+}
+
+// Enregistre les couleurs d'une colonne Choice telles que le document les
+// porte. `styles` : { libellé: {fill, text} } — voir fetchChoiceStyles.
+function registerStatusStyles(styles) {
+  Object.keys(styles || {}).forEach(label => {
+    const s = styles[label];
+    if (!s || !s.fill) return;
+    _statusStyles[normalizeKey(label)] = { fill: s.fill, text: s.text || readableTextOn(s.fill) };
+  });
+}
+
+// Remplissage + couleur de texte d'un statut. Les couleurs du document
+// gagnent ; sinon le repli ; sinon le gris neutre.
+function statusStyle(status) {
+  const key = normalizeKey(status);
+  return _statusStyles[key] || STATUS_FALLBACK[key] || { fill: 'var(--status-default)', text: '#fff' };
+}
+
 function statusColor(status) {
-  if (!status) return 'var(--status-default)';
-  const key = String(status).trim().toLowerCase();
-  return STATUS_COLORS[key] || 'var(--status-default)';
+  return statusStyle(status).fill;
+}
+
+function statusTextColor(status) {
+  return statusStyle(status).text;
+}
+
+// Choix d'une colonne Choice avec leurs couleurs, depuis le document :
+// { choices: [...], styles: { libellé: {fill, text} } }. `choices` garde
+// l'ordre configuré dans Grist.
+async function fetchChoiceStyles(tableId, colId) {
+  const empty = { choices: [], styles: {} };
+  if (!tableId || !colId) return empty;
+  try {
+    const { token, baseUrl } = await grist.docApi.getAccessToken({ readOnly: true });
+    const res = await fetch(`${baseUrl}/tables/${encodeURIComponent(tableId)}/columns?auth=${encodeURIComponent(token)}`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const col = ((await res.json()).columns || []).find(c => c.id === colId);
+    let opts = col && col.fields && col.fields.widgetOptions;
+    if (typeof opts === 'string') { try { opts = JSON.parse(opts); } catch (err) { opts = null; } }
+    return choiceStylesFromWidgetOptions(opts);
+  } catch (err) {
+    console.error('fetchChoiceStyles failed for', tableId, colId, err);
+    return empty;
+  }
+}
+
+// Partie pure de fetchChoiceStyles, pour être testable sans Grist.
+function choiceStylesFromWidgetOptions(opts) {
+  const choices = (opts && Array.isArray(opts.choices)) ? opts.choices.filter(Boolean).map(String) : [];
+  const raw = (opts && opts.choiceOptions) || {};
+  const styles = {};
+  choices.forEach(label => {
+    const o = raw[label];
+    if (!o || !o.fillColor) return;
+    styles[label] = { fill: o.fillColor, text: o.textColor || readableTextOn(o.fillColor) };
+  });
+  return { choices, styles };
 }
 
 function formatDate(value) {

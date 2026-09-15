@@ -563,6 +563,16 @@
     const keys = Object.keys(RELATED);
     const results = await Promise.all(keys.map(resolveRelated));
     keys.forEach((k, i) => { related[k] = results[i]; });
+    await loadStatusColors();
+  }
+
+  // Les pastilles de statut d'opportunité reprennent les couleurs des choix
+  // telles que le document les porte, pour coller à la table.
+  async function loadStatusColors() {
+    const opp = related.opportunites;
+    if (!opp || !opp.tableId || !opp.cols.Statut) return;
+    const { styles } = await fetchChoiceStyles(opp.tableId, opp.cols.Statut);
+    registerStatusStyles(styles);
   }
 
   // Re-reads every related table from the document (their cached copy is
@@ -997,7 +1007,8 @@
           return '<div class="opp-row" data-opp="' + o.id + '">' +
             '<div class="o-text">' +
               '<div class="o-title">' + escapeHtml(cols.Sujet ? formatValue(o[cols.Sujet]) || 'Sans sujet' : 'Sans sujet') + '</div>' +
-              (statut ? '<span class="status-pill" style="background:' + statusColor(statut) + '">' + escapeHtml(statut) + '</span>' : '') +
+              (statut ? '<span class="status-pill" style="background:' + statusColor(statut) +
+                ';color:' + statusTextColor(statut) + '">' + escapeHtml(statut) + '</span>' : '') +
               (linkedVia('opportunites', o, s.id) ? ' <span class="via-pill">' + escapeHtml(linkedVia('opportunites', o, s.id)) + '</span>' : '') +
               (echeance ? '<div class="o-sub">échéance ' + escapeHtml(formatDate(echeance)) + '</div>' : '') +
             '</div>' +

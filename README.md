@@ -42,9 +42,8 @@ donc ils restent justes dans les deux vocabulaires. Glisser une carte d'une colo
 statut ; chaque carte porte aussi un menu « Déplacer vers… » qui fait la même chose au clavier.
 
 Une **palette de progression** colore le pipeline : chaque étape a sa couleur, en tête de colonne du Kanban, sur
-les barres du tableau de bord et sur la puce d'étape des actions. Elle reprend la progression de funnel déjà
-posée par les `--status-*` de `common.css` (gris-bleu tôt → bleu → ambre → violet → vert gagné, rouge à part pour
-l'abandon), pour qu'une opportunité garde la même couleur d'un widget à l'autre.
+les barres du tableau de bord et sur la puce d'étape des actions — voir
+[Couleurs de statut](#couleurs-de-statut--la-palette-vient-du-document).
 
 **Créer une opportunité** se fait depuis cette vue : le bouton « + Nouvelle opportunité » en tête, ou le bouton
 en pied de chaque colonne, qui pré-sélectionne son étape. Le formulaire propose les **choix réels** des colonnes
@@ -181,6 +180,27 @@ cocher la case.
 
 Leaflet et Leaflet.markercluster sont vendorisés dans `vendor/` (pas de CDN), comme le reste du projet.
 
+## Couleurs de statut : la palette vient du document
+
+Les couleurs d'un statut d'opportunité ne sont pas décidées par les widgets : **elles sont lues dans le
+document**. Grist enregistre la couleur de chaque choix d'une colonne Choice dans ses `widgetOptions`
+(`choiceOptions[libellé] = {fillColor, textColor}`) ; `fetchChoiceStyles()` les lit et `registerStatusStyles()`
+les enregistre, puis `statusStyle()` / `statusColor()` / `statusTextColor()` (`common.js`) les servent à tous
+les widgets.
+
+Conséquence : un statut a la même couleur dans la table, dans le Kanban d'`opportunites.html`, sur la fiche 360
+et dans le pilotage — et **changer une couleur dans Grist suffit**, sans toucher au code ni redéployer.
+
+Deux détails qui comptent :
+
+- Quand le document donne une couleur de fond sans couleur de texte, `readableTextOn()` choisit noir ou blanc
+  d'après la luminance. C'est ce qui rend un « Contractualisation » jaune vif lisible au lieu d'un texte blanc
+  sur jaune.
+- Les tokens `--status-*` de `common.css` restent comme **repli** : ils servent le temps de l'aller-retour REST,
+  ou si la colonne ne porte pas de couleurs. Ils sont calés sur la palette du document (gris → bleu → orange →
+  jaune → vert, rouge à part pour l'abandon). `pilotage.html` a en plus des tokens `--stage-*` pour les étapes
+  cibles que le document ne connaît pas encore (Idée, Premier échange, Recherche d'équipe…).
+
 ## Mise en place dans Grist
 
 1. Créer/ouvrir la vue, ajouter un widget **Personnalisée** relié à la bonne table.
@@ -239,7 +259,7 @@ groupes « En retard / Aujourd'hui / Cette semaine » ne se vident pas avec le t
 
 ## Notes techniques
 
-- `common.css` / `common.js` sont partagés par tous les widgets (design, helpers de formatage, upload/téléchargement de pièces jointes via l'API REST Grist).
+- `common.css` / `common.js` sont partagés par tous les widgets (design, helpers de formatage, couleurs de statut lues dans le document, upload/téléchargement de pièces jointes via l'API REST Grist).
 - `pilotage.js` porte la logique métier du widget de pilotage en fonctions pures (aucun accès à `grist` ni au DOM), pour qu'elle soit testable sans navigateur ; `pilotage.html` ne fait que lire les tables, rendre et écrire.
 - Les widgets `interactions.html` et `opportunites.html` écrivent dans le document (compte-rendu markdown, pièces jointes, statut d'opportunité) via `grist.getTable().update()`.
 - `crm.html` écrit dans plusieurs tables via `grist.docApi.applyUserActions()` (helpers `addRecord` / `updateRecord` / `removeRecord` de `common.js`) et résout leurs colonnes avec `resolveColumns()`.

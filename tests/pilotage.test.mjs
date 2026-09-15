@@ -57,6 +57,15 @@ eq(p.stageColor('Concrétisé'), 'var(--stage-concretise)', 'stageColor: statut 
 eq(p.stageColor('Statut inventé'), 'var(--status-default)',
   'stageColor: étape inconnue -> repli sur statusColor de common.css');
 eq(p.stageColor('Abandonné'), 'var(--stage-abandonne)', 'stageColor: l\'abandon garde sa couleur à part');
+eq(p.stageTextColor('Contractualisation'), '#1c2321', 'stageTextColor: texte sombre sur le jaune');
+// Une couleur venue du document l'emporte sur le repli, pour que le Kanban
+// colle à la table.
+sandbox.window.exports = null;
+vm.runInContext("registerStatusStyles({ Montage: { fill: '#f97316', text: '#ffffff' } });", sandbox);
+eq(p.stageColor('Montage'), '#f97316', 'stageColor: la couleur du document remplace le token CSS');
+eq(p.stageTextColor('Montage'), '#ffffff', 'stageTextColor: et sa couleur de texte');
+eq(p.stageColor('Qualification'), 'var(--stage-qualification)',
+  'stageColor: une étape sans couleur au document garde son repli');
 
 // ---- Dispositifs ----
 eq(p.dispositifClass('CIFRE'), 'tag-cifre', 'dispositifClass: CIFRE');

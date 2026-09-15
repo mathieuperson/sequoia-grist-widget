@@ -67,8 +67,20 @@ function stageRank(label) {
 // qu'une opportunité garde la même couleur d'un widget à l'autre. Une étape
 // que la liste canonique ne connaît pas retombe sur statusColor().
 function stageColor(label) {
+  // Une couleur enregistrée depuis le document gagne toujours : c'est celle
+  // que porte la colonne Statut dans la table.
+  const fromDoc = _statusStyles[normalizeKey(label)];
+  if (fromDoc) return fromDoc.fill;
   const stage = matchStage(label);
   return stage ? 'var(--stage-' + stage.key + ')' : statusColor(label);
+}
+
+// Couleur de texte lisible sur la couleur d'étape — le jaune d'une
+// contractualisation demande un texte sombre.
+function stageTextColor(label) {
+  const fromDoc = _statusStyles[normalizeKey(label)];
+  if (fromDoc) return fromDoc.text;
+  return statusTextColor(label);
 }
 
 function stageFamilies(label) {
@@ -504,7 +516,7 @@ function runSuggestionRules(data, options) {
 if (typeof window !== 'undefined') {
   window.pilotage = {
     PILOTAGE_STAGES, PILOTAGE_URGENCES, PILOTAGE_DISPOSITIFS, PILOTAGE_SUGGESTION_RULES,
-    matchStage, stageRank, stageColor, stageFamilies, isStageIn, orderStages,
+    matchStage, stageRank, stageColor, stageTextColor, stageFamilies, isStageIn, orderStages,
     dispositifOf, dispositifClass, isCifre,
     formatMontantOrDash, sumMontants,
     urgenceOf, daysLate, groupActionsByUrgence,

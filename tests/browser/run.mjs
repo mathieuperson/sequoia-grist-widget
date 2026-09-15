@@ -1598,8 +1598,8 @@ async function testPilotageDashboard(browser) {
 
   // Palette de progression : chaque barre du pipeline porte la couleur de son étape.
   const barColors = await page.$$eval('.pil-bar-fill', els => els.map(e => e.style.background));
-  ok(barColors[0] === 'var(--stage-idee)' && barColors.includes('var(--stage-montage)'),
-    'les barres du pipeline sont colorées par étape');
+  ok(barColors[0] === 'rgb(156, 163, 175)' && barColors.includes('rgb(249, 115, 22)'),
+    'les barres du pipeline reprennent les couleurs de statut du document');
   ok(new Set(barColors).size === barColors.length, 'une couleur distincte par étape');
 
   // La barre latérale est recentrée sur la gestion de projets : plus de
@@ -1643,10 +1643,12 @@ async function testPilotageKanban(browser) {
   ok((await page.locator('.pil-cardlet[data-id="404"] .pil-cardlet-team').textContent()).includes('CIDRE'),
     'le pied de carte porte les équipes de recherche rattachées');
 
-  // Liseré de couleur de l'étape en tête de colonne.
+  // Liseré de couleur de l'étape en tête de colonne, avec les couleurs que
+  // le document porte sur les choix de la colonne Statut.
   const accents = await page.$$eval('.pil-col', els => els.map(e => e.style.borderTopColor));
-  ok(accents[0] === 'var(--stage-idee)' && accents[5] === 'var(--stage-contractualisation)',
-    'chaque colonne porte le liseré de couleur de son étape');
+  ok(accents[4] === 'rgb(249, 115, 22)' && accents[5] === 'rgb(250, 204, 21)',
+    'chaque colonne porte la couleur de son étape telle que le document la définit');
+  ok(new Set(accents).size === accents.length, 'une couleur distincte par étape');
 
   // Un projet sans partenaire est un projet interne.
   ok(await page.locator('.pil-cardlet[data-id="414"] .pil-interne').count() === 1,
@@ -1734,6 +1736,9 @@ async function testPilotageActions(browser) {
     'l\'action affiche le motif de sa présence');
   ok((await first.locator('.pil-stage-chip').textContent()).trim() === 'Contractualisation',
     'et l\'étape de pipeline du projet rattaché');
+  const chip = await first.locator('.pil-stage-chip').evaluate(e => [e.style.background, e.style.color]);
+  ok(chip[0] === 'rgb(250, 204, 21)' && chip[1] === 'rgb(28, 35, 33)',
+    'la puce d\'étape reprend le fond ET le texte du document (texte sombre sur jaune)');
   ok((await first.locator('.pil-action-effort').textContent()).trim() === '15 min', 'et son effort estimé');
   ok((await first.locator('.pil-action-ctx').textContent()).includes('Sopra Steria'),
     'le contexte nomme le partenaire et le projet');
@@ -2054,6 +2059,119 @@ async function testPilotageCreerOpportunite(browser) {
   await context.close();
 }
 
+async function testPilotagePaletteDuDocument(browser) {
+  console.log('\n=== pilotage.html : la palette de statut vient du document ===');
+  // Les six statuts réels du CRM avec leurs couleurs réelles : gris, bleu,
+  // orange, jaune, vert, rouge. Le widget doit les utiliser telles quelles.
+  const cfg = pilotageConfig();
+  const STATUTS = ['Prospection', 'Qualification', 'Montage', 'Contractualisation', 'Concrétisé', 'Abandonné'];
+  const COULEURS = {
+    'Prospection': { fillColor: '#6b7280', textColor: '#ffffff' },
+    'Qualification': { fillColor: '#3b82f6', textColor: '#ffffff' },
+    'Montage': { fillColor: '#f97316', textColor: '#ffffff' },
+    'Contractualisation': { fillColor: '#facc15', textColor: '#1c2321' },
+    'Concrétisé': { fillColor: '#22c55e', textColor: '#ffffff' },
+    'Abandonné': { fillColor: '#ef4444', textColor: '#ffffff' }
+  };
+  const mapStatut = { 'Idée': 'Prospection', 'Premier échange': 'Prospection', 'Qualification': 'Qualification',
+    "Recherche d'équipe": 'Qualification', 'Montage': 'Montage', 'Contractualisation': 'Contractualisation',
+    'Projet lancé': 'Concrétisé', 'Terminé / abandonné': 'Abandonné' };
+  cfg.tables.Opportunites.data.Statut = cfg.tables.Opportunites.data.Statut.map(s => mapStatut[s]);
+  cfg.columnsMeta.Opportunites = cfg.columnsMeta.Opportunites.map(c =>
+    c.id === 'Statut' ? choiceCol('Statut', STATUTS, COULEURS) : c);
+
+  const { page, context, consoleErrors } = await openWidget(browser, 'pilotage.html', cfg);
+  await page.click('.pil-nav-item[data-view="projets"]');
+  await page.waitForTimeout(100);
+
+  const accents = await page.$$eval('.pil-col', els => els.map(e => e.style.borderTopColor));
+  ok(JSON.stringify(accents) === JSON.stringify([
+    'rgb(107, 114, 128)', 'rgb(59, 130, 246)', 'rgb(249, 115, 22)',
+    'rgb(250, 204, 21)', 'rgb(34, 197, 94)', 'rgb(239, 68, 68)'
+  ]), 'les six colonnes portent exactement les couleurs de la table');
+
+  // Une couleur changée dans Grist doit se retrouver dans le widget sans
+  // toucher au code : on rejoue avec un violet sur Montage.
+  await context.close();
+  const cfg2 = pilotageConfig();
+  cfg2.tables.Opportunites.data.Statut = cfg2.tables.Opportunites.data.Statut.map(s => mapStatut[s]);
+  cfg2.columnsMeta.Opportunites = cfg2.columnsMeta.Opportunites.map(c =>
+    c.id === 'Statut'
+      ? choiceCol('Statut', STATUTS, Object.assign({}, COULEURS, { 'Montage': { fillColor: '#7c3aed' } }))
+      : c);
+  const alt = await openWidget(browser, 'pilotage.html', cfg2);
+  await alt.page.click('.pil-nav-item[data-view="projets"]');
+  await alt.page.waitForTimeout(100);
+  ok((await alt.page.locator('.pil-col[data-stage="Montage"]').evaluate(e => e.style.borderTopColor))
+    === 'rgb(124, 58, 237)', 'changer la couleur dans Grist suffit, sans toucher au widget');
+  // Sans textColor, la couleur de texte est déduite de la luminance.
+  await alt.page.click('.pil-nav-item[data-view="actions"]');
+  await alt.page.waitForTimeout(100);
+  const chip = await alt.page.locator('.pil-action:has-text("volet budgétaire") .pil-stage-chip')
+    .evaluate(e => [e.style.background, e.style.color]);
+  ok(chip[0] === 'rgb(124, 58, 237)' && chip[1] === 'rgb(255, 255, 255)',
+    'et le texte reste lisible même si le document ne donne pas sa couleur');
+  ok(alt.consoleErrors.length === 0, 'aucune erreur console (' + alt.consoleErrors.join(' | ') + ')');
+  await alt.context.close();
+
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+}
+
+async function testOpportunitesPaletteDuDocument(browser) {
+  console.log('\n=== opportunites.html : les pastilles de statut suivent la table ===');
+  const COULEURS = {
+    'Qualification': { fillColor: '#3b82f6', textColor: '#ffffff' },
+    // Jaune vif : le texte doit être sombre, et c'est le document qui le dit.
+    'Contractualisation': { fillColor: '#facc15', textColor: '#1c2321' }
+  };
+  const cfg = {
+    widgetTableId: 'Opportunites',
+    baseUrl: 'https://mock.grist.local/api/docs/mockdoc',
+    tables: {
+      Opportunites: {
+        colIds: ['Sujet', 'Type', 'Partenaires', 'Statut', 'Montant'],
+        data: {
+          id: [1, 2], Sujet: ['POC détection', 'Chaire IA'], Type: ['POC', 'Chaire'],
+          Partenaires: [null, null], Statut: ['Qualification', 'Contractualisation'], Montant: [null, null]
+        }
+      },
+      Structures: { colIds: ['nom_acteur'], data: { id: [], nom_acteur: [] } },
+      Contacts: { colIds: ['Nom_Complet'], data: { id: [], Nom_Complet: [] } }
+    },
+    columnsMeta: {
+      Opportunites: [choiceCol('Statut', ['Qualification', 'Contractualisation'], COULEURS)]
+    }
+  };
+  const { page, context, consoleErrors } = await openWidget(browser, 'opportunites.html', cfg);
+  await page.locator('.opp-card').first().waitFor({ state: 'visible', timeout: 5000 });
+  await page.waitForTimeout(200); // l'aller-retour REST qui lit les couleurs
+
+  // La pastille de statut vit dans la fiche, pas sur la carte du Kanban.
+  const pillOf = async (sujet) => {
+    await page.locator('.opp-card', { hasText: sujet }).first().click();
+    await page.waitForTimeout(120);
+    const style = await page.locator('#modal .status-pill').first()
+      .evaluate(e => [e.textContent.trim(), e.style.background, e.style.color]);
+    await page.click('#modal-close');
+    await page.waitForTimeout(80);
+    return style;
+  };
+  const qualif = await pillOf('POC détection');
+  ok(qualif[0] === 'Qualification' && qualif[1] === 'rgb(59, 130, 246)',
+    'la pastille Qualification prend le bleu de la table');
+  const contract = await pillOf('Chaire IA');
+  ok(contract[1] === 'rgb(250, 204, 21)', 'la pastille Contractualisation prend le jaune de la table');
+  ok(contract[2] === 'rgb(28, 35, 33)',
+    'et son texte reste sombre : un texte blanc sur ce jaune serait illisible');
+
+  const accents = await page.$$eval('.column', els => els.map(e => e.style.borderTopColor));
+  ok(accents.includes('rgb(59, 130, 246)') && accents.includes('rgb(250, 204, 21)'),
+    'les colonnes du Kanban reprennent les mêmes couleurs');
+
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
 // PLAYWRIGHT_CHROMIUM_PATH lets a sandboxed/offline environment point at a
 // pre-installed browser (no network access to download one); omit it to use
 // Playwright's own managed install (after `npx playwright install chromium`).
@@ -2066,6 +2184,7 @@ try {
   await testContactsHeaderNomComplet(browser);
   await testContactsCreateFlow(browser);
   await testOpportunitesDateSave(browser);
+  await testOpportunitesPaletteDuDocument(browser);
   await testCifreDashboard(browser);
   await testCifreDashboardTypeFinancementColumn(browser);
   await testCifreDashboardLabAndKEuros(browser);
@@ -2092,6 +2211,7 @@ try {
   await testPilotageSuggestions(browser);
   await testPilotageStatutsActuels(browser);
   await testPilotageRechercheEtVueUnique(browser);
+  await testPilotagePaletteDuDocument(browser);
   await testPilotageCreerOpportunite(browser);
   await testPilotagePopups(browser);
   await testPilotageTableManquante(browser);

@@ -8,7 +8,7 @@ const src = fs.readFileSync(new URL('../common.js', import.meta.url), 'utf8');
 // in a sandbox and expose the functions we need via a `window` shim.
 const sandbox = { console, window: {}, document: undefined };
 vm.createContext(sandbox);
-vm.runInContext(src + '\nwindow.exports = { escapeHtml, pilierClass, initials, formatValue, formatMontant, formatDate, gristDateToInputValue, inputValueToGristDate, statusColor, mapRecord, mapRecords, attachmentIdsFromValue, guessDisplayColumn, chipLabels, debounce, createFieldSaver };', sandbox);
+vm.runInContext(src + '\nwindow.exports = { escapeHtml, pilierClass, initials, formatValue, formatMontant, formatDate, gristDateToInputValue, inputValueToGristDate, statusColor, statusStyle, statusTextColor, registerStatusStyles, readableTextOn, choiceStylesFromWidgetOptions, mapRecord, mapRecords, attachmentIdsFromValue, guessDisplayColumn, chipLabels, debounce, createFieldSaver };', sandbox);
 const fn = sandbox.window.exports;
 
 let pass = 0, fail = 0;
@@ -75,6 +75,47 @@ eq(fn.statusColor('concrétisé'), 'var(--status-concretise)', 'statusColor: acc
 eq(fn.statusColor('Concretise'), 'var(--status-concretise)', 'statusColor: unaccented matches too');
 eq(fn.statusColor('Un statut inconnu'), 'var(--status-default)', 'statusColor: unknown -> default');
 eq(fn.statusColor(''), 'var(--status-default)', 'statusColor: empty -> default');
+// Le jaune de "Contractualisation" impose un texte sombre, pas blanc.
+eq(fn.statusTextColor('Contractualisation'), '#1c2321', 'statusTextColor: texte sombre sur le jaune');
+eq(fn.statusTextColor('Montage'), '#fff', 'statusTextColor: texte blanc sur l\'orange');
+eq(fn.statusTextColor('Un statut inconnu'), '#fff', 'statusTextColor: défaut -> blanc');
+
+// ---- readableTextOn ----
+eq(fn.readableTextOn('#facc15'), '#1c2321', 'readableTextOn: sombre sur un jaune vif');
+eq(fn.readableTextOn('#3b82f6'), '#fff', 'readableTextOn: blanc sur un bleu');
+eq(fn.readableTextOn('#FFF'), '#1c2321', 'readableTextOn: notation courte acceptée');
+eq(fn.readableTextOn('pas une couleur'), '#fff', 'readableTextOn: valeur illisible -> blanc');
+eq(fn.readableTextOn(null), '#fff', 'readableTextOn: null -> blanc');
+
+// ---- choiceStylesFromWidgetOptions : les couleurs telles que le document les porte ----
+const WO = {
+  choices: ['Prospection', 'Qualification', 'Montage'],
+  choiceOptions: {
+    Prospection: { fillColor: '#6b7280', textColor: '#ffffff' },
+    // Sans textColor : la couleur de texte est déduite de la luminance.
+    Qualification: { fillColor: '#facc15' },
+    // Sans fillColor : rien à retenir, le repli s'appliquera.
+    Montage: { textColor: '#ffffff' }
+  }
+};
+const parsed = fn.choiceStylesFromWidgetOptions(WO);
+eq(parsed.choices, ['Prospection', 'Qualification', 'Montage'], 'choiceStyles: les choix gardent l\'ordre du document');
+eq(parsed.styles.Prospection, { fill: '#6b7280', text: '#ffffff' }, 'choiceStyles: remplissage et texte lus tels quels');
+eq(parsed.styles.Qualification, { fill: '#facc15', text: '#1c2321' }, 'choiceStyles: texte déduit quand le document ne le donne pas');
+eq('Montage' in parsed.styles, false, 'choiceStyles: un choix sans couleur de fond est ignoré');
+eq(fn.choiceStylesFromWidgetOptions(null), { choices: [], styles: {} }, 'choiceStyles: options absentes -> vide');
+eq(fn.choiceStylesFromWidgetOptions({}), { choices: [], styles: {} }, 'choiceStyles: options vides -> vide');
+
+// ---- registerStatusStyles : le document gagne sur le repli ----
+fn.registerStatusStyles(parsed.styles);
+eq(fn.statusColor('Prospection'), '#6b7280', 'registerStatusStyles: la couleur du document remplace le token CSS');
+eq(fn.statusColor('prospection'), '#6b7280', 'registerStatusStyles: insensible à la casse');
+eq(fn.statusTextColor('Qualification'), '#1c2321', 'registerStatusStyles: couleur de texte déduite conservée');
+eq(fn.statusColor('Montage'), 'var(--status-montage)', 'registerStatusStyles: un statut sans couleur garde son repli');
+fn.registerStatusStyles({ 'Concrétisé': { fill: '#22c55e' } });
+eq(fn.statusColor('Concretise'), '#22c55e', 'registerStatusStyles: accents ignorés à l\'enregistrement comme à la lecture');
+eq(fn.statusStyle('Un statut inconnu'), { fill: 'var(--status-default)', text: '#fff' },
+  'statusStyle: statut inconnu -> gris neutre');
 
 // ---- mapRecord / mapRecords ----
 const mappings = { Nom: 'nom_grist', Structures: ['struct_a', 'struct_b'] };

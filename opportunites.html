@@ -345,7 +345,7 @@
       bodyHtml =
         '<div class="tags">' +
           '<input class="editable-input" id="f-type" placeholder="Type" value="' + escapeHtml(o.Type || '') + '" style="width:auto;display:inline-block;max-width:120px;">' +
-          '<span class="status-pill" style="background:' + statusColor(o.Statut) + '">' + escapeHtml(o.Statut || 'Sans statut') + '</span>' +
+          '<span class="status-pill" style="background:' + statusColor(o.Statut) + ';color:' + statusTextColor(o.Statut) + '">' + escapeHtml(o.Statut || 'Sans statut') + '</span>' +
         '</div>' +
         '<div class="info-grid">' +
           '<div class="info-item"><div class="label">Axe SequoIA</div><input class="editable-input" id="f-axe" value="' + escapeHtml(o.AxeSequoia || '') + '"></div>' +
@@ -370,7 +370,7 @@
     } else {
       const tagsRow =
         (o.Type ? '<span class="tag">' + escapeHtml(o.Type) + '</span>' : '') +
-        '<span class="status-pill" style="background:' + statusColor(o.Statut) + '">' + escapeHtml(o.Statut || 'Sans statut') + '</span>' +
+        '<span class="status-pill" style="background:' + statusColor(o.Statut) + ';color:' + statusTextColor(o.Statut) + '">' + escapeHtml(o.Statut || 'Sans statut') + '</span>' +
         (o.AxeSequoia ? '<span class="tag">' + escapeHtml(o.AxeSequoia) + '</span>' : '');
       const rows = [
         o.DateDebut ? '<div class="info-item"><div class="label">Date de début</div><div class="value">' + escapeHtml(formatDate(o.DateDebut)) + '</div></div>' : '',
@@ -497,10 +497,24 @@
     }
   });
 
+  // Les couleurs de statut viennent du document : on lit une fois les
+  // couleurs des choix de la colonne Statut, puis on redessine avec elles.
+  let statusColorsLoaded = false;
+  async function loadStatusColors(mappings) {
+    if (statusColorsLoaded || !mappings || !mappings.Statut) return;
+    statusColorsLoaded = true;
+    try {
+      const tableId = await grist.getTable().getTableId();
+      const { styles } = await fetchChoiceStyles(tableId, mappings.Statut);
+      if (Object.keys(styles).length) { registerStatusStyles(styles); renderBoard(); }
+    } catch (err) { console.error(err); }
+  }
+
   grist.onRecords(function (records, mappings) {
     currentMappings = mappings;
     allRecords = mapRecords(records, mappings);
     renderBoard();
+    loadStatusColors(mappings);
   });
 </script>
 

@@ -2,8 +2,11 @@
 // (tests/browser/screenshot.mjs) — un seul endroit à mettre à jour quand le
 // document Grist évolue.
 
-export function choiceCol(id, choices) {
-  return { id, fields: { type: 'Choice', widgetOptions: JSON.stringify({ choices }) } };
+// `choiceOptions` (optionnel) porte les couleurs que Grist enregistre pour
+// chaque choix : c'est ce que les widgets lisent pour coller à la table.
+export function choiceCol(id, choices, choiceOptions) {
+  const opts = choiceOptions ? { choices, choiceOptions } : { choices };
+  return { id, fields: { type: 'Choice', widgetOptions: JSON.stringify(opts) } };
 }
 
 export function refCol(id, type, label) {
@@ -156,6 +159,20 @@ export function rel(days) {
 // de la colonne Statut plutôt qu'une liste figée dans le widget.
 export const PILOTAGE_STATUTS = ['Idée', 'Premier échange', 'Qualification', "Recherche d'équipe",
   'Montage', 'Contractualisation', 'Projet lancé', 'Terminé / abandonné'];
+
+// Couleurs telles que le document les porterait, dans la langue de la palette
+// réelle du CRM : gris → bleu → orange → jaune → vert, rouge à part.
+export const PILOTAGE_STATUT_COULEURS = {
+  'Idée': { fillColor: '#9ca3af', textColor: '#ffffff' },
+  'Premier échange': { fillColor: '#60a5fa', textColor: '#ffffff' },
+  'Qualification': { fillColor: '#3b82f6', textColor: '#ffffff' },
+  "Recherche d'équipe": { fillColor: '#fb923c', textColor: '#ffffff' },
+  'Montage': { fillColor: '#f97316', textColor: '#ffffff' },
+  // Jaune vif : Grist enregistre bien un texte sombre.
+  'Contractualisation': { fillColor: '#facc15', textColor: '#1c2321' },
+  'Projet lancé': { fillColor: '#22c55e', textColor: '#ffffff' },
+  'Terminé / abandonné': { fillColor: '#ef4444', textColor: '#ffffff' }
+};
 
 export function pilotageConfig() {
   // 1..12 partenaires, 101..109 équipes de recherche.
@@ -326,7 +343,7 @@ export function pilotageConfig() {
         refCol('Opportunites', 'RefList:Opportunites', 'Opportunité(s)')
       ],
       Opportunites: [
-        choiceCol('Statut', PILOTAGE_STATUTS),
+        choiceCol('Statut', PILOTAGE_STATUTS, PILOTAGE_STATUT_COULEURS),
         choiceCol('Type', ['CIFRE', 'Chaire', 'LabCom', 'ANR PRCE', 'Projet national', 'Projet européen',
           'Stage / projet étudiant', 'Projet interne', 'Autre collaboration']),
         refCol('Partenaires', 'RefList:Structures', 'Partenaire(s)'),
