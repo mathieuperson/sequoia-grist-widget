@@ -50,10 +50,20 @@ eq(p.isStageIn('Concrétisé', 'lance'), true, 'familles: Concrétisé == Projet
 eq(p.isStageIn('Projet lancé', 'lance'), true, 'familles: Projet lancé (cible) même famille');
 eq(p.isStageIn('Statut inventé', 'discussion'), false, 'familles: valeur inconnue n\'appartient à rien');
 
+// ---- Couleur d'étape (palette de progression du pipeline) ----
+eq(p.stageColor('Montage'), 'var(--stage-montage)', 'stageColor: une variable CSS par étape');
+eq(p.stageColor("Recherche d'équipe"), 'var(--stage-recherchedequipe)', 'stageColor: clé dérivée du libellé');
+eq(p.stageColor('Concrétisé'), 'var(--stage-concretise)', 'stageColor: statut actuel du document');
+eq(p.stageColor('Statut inventé'), 'var(--status-default)',
+  'stageColor: étape inconnue -> repli sur statusColor de common.css');
+eq(p.stageColor('Abandonné'), 'var(--stage-abandonne)', 'stageColor: l\'abandon garde sa couleur à part');
+
 // ---- Dispositifs ----
 eq(p.dispositifClass('CIFRE'), 'tag-cifre', 'dispositifClass: CIFRE');
 eq(p.dispositifClass('Chaire industrielle'), 'tag-chaire', 'dispositifClass: sous-chaîne (Chaire industrielle)');
-eq(p.dispositifClass('ANR PRCE'), 'tag-anr', 'dispositifClass: ANR PRCE');
+eq(p.dispositifClass('ANR PRCE'), 'tag-national', 'dispositifClass: ANR PRCE -> projet national');
+eq(p.dispositifClass('Projet national'), 'tag-national', 'dispositifClass: la valeur réelle du document');
+eq(p.dispositifClass('Projet interne'), 'tag-interne', 'dispositifClass: projet interne');
 eq(p.dispositifClass('Projet européen'), 'tag-europe', 'dispositifClass: Projet européen');
 eq(p.dispositifClass('POC'), 'tag-autre', 'dispositifClass: dispositif hors liste -> autre');
 eq(p.dispositifClass(''), 'tag-autre', 'dispositifClass: vide -> autre');

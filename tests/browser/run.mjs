@@ -1596,11 +1596,25 @@ async function testPilotageDashboard(browser) {
   ok(relances[0] === 'Capgemini Engineering', 'un partenaire jamais contacté passe en tête des relances');
   ok(relances[1] === 'Kerlink', 'puis le contact le plus ancien (Kerlink, 6 mois)');
 
-  // Le compteur "Interactions" de la barre latérale suit les données.
-  ok((await page.locator('#nav-interactions').textContent()) === '13', 'compteur Interactions de la barre latérale');
-  ok((await page.locator('#nav-equipes').textContent()) === '9',
-    'les équipes de recherche sont distinguées des partenaires (9 / 12)');
-  ok((await page.locator('#nav-partenaires').textContent()) === '12', 'compteur Partenaires');
+  // Palette de progression : chaque barre du pipeline porte la couleur de son étape.
+  const barColors = await page.$$eval('.pil-bar-fill', els => els.map(e => e.style.background));
+  ok(barColors[0] === 'var(--stage-idee)' && barColors.includes('var(--stage-montage)'),
+    'les barres du pipeline sont colorées par étape');
+  ok(new Set(barColors).size === barColors.length, 'une couleur distincte par étape');
+
+  // La barre latérale est recentrée sur la gestion de projets : plus de
+  // décompte de partenaires ni d'acteurs de recherche (c'est le rôle de la
+  // cartographie), et pas de création de structure depuis cet onglet.
+  ok(await page.locator('.pil-nav-item').count() === 3, 'la barre latérale ne porte que les trois vues');
+  ok(!(await page.locator('.pil-sidebar').textContent()).includes('Cartographie'),
+    'aucune entrée "Bases" résiduelle');
+  ok(await page.locator('#btn-partenaire').count() === 0, 'plus de bouton "+ Partenaire" dans l\'en-tête');
+  ok((await page.locator('#nav-projets').textContent()) === '14', 'compteur de projets suivis');
+
+  // Les relances ne portent que sur les partenaires d'un projet en cours.
+  ok(!relances.includes('InterDigital'),
+    'un partenaire dont le seul projet est clos ne remonte plus dans les relances');
+  ok(relances.includes('Port de Brest'), 'mais un projet lancé compte comme projet en cours');
 
   ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
   await context.close();
@@ -1619,7 +1633,7 @@ async function testPilotageKanban(browser) {
 
   const counts = await page.$$eval('.pil-col', els =>
     els.map(e => Number(e.querySelector('.pil-col-count').textContent.trim())));
-  ok(JSON.stringify(counts) === JSON.stringify([1, 2, 2, 1, 2, 1, 2, 2]), 'cartes par colonne');
+  ok(JSON.stringify(counts) === JSON.stringify([1, 2, 2, 1, 3, 1, 2, 2]), 'cartes par colonne');
   ok((await page.locator('.pil-col[data-stage="Qualification"] .pil-col-sum').textContent()).trim() === '620 k€',
     'montant cumulé de colonne');
   ok((await page.locator('.pil-cardlet[data-id="404"] .pil-tag').textContent()).trim() === 'LabCom',
@@ -1628,6 +1642,17 @@ async function testPilotageKanban(browser) {
     'chaque dispositif a sa propre couleur');
   ok((await page.locator('.pil-cardlet[data-id="404"] .pil-cardlet-team').textContent()).includes('CIDRE'),
     'le pied de carte porte les équipes de recherche rattachées');
+
+  // Liseré de couleur de l'étape en tête de colonne.
+  const accents = await page.$$eval('.pil-col', els => els.map(e => e.style.borderTopColor));
+  ok(accents[0] === 'var(--stage-idee)' && accents[5] === 'var(--stage-contractualisation)',
+    'chaque colonne porte le liseré de couleur de son étape');
+
+  // Un projet sans partenaire est un projet interne.
+  ok(await page.locator('.pil-cardlet[data-id="414"] .pil-interne').count() === 1,
+    'un projet sans partenaire s\'affiche comme projet interne');
+  ok((await page.locator('.pil-cardlet[data-id="414"] .pil-interne').textContent()).trim() === 'Projet interne',
+    'et le dit explicitement plutôt qu\'un tiret');
 
   ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
   await context.close();
@@ -1680,7 +1705,7 @@ async function testPilotageKanbanDragEtClavier(browser) {
     .flatMap(c => c.actions)
     .filter(a => a[0] === 'UpdateRecord' && a[1] === 'Opportunites' && a[2] === 405));
   ok(drops.length === 1 && drops[0][3].Statut === 'Montage', 'le glisser-déposer écrit aussi la nouvelle étape');
-  ok(await page.locator('.pil-col[data-stage="Montage"] .pil-cardlet').count() === 3,
+  ok(await page.locator('.pil-col[data-stage="Montage"] .pil-cardlet').count() === 4,
     'et la carte déposée rejoint la colonne cible');
 
   ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
@@ -1851,7 +1876,7 @@ async function testPilotageRechercheEtVueUnique(browser) {
   const { page, context, consoleErrors } = await openWidget(browser, 'pilotage.html', cfg);
   await page.click('.pil-nav-item[data-view="projets"]');
   await page.waitForTimeout(80);
-  ok(await page.locator('.pil-cardlet').count() === 13, '13 projets avant recherche');
+  ok(await page.locator('.pil-cardlet').count() === 14, '14 projets avant recherche');
   await page.fill('#search', 'thales');
   await page.waitForTimeout(280);
   const titres = await page.$$eval('.pil-cardlet-title', els => els.map(e => e.textContent.trim()));
@@ -1882,14 +1907,14 @@ async function testPilotageTableManquante(browser) {
   ok((await page.locator('#view-dashboard').textContent()).includes('Table introuvable'),
     'l\'absence de la table Opportunités est signalée');
   ok(await kpi(page, 'Projets en discussion') === '0', 'les indicateurs de projets tombent à 0, sans erreur');
-  ok((await page.locator('#nav-interactions').textContent()) === '13',
-    'le reste de la vue continue de fonctionner');
+  ok((await page.locator('#nav-actions').textContent()) === '9',
+    'le reste de la vue continue de fonctionner (les actions viennent des interactions)');
   ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
   await context.close();
 }
 
 async function testPilotagePopups(browser) {
-  console.log('\n=== pilotage.html : créer une action, une note, un partenaire ===');
+  console.log('\n=== pilotage.html : créer une action et une note ===');
   const cfg = pilotageConfig();
   const { page, context, consoleErrors } = await openWidget(browser, 'pilotage.html', cfg);
 
@@ -1930,16 +1955,17 @@ async function testPilotagePopups(browser) {
   ok(notes.length === 1 && notes[0][3].Date > 0, 'une note est datée du jour (c\'est un échange, pas une suite)');
   ok(notes[0][3].CR.includes('&lt;b&gt;'), 'le compte rendu saisi est échappé avant écriture');
 
-  await page.click('#btn-partenaire');
-  await page.waitForTimeout(80);
-  await page.fill('.pil-modal input[name="nom"]', 'Naval Group');
-  await page.click('.pil-modal button[type="submit"]');
-  await page.waitForTimeout(240);
+  // Créer une structure n'est pas le rôle de cet onglet : rien ne doit être
+  // écrit dans Structures depuis ici.
   const structs = await page.evaluate(() => (window.__mockCalls || [])
     .filter(c => c.fn === 'applyUserActions').flatMap(c => c.actions)
     .filter(a => a[0] === 'AddRecord' && a[1] === 'Structures'));
-  ok(structs.length === 1 && structs[0][3].nom_acteur === 'Naval Group',
-    'le partenaire est créé sur la colonne mappée « Nom »');
+  ok(structs.length === 0, 'aucune création de structure depuis l\'onglet de pilotage');
+
+  // La vue Mes actions porte aussi son propre bouton de création.
+  await page.click('.pil-nav-item[data-view="actions"]');
+  await page.waitForTimeout(80);
+  ok(await page.locator('#btn-action-vue').count() === 1, 'la vue Mes actions a son bouton « + Nouvelle action »');
 
   // Un intitulé vide ne doit rien écrire.
   await page.click('#btn-action');
@@ -1950,6 +1976,79 @@ async function testPilotagePopups(browser) {
   await page.click('.pil-modal [data-close]');
   await page.waitForTimeout(60);
   ok(await page.locator('.pil-modal').count() === 0, 'Annuler referme sans écrire');
+
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
+async function testPilotageCreerOpportunite(browser) {
+  console.log('\n=== pilotage.html : créer une opportunité depuis le Kanban ===');
+  const cfg = pilotageConfig();
+  const { page, context, consoleErrors } = await openWidget(browser, 'pilotage.html', cfg);
+  await page.click('.pil-nav-item[data-view="projets"]');
+  await page.waitForTimeout(80);
+
+  ok(await page.locator('#btn-opportunite').count() === 1,
+    'la vue Kanban porte son bouton « + Nouvelle opportunité »');
+  ok(await page.locator('.pil-col-add').count() === 8,
+    'et chaque colonne permet de créer directement à son étape');
+
+  // Le bouton d'une colonne pré-sélectionne son étape.
+  await page.click('.pil-col[data-stage="Qualification"] .pil-col-add');
+  await page.waitForTimeout(80);
+  ok(await page.locator('.pil-modal').isVisible(), 'le formulaire s\'ouvre');
+  ok(await page.locator('.pil-modal select[name="statut"]').inputValue() === 'Qualification',
+    'avec l\'étape de la colonne d\'où on part');
+  // Les dispositifs proposés sont les choix réels de la colonne Type.
+  const dispositifs = await page.$$eval('.pil-modal select[name="type"] option', els => els.map(e => e.textContent));
+  ok(dispositifs.includes('Projet interne') && dispositifs.includes('LabCom'),
+    'les dispositifs viennent des choix réels de la colonne Type');
+  // L'équipe de recherche est proposée sur la colonne inscriptible découverte.
+  ok(await page.locator('.pil-modal select[name="team"]').count() === 1,
+    'l\'équipe de recherche est proposée sur la colonne Équipe Cluster');
+
+  await page.fill('.pil-modal input[name="sujet"]', 'Chaire IA & littoral');
+  await page.selectOption('.pil-modal select[name="type"]', 'Chaire');
+  await page.selectOption('.pil-modal select[name="partner"]', 'Kerlink');
+  await page.selectOption('.pil-modal select[name="team"]', { label: 'OBELIX — IRISA' });
+  await page.fill('.pil-modal input[name="montant"]', '750000');
+  await page.fill('.pil-modal input[name="echeance"]', '2030-06-01');
+  await page.click('.pil-modal button[type="submit"]');
+  await page.waitForTimeout(260);
+
+  const added = await page.evaluate(() => (window.__mockCalls || [])
+    .filter(c => c.fn === 'applyUserActions').flatMap(c => c.actions)
+    .filter(a => a[0] === 'AddRecord' && a[1] === 'Opportunites'));
+  ok(added.length === 1, 'une ligne est créée dans Opportunités');
+  const f = added[0][3];
+  ok(f.Sujet === 'Chaire IA & littoral' && f.Type === 'Chaire' && f.Statut === 'Qualification',
+    'sujet, dispositif et étape sont écrits');
+  ok(f.Montant === 750000 && f.Echeance === Date.UTC(2030, 5, 1) / 1000, 'montant et échéance aussi');
+  ok(JSON.stringify(f.Partenaires) === JSON.stringify(['L', 6]), 'le partenaire choisi est rattaché');
+  ok(JSON.stringify(f.EquipeCluster) === JSON.stringify(['L', 102]), 'et l\'équipe de recherche');
+  ok(await page.locator('.pil-col[data-stage="Qualification"] .pil-cardlet').count() === 3,
+    'la carte apparaît aussitôt dans sa colonne');
+
+  // Sans partenaire : un projet interne, et le champ n'est pas requis.
+  await page.click('#btn-opportunite');
+  await page.waitForTimeout(80);
+  await page.fill('.pil-modal input[name="sujet"]', 'Chantier interne données');
+  await page.selectOption('.pil-modal select[name="partner"]', '');
+  await page.click('.pil-modal button[type="submit"]');
+  await page.waitForTimeout(260);
+  const internes = await page.evaluate(() => (window.__mockCalls || [])
+    .filter(c => c.fn === 'applyUserActions').flatMap(c => c.actions)
+    .filter(a => a[0] === 'AddRecord' && a[1] === 'Opportunites' && a[3].Sujet === 'Chantier interne données'));
+  ok(internes.length === 1 && !('Partenaires' in internes[0][3]),
+    'un projet interne est créé sans partenaire, sans bloquer le formulaire');
+
+  // Un sujet vide ne doit rien écrire.
+  await page.click('#btn-opportunite');
+  await page.waitForTimeout(80);
+  await page.click('.pil-modal button[type="submit"]');
+  await page.waitForTimeout(120);
+  ok(await page.locator('.pil-modal').isVisible(), 'un sujet vide laisse le formulaire ouvert');
+  await page.click('.pil-modal [data-close]');
 
   ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
   await context.close();
@@ -1993,6 +2092,7 @@ try {
   await testPilotageSuggestions(browser);
   await testPilotageStatutsActuels(browser);
   await testPilotageRechercheEtVueUnique(browser);
+  await testPilotageCreerOpportunite(browser);
   await testPilotagePopups(browser);
   await testPilotageTableManquante(browser);
 } finally {

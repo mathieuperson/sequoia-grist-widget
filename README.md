@@ -19,16 +19,20 @@ URL de base : `https://mathieuperson.github.io/sequoia-grist-widget/`
 
 ### Pilotage Partenariats & Innovation (`pilotage.html`)
 
-Vue de pilotage de l'activité, en trois onglets dans la barre latérale : **Tableau de bord**, **Projets**
-(Kanban) et **Mes actions** (todo liste). Elle ne stocke rien qu'elle puisse calculer : les sept indicateurs,
-le pipeline, les relances, les motifs d'action et les suggestions sont tous déduits des tables du document à
-chaque affichage.
+Onglet dédié à la **gestion des projets** — montages de collaborations comme projets et actions internes — en
+trois vues : **Tableau de bord**, **Projets** (Kanban) et **Mes actions** (todo liste). Il ne stocke rien qu'il
+puisse calculer : les sept indicateurs, le pipeline, les relances, les motifs d'action et les suggestions sont
+tous déduits des tables du document à chaque affichage.
+
+Volontairement hors périmètre : pas de décompte de partenaires ni d'acteurs de recherche (c'est le rôle de
+`cartographie.html`), et pas de création de structure depuis cet onglet.
 
 **Tableau de bord** — bandeau de sept indicateurs (actions en retard, actions cette semaine, partenaires à
 relancer, projets en discussion, pipeline pondéré, dossiers à déposer, CIFRE identifiées), pipeline en barres
-proportionnelles au nombre de projets de l'étape, partenaires à relancer (du contact le plus ancien au plus
-récent, avec la prochaine action ou, à défaut, celle que le moteur suggère), les six prochaines actions,
-les dispositifs structurants par type, et les dernières interactions.
+proportionnelles au nombre de projets de l'étape et **colorées par étape**, partenaires à relancer (restreints à
+ceux qui portent un projet en cours, du contact le plus ancien au plus récent, avec le projet concerné et la
+prochaine action ou, à défaut, celle que le moteur suggère), les six prochaines actions, les dispositifs
+structurants par type, et les dernières interactions.
 
 **Projets** — une colonne par étape, **lues depuis les choix réels de la colonne Statut** : rien n'est figé dans
 le widget. Les étapes sont ordonnées selon une liste canonique qui couvre à la fois les six statuts actuels
@@ -36,6 +40,18 @@ le widget. Les étapes sont ordonnées selon une liste canonique qui couvre à l
 rangée à la fin plutôt que perdue. Les indicateurs sont définis par **famille d'étape** et pas par position,
 donc ils restent justes dans les deux vocabulaires. Glisser une carte d'une colonne à l'autre écrit le nouveau
 statut ; chaque carte porte aussi un menu « Déplacer vers… » qui fait la même chose au clavier.
+
+Une **palette de progression** colore le pipeline : chaque étape a sa couleur, en tête de colonne du Kanban, sur
+les barres du tableau de bord et sur la puce d'étape des actions. Elle reprend la progression de funnel déjà
+posée par les `--status-*` de `common.css` (gris-bleu tôt → bleu → ambre → violet → vert gagné, rouge à part pour
+l'abandon), pour qu'une opportunité garde la même couleur d'un widget à l'autre.
+
+**Créer une opportunité** se fait depuis cette vue : le bouton « + Nouvelle opportunité » en tête, ou le bouton
+en pied de chaque colonne, qui pré-sélectionne son étape. Le formulaire propose les **choix réels** des colonnes
+Statut et Type du document, l'équipe de recherche sur la première colonne de référence inscriptible découverte
+(annoncée par son vrai libellé, une colonne formule étant exclue puisque Grist refuserait l'écriture), le
+montant et les dates. **Le partenaire est optionnel** : sans partenaire, c'est un projet interne au cluster — la
+carte l'affiche comme tel plutôt qu'avec un tiret, et le sous-titre de la vue les compte.
 
 **Mes actions** — les actions sont portées par les interactions (**Prochaine échéance** + **Suites**) : aucune
 table à créer. Elles sont regroupées à l'affichage par urgence (En retard / Aujourd'hui / Cette semaine / Plus
@@ -72,9 +88,6 @@ Limites assumées :
   document n'a pas de colonne pour ça. Le jour où elle existe, il suffira de la lire.
 - « Depuis quand » une opportunité est à son étape se lit sur sa **date de début**, faute d'historique des
   changements d'étape dans le document.
-- Les entrées de la section « Bases » (Partenaires, Équipes de recherche, Interactions, Cartographie,
-  Reporting annuel) n'affichent que leurs compteurs : ces bases se consultent dans leurs propres pages Grist
-  (`crm.html`, `cartographie.html`).
 - Les « lettres de soutien émises » du volet Dispositifs structurants ne sont pas affichées : aucune colonne du
   document ne les porte aujourd'hui.
 

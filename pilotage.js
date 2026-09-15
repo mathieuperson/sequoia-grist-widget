@@ -61,6 +61,16 @@ function stageRank(label) {
   return stage ? PILOTAGE_STAGES.indexOf(stage) : Infinity;
 }
 
+// Couleur de l'étape, pour lire la progression du pipeline d'un coup d'oeil.
+// Les valeurs vivent dans le CSS (--stage-<clé>) et reprennent la
+// progression de funnel déjà posée par les --status-* de common.css, pour
+// qu'une opportunité garde la même couleur d'un widget à l'autre. Une étape
+// que la liste canonique ne connaît pas retombe sur statusColor().
+function stageColor(label) {
+  const stage = matchStage(label);
+  return stage ? 'var(--stage-' + stage.key + ')' : statusColor(label);
+}
+
 function stageFamilies(label) {
   const stage = matchStage(label);
   return stage ? stage.families : [];
@@ -90,12 +100,13 @@ function orderStages(labels) {
 // Le "Type" d'opportunité porte le dispositif. Les couleurs vivent dans le
 // CSS (classes .tag-<key>) ; ici on ne fait que reconnaître la famille.
 const PILOTAGE_DISPOSITIFS = [
-  { key: 'cifre',   label: 'CIFRE',                   match: ['cifre'] },
-  { key: 'chaire',  label: 'Chaire',                  match: ['chaire'] },
-  { key: 'labcom',  label: 'LabCom',                  match: ['labcom', 'laboratoirecommun'] },
-  { key: 'anr',     label: 'ANR PRCE',                match: ['anr', 'prce', 'prc'] },
-  { key: 'europe',  label: 'Projet européen',         match: ['europeen', 'europe', 'horizon'] },
-  { key: 'stage',   label: 'Stage / projet étudiant', match: ['stage', 'etudiant', 'projetetudiant'] }
+  { key: 'cifre',    label: 'CIFRE',                   match: ['cifre'] },
+  { key: 'chaire',   label: 'Chaire',                  match: ['chaire'] },
+  { key: 'labcom',   label: 'LabCom',                  match: ['labcom', 'laboratoirecommun'] },
+  { key: 'national', label: 'Projet national',         match: ['national', 'anr', 'prce', 'prc'] },
+  { key: 'europe',   label: 'Projet européen',         match: ['europeen', 'europe', 'horizon'] },
+  { key: 'stage',    label: 'Stage / projet étudiant', match: ['stage', 'etudiant', 'projetetudiant'] },
+  { key: 'interne',  label: 'Projet interne',          match: ['interne', 'internes'] }
 ];
 
 function dispositifOf(type) {
@@ -493,7 +504,7 @@ function runSuggestionRules(data, options) {
 if (typeof window !== 'undefined') {
   window.pilotage = {
     PILOTAGE_STAGES, PILOTAGE_URGENCES, PILOTAGE_DISPOSITIFS, PILOTAGE_SUGGESTION_RULES,
-    matchStage, stageRank, stageFamilies, isStageIn, orderStages,
+    matchStage, stageRank, stageColor, stageFamilies, isStageIn, orderStages,
     dispositifOf, dispositifClass, isCifre,
     formatMontantOrDash, sumMontants,
     urgenceOf, daysLate, groupActionsByUrgence,

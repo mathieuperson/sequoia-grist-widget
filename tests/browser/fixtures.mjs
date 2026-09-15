@@ -216,7 +216,10 @@ export function pilotageConfig() {
     ['Jumeau numérique du port', 'Autre collaboration', 'Projet lancé', 210000, 10, [102], rel(-200), null],
     ['Sobriété des modèles embarqués', 'CIFRE', 'Projet lancé', 195000, 9, [107], rel(-220), null],
     ['LabCom Cyber-défense (première phase)', 'LabCom', 'Terminé / abandonné', 700000, 8, [104], rel(-75), null],
-    ['POC recommandation musicale', 'Autre collaboration', 'Terminé / abandonné', 90000, 6, [109], rel(-300), null]
+    ['POC recommandation musicale', 'Autre collaboration', 'Terminé / abandonné', 90000, 6, [109], rel(-300), null],
+    // Sans partenaire : un projet interne au cluster. Le widget doit
+    // l'afficher comme tel, pas comme une donnée manquante.
+    ['Refonte du reporting annuel du cluster', 'Projet interne', 'Montage', 0, 0, [], rel(-15), null]
   ];
 
   // [date, type, objet, partenaire, contacts, prochaine échéance, suites, opportunité]
@@ -291,8 +294,9 @@ export function pilotageConfig() {
           Type: col(projets, 1),
           Statut: col(projets, 2),
           Montant: col(projets, 3),
-          Partenaires: projets.map(r => ['L', r[4]]),
-          EquipeCluster: projets.map(r => ['L'].concat(r[5])),
+          // partenaire 0 = projet interne (aucune structure rattachée)
+          Partenaires: projets.map(r => r[4] ? ['L', r[4]] : null),
+          EquipeCluster: projets.map(r => r[5].length ? ['L'].concat(r[5]) : null),
           DateDebut: col(projets, 6),
           Echeance: col(projets, 7),
           // Colonnes optionnelles : le widget les résout par leur nom, et la
@@ -323,8 +327,8 @@ export function pilotageConfig() {
       ],
       Opportunites: [
         choiceCol('Statut', PILOTAGE_STATUTS),
-        choiceCol('Type', ['CIFRE', 'Chaire', 'LabCom', 'ANR PRCE', 'Projet européen',
-          'Stage / projet étudiant', 'Autre collaboration']),
+        choiceCol('Type', ['CIFRE', 'Chaire', 'LabCom', 'ANR PRCE', 'Projet national', 'Projet européen',
+          'Stage / projet étudiant', 'Projet interne', 'Autre collaboration']),
         refCol('Partenaires', 'RefList:Structures', 'Partenaire(s)'),
         refCol('EquipeCluster', 'RefList:Structures', 'Équipe Cluster')
       ],
