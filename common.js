@@ -755,3 +755,118 @@ async function saveRefField(recordId, colId, chips, statusEl) {
     console.error(err);
   }
 }
+
+// ---------- Filtre à cases à cocher (menu déroulant) ----------
+// Un bouton qui annonce le nombre de valeurs retenues, un panneau avec
+// recherche, « tout cocher / décocher » et une case par valeur. Les styles
+// (.ms-*) vivent dans common.css.
+
+// Markup d'un filtre, à insérer là où on veut le poser.
+function msFilterMarkup(id, label, labelAll) {
+  return '<div class="ms-filter" id="' + escapeHtml(id) + '">' +
+    '<button class="ms-filter-btn" type="button">' +
+      '<span class="ms-label">' + escapeHtml(label) + '</span> ' +
+      '<span class="ms-count">' + escapeHtml(labelAll || 'Tous') + '</span>' +
+    '</button>' +
+    '<div class="ms-filter-panel" hidden>' +
+      '<input class="ms-search" type="search" placeholder="Rechercher…" aria-label="Rechercher dans ' + escapeHtml(label) + '">' +
+      '<div class="ms-quick-actions">' +
+        '<button type="button" data-action="all">Tout cocher</button>' +
+        '<button type="button" data-action="none">Tout décocher</button>' +
+      '</div>' +
+      '<div class="ms-options"></div>' +
+    '</div>' +
+  '</div>';
+}
+
+// Branche le comportement sur ce markup. `onChange(selection)` est appelé à
+// chaque changement. Rend { setOptions, getSelected, setSelected, close }.
+function createMultiSelect(root, conf) {
+  const opts = Object.assign({ values: [], selected: [], labelAll: 'Tous', onChange: null }, conf || {});
+  if (!root) return { setOptions() {}, getSelected: () => [], setSelected() {}, close() {} };
+  let values = opts.values.slice();
+  let selected = opts.selected.slice();
+
+  const btn = root.querySelector('.ms-filter-btn');
+  const countEl = btn.querySelector('.ms-count');
+  const panel = root.querySelector('.ms-filter-panel');
+  const search = root.querySelector('.ms-search');
+  const optionsEl = root.querySelector('.ms-options');
+
+  function updateButton() {
+    const n = selected.length;
+    countEl.textContent = n === 0 ? opts.labelAll : n + ' sélectionné' + (n > 1 ? 's' : '');
+    btn.classList.toggle('active', n > 0);
+  }
+
+  function renderOptions() {
+    optionsEl.innerHTML = values.length
+      ? values.map(v =>
+          '<label class="ms-option"><input type="checkbox" value="' + escapeHtml(v) + '"' +
+          (selected.includes(v) ? ' checked' : '') + '> ' + escapeHtml(v) + '</label>').join('')
+      : '<div class="ms-empty">Aucune valeur</div>';
+    optionsEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const set = new Set(selected);
+        if (cb.checked) set.add(cb.value); else set.delete(cb.value);
+        selected = Array.from(set);
+        updateButton();
+        if (opts.onChange) opts.onChange(selected.slice());
+      });
+    });
+  }
+
+  function filterOptionRows(q) {
+    optionsEl.querySelectorAll('.ms-option').forEach(l => {
+      l.hidden = !!q && !l.textContent.toLowerCase().includes(q);
+    });
+  }
+
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const willOpen = panel.hidden;
+    // Un seul panneau ouvert à la fois, y compris entre filtres voisins.
+    document.querySelectorAll('.ms-filter-panel').forEach(p => { p.hidden = true; });
+    panel.hidden = !willOpen;
+    if (willOpen) { search.value = ''; filterOptionRows(''); search.focus(); }
+  });
+  panel.addEventListener('click', (e) => e.stopPropagation());
+  search.addEventListener('input', () => filterOptionRows(search.value.trim().toLowerCase()));
+
+  // "Tout cocher" ne porte que sur les valeurs visibles : combiné à la
+  // recherche, c'est ce qui permet de cocher un sous-ensemble d'un coup.
+  root.querySelector('[data-action="all"]').addEventListener('click', () => {
+    const visible = Array.from(optionsEl.querySelectorAll('.ms-option'))
+      .filter(l => !l.hidden).map(l => l.querySelector('input').value);
+    selected = Array.from(new Set(selected.concat(visible)));
+    renderOptions(); updateButton();
+    if (opts.onChange) opts.onChange(selected.slice());
+  });
+  root.querySelector('[data-action="none"]').addEventListener('click', () => {
+    selected = [];
+    renderOptions(); updateButton();
+    if (opts.onChange) opts.onChange(selected.slice());
+  });
+
+  renderOptions();
+  updateButton();
+
+  return {
+    // Les valeurs disponibles changent avec les données : une sélection qui
+    // n'existe plus est abandonnée, sinon elle filtrerait tout en silence.
+    setOptions(newValues) {
+      values = (newValues || []).slice();
+      const kept = selected.filter(v => values.includes(v));
+      const dropped = kept.length !== selected.length;
+      selected = kept;
+      renderOptions(); updateButton();
+      if (dropped && opts.onChange) opts.onChange(selected.slice());
+    },
+    getSelected() { return selected.slice(); },
+    setSelected(next) {
+      selected = (next || []).filter(v => values.includes(v));
+      renderOptions(); updateButton();
+    },
+    close() { panel.hidden = true; }
+  };
+}

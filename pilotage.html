@@ -206,6 +206,24 @@ body { overflow: hidden; }
 .tag-autre  { background: #eef0ef; color: #5a625e; }
 
 /* ---------- Kanban ---------- */
+/* Barre de filtres du Kanban */
+.pil-filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.pil-filter-chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.pil-chip {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 28px;
+  padding: 3px 5px 3px 9px; border: 1px solid var(--border); border-radius: 20px;
+  background: var(--sequoia-green-light); color: var(--sequoia-green-dark); font-size: 12px;
+}
+.pil-chip button {
+  border: 0; background: none; color: inherit; cursor: pointer; font: inherit;
+  line-height: 1; padding: 4px 6px; border-radius: 20px; min-width: 24px;
+}
+.pil-chip button:hover { background: rgba(0, 0, 0, 0.07); }
+.pil-filter-reset {
+  border: 0; background: none; font: inherit; font-size: 12px; color: var(--text-muted);
+  cursor: pointer; text-decoration: underline; padding: 6px 4px;
+}
+
 .pil-kanban { display: flex; gap: 12px; align-items: flex-start; overflow-x: auto; padding-bottom: 14px; }
 .pil-col {
   width: 258px; min-width: 258px; background: var(--pil-kanban-col);
@@ -389,7 +407,11 @@ body { overflow: hidden; }
 
     <div class="pil-scroll">
       <section class="pil-view" id="view-dashboard" aria-labelledby="dash-title"></section>
-      <section class="pil-view" id="view-projets" hidden aria-labelledby="proj-title"></section>
+      <section class="pil-view" id="view-projets" hidden aria-labelledby="proj-title">
+        <div id="proj-head"></div>
+        <div class="pil-filters" id="proj-filters"></div>
+        <div id="proj-board"></div>
+      </section>
       <section class="pil-view" id="view-actions" hidden aria-labelledby="act-title"></section>
     </div>
   </div>
@@ -463,7 +485,10 @@ body { overflow: hidden; }
 
   let mappings = {};
   let structTableId = null;
-  let structures = [];          // lignes de Structures (mappées), filtres Grist compris
+  // Structures lues sans filtre : un filtre posé sur la section Grist ne doit
+  // pas faire disparaître le nom du partenaire d'un projet. Le mapping des
+  // colonnes, lui, vient toujours de onRecords.
+  let structures = [];
   let related = {};             // clé -> { tableId, cols, linkCols, records, error }
   let stageChoices = [];        // choix réels de la colonne Statut
   let typeChoices = [];         // choix réels de la colonne Type (dispositif)
@@ -472,6 +497,10 @@ body { overflow: hidden; }
   let view = new URLSearchParams(location.search).get('vue') || 'dashboard';
   let query = '';
   let statusMsg = '';
+  // Filtres du Kanban, chacun un choix multiple. Vides = tout passe.
+  const projectFilters = { dispositif: [], partenaire: [], equipe: [] };
+  const FILTER_LABELS = { dispositif: 'Dispositif', partenaire: 'Partenaire', equipe: 'Équipe / laboratoire' };
+  const filterWidgets = {};
 
   const el = (id) => document.getElementById(id);
   const today = () => new Date();
@@ -526,6 +555,20 @@ body { overflow: hidden; }
     const results = await Promise.all(keys.map(resolveRelated));
     keys.forEach((k, i) => { related[k] = results[i]; });
     await loadOppChoices();
+  }
+
+  // Toutes les structures du document, pas seulement celles que la section
+  // laisse passer : c'est ce qui garantit qu'un projet nomme toujours son
+  // partenaire, prospect ou non.
+  async function loadStructures() {
+    if (!structTableId) return;
+    invalidateTableCache(structTableId);
+    try {
+      const data = await fetchTableCached(structTableId);
+      structures = recordsFromTableData(data).map(r => mapRecord(r, mappings));
+    } catch (err) {
+      console.error('Lecture de la table Structures impossible', err);
+    }
   }
 
   // Les étapes du Kanban et les dispositifs du formulaire viennent des choix
@@ -608,9 +651,12 @@ body { overflow: hidden; }
   function buildModel() {
     const byId = {};
     structures.forEach(s => { byId[s.id] = s; });
+    // Une référence qu'on n'arrive pas à résoudre s'affiche par son id
+    // plutôt que de disparaître : un nom manquant en silence fait douter des
+    // décomptes qui l'entourent.
     const nameOf = (id) => {
       const s = byId[id];
-      return s ? txt(formatValue(sField(s, 'Nom'))) || ('#' + id) : '';
+      return (s && txt(formatValue(sField(s, 'Nom')))) || ('#' + id);
     };
 
     const inter = related.interactions || { records: [], cols: {}, linkCols: [] };
@@ -884,18 +930,10 @@ body { overflow: hidden; }
       '<div class="pil-row">' +
         '<div class="pil-row-main">' +
           '<div class="pil-row-title">' + H(g.label) + '</div>' +
-          '<div class="pil-row-meta">' + H(uniquePartners(g.list).join(' · ')) + '</div>' +
+          '<div class="pil-row-meta">' + H(projectHolders(g.list)) + '</div>' +
         '</div>' +
         '<div class="pil-row-side">' + g.list.length + '<br>' + H(formatMontantOrDash(sumMontants(g.list))) + '</div>' +
       '</div>').join('');
-  }
-
-  function uniquePartners(projects) {
-    const out = [];
-    projects.forEach(p => (p.partnerName || '').split(', ').forEach(n => {
-      if (n && !out.includes(n)) out.push(n);
-    }));
-    return out.slice(0, 4);
   }
 
   function renderInteractionsTable() {
@@ -937,12 +975,47 @@ body { overflow: hidden; }
   // ---------------------------------------------------------------------
   // Rendu — Kanban
   // ---------------------------------------------------------------------
+  // Valeurs de filtre portées par un projet. Un projet sans partenaire est
+  // filtrable comme « projet interne » : c'est une catégorie, pas un trou.
+  const INTERNE = 'Projet interne (sans partenaire)';
+  function projectFilterValues(p) {
+    return {
+      dispositif: [p.dispositif || 'Sans dispositif'],
+      partenaire: p.partnerIds.length ? (p.partnerName || '').split(', ').filter(Boolean) : [INTERNE],
+      equipe: p.teamNames.length ? p.teamNames : ['Sans équipe']
+    };
+  }
+
+  function matchesFilters(p) {
+    const values = projectFilterValues(p);
+    return Object.keys(projectFilters).every(key => {
+      const wanted = projectFilters[key];
+      return !wanted.length || values[key].some(v => wanted.includes(v));
+    });
+  }
+
+  // Les options proposées sont celles réellement présentes dans les projets,
+  // pour ne jamais offrir un filtre qui ne rendrait rien.
+  function filterOptions(key) {
+    const out = [];
+    model.projects.forEach(p => projectFilterValues(p)[key].forEach(v => {
+      if (v && !out.includes(v)) out.push(v);
+    }));
+    return out.sort((a, b) => a.localeCompare(b, 'fr'));
+  }
+
+  function visibleProjects() {
+    return model.projects.filter(p =>
+      matchesQuery([p.title, p.partnerName, p.dispositif, p.teamNames.join(' ')]) && matchesFilters(p));
+  }
+
   function renderProjets() {
-    const visible = model.projects.filter(p =>
-      matchesQuery([p.title, p.partnerName, p.dispositif, p.teamNames.join(' ')]));
+    const visible = visibleProjects();
     const cols = kanbanColumns(visible, model.stages);
     const internes = visible.filter(p => !p.partnerIds.length).length;
     const pondere = sumMontants(visible.filter(p => isStageIn(p.stage, 'pondere')));
+    const total = model.projects.length;
+    const filtre = visible.length !== total;
     const moveOptions = cols.map(c => '<option value="' + H(c.stage) + '">' + H(c.stage) + '</option>').join('');
 
     const board = cols.length ? cols.map(c =>
@@ -957,17 +1030,60 @@ body { overflow: hidden; }
           ' aria-label="Créer une opportunité à l\'étape ' + H(c.stage) + '">+ Opportunité</button>' +
       '</div>').join('') : '<p class="pil-empty">Aucune étape lisible sur la colonne Statut.</p>';
 
-    return '<div class="pil-view-head"><div>' +
+    el('proj-head').innerHTML = '<div class="pil-view-head"><div>' +
         '<h1 class="pil-h1" id="proj-title">Projets &amp; montages</h1>' +
         '<p class="pil-sub">' + (statusMsg ? '<span class="pil-status">' + H(statusMsg) + '</span>' : '') +
           visible.length + ' projet' + (visible.length > 1 ? 's' : '') +
+          (filtre ? ' sur ' + total : '') +
           (internes ? ' · ' + internes + ' interne' + (internes > 1 ? 's' : '') : '') +
           ' · pipeline pondéré ' + H(formatMontantOrDash(pondere)) + '<br>' +
           'Glissez une carte pour faire avancer un projet, ou utilisez le menu « Déplacer vers… » de la carte.</p>' +
       '</div>' +
       '<button type="button" class="pil-btn primary" id="btn-opportunite">+ Nouvelle opportunité</button>' +
-      '</div>' +
-      '<div class="pil-kanban">' + board + '</div>';
+      '</div>';
+    el('proj-board').innerHTML = '<div class="pil-kanban">' + board + '</div>';
+    renderFilterChips();
+  }
+
+  // Les composants de filtre sont construits une seule fois : ils vivent
+  // hors de la zone redessinée, sinon chaque rendu les détruirait.
+  function initFilters() {
+    const host = el('proj-filters');
+    host.innerHTML = Object.keys(FILTER_LABELS)
+      .map(key => msFilterMarkup('flt-' + key, FILTER_LABELS[key], 'Tous')).join('') +
+      '<div class="pil-filter-chips" id="proj-filter-chips"></div>';
+    Object.keys(FILTER_LABELS).forEach(key => {
+      filterWidgets[key] = createMultiSelect(el('flt-' + key), {
+        labelAll: 'Tous',
+        onChange: (selection) => { projectFilters[key] = selection; renderProjets(); }
+      });
+    });
+    // Un clic ailleurs referme le panneau ouvert.
+    document.addEventListener('click', () => {
+      document.querySelectorAll('.ms-filter-panel').forEach(panel => { panel.hidden = true; });
+    });
+  }
+
+  function refreshFilterOptions() {
+    Object.keys(FILTER_LABELS).forEach(key => {
+      if (filterWidgets[key]) filterWidgets[key].setOptions(filterOptions(key));
+      projectFilters[key] = filterWidgets[key] ? filterWidgets[key].getSelected() : [];
+    });
+  }
+
+  // Les filtres actifs restent visibles et retirables d'un clic, même
+  // panneau refermé.
+  function renderFilterChips() {
+    const host = el('proj-filter-chips');
+    if (!host) return;
+    const chips = [];
+    Object.keys(FILTER_LABELS).forEach(key => projectFilters[key].forEach(value => {
+      chips.push('<span class="pil-chip">' + H(value) +
+        '<button type="button" data-unfilter="' + H(key) + '" data-value="' + H(value) +
+        '" aria-label="Retirer le filtre ' + H(value) + '">×</button></span>');
+    }));
+    host.innerHTML = chips.join('') +
+      (chips.length ? '<button type="button" class="pil-filter-reset" id="filter-reset">Tout effacer</button>' : '');
   }
 
   function renderCard(p, moveOptions) {
@@ -1071,11 +1187,11 @@ body { overflow: hidden; }
   // ---------------------------------------------------------------------
   // Rendu global et navigation
   // ---------------------------------------------------------------------
-  const VIEWS = { dashboard: renderDashboard, projets: renderProjets, actions: renderActions };
+  const VIEWS = { dashboard: renderDashboard, projets: null, actions: renderActions };
   // ?vue=kanban ou ?vue=actions : la même URL sert aussi de widget dédié à
   // une seule vue, barre latérale masquée.
   const VIEW_ALIASES = { kanban: 'projets', projects: 'projets', todo: 'actions', actions: 'actions' };
-  const singleView = VIEW_ALIASES[view] || (VIEWS[view] ? view : null);
+  const singleView = VIEW_ALIASES[view] || ((view in VIEWS) ? view : null);
   const locked = !!new URLSearchParams(location.search).get('vue');
   if (locked) {
     view = singleView || 'dashboard';
@@ -1086,11 +1202,13 @@ body { overflow: hidden; }
 
   function render() {
     if (!model) return;
-    Object.keys(VIEWS).forEach(v => {
-      const host = el('view-' + v);
-      host.hidden = v !== view;
-      if (v === view) host.innerHTML = VIEWS[v]();
-    });
+    Object.keys(VIEWS).forEach(v => { el('view-' + v).hidden = v !== view; });
+    if (view === 'projets') {
+      refreshFilterOptions();
+      renderProjets();
+    } else {
+      el('view-' + view).innerHTML = VIEWS[view]();
+    }
     document.querySelectorAll('.pil-nav-item[data-view]').forEach(b => {
       const active = b.dataset.view === view;
       b.classList.toggle('active', active);
@@ -1121,12 +1239,13 @@ body { overflow: hidden; }
 
   async function refresh() {
     await loadRelated();
+    await loadStructures();
     model = buildModel();
     render();
   }
 
   function goto(v) {
-    if (locked || !VIEWS[v]) return;
+    if (locked || !(v in VIEWS)) return;
     view = v;
     render();
     el('view-' + v).scrollIntoView({ block: 'start' });
@@ -1385,6 +1504,8 @@ body { overflow: hidden; }
   // ---------------------------------------------------------------------
   // Événements
   // ---------------------------------------------------------------------
+  initFilters();
+
   document.querySelectorAll('.pil-nav-item[data-view]').forEach(b =>
     b.addEventListener('click', () => goto(b.dataset.view)));
 
@@ -1407,6 +1528,21 @@ body { overflow: hidden; }
     if (e.target.closest('#btn-action-vue')) return openActionModal();
     const add = e.target.closest('[data-add-stage]');
     if (add) return openOpportuniteModal(add.dataset.addStage);
+    const unfilter = e.target.closest('[data-unfilter]');
+    if (unfilter) {
+      const key = unfilter.dataset.unfilter;
+      const next = projectFilters[key].filter(v => v !== unfilter.dataset.value);
+      projectFilters[key] = next;
+      filterWidgets[key].setSelected(next);
+      return renderProjets();
+    }
+    if (e.target.closest('#filter-reset')) {
+      Object.keys(projectFilters).forEach(key => {
+        projectFilters[key] = [];
+        if (filterWidgets[key]) filterWidgets[key].setSelected([]);
+      });
+      return renderProjets();
+    }
   });
 
   document.querySelector('.pil-scroll').addEventListener('change', (e) => {
@@ -1458,7 +1594,6 @@ body { overflow: hidden; }
   // ---------------------------------------------------------------------
   grist.onRecords(async function (records, maps) {
     mappings = maps || {};
-    structures = mapRecords(records, maps);
     if (structTableId === null) {
       try { structTableId = await grist.getTable().getTableId(); } catch (err) { console.error(err); }
     }
@@ -1466,6 +1601,7 @@ body { overflow: hidden; }
       await loadOptions();
       await loadRelated();
     }
+    await loadStructures();
     model = buildModel();
     render();
   });

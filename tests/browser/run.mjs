@@ -2172,6 +2172,143 @@ async function testOpportunitesPaletteDuDocument(browser) {
   await context.close();
 }
 
+async function testPilotageFiltresKanban(browser) {
+  console.log('\n=== pilotage.html : filtres du Kanban (dispositif, partenaire, équipe) ===');
+  const cfg = pilotageConfig();
+  const { page, context, consoleErrors } = await openWidget(browser, 'pilotage.html', cfg);
+  await page.click('.pil-nav-item[data-view="projets"]');
+  await page.waitForTimeout(120);
+
+  const labels = await page.$$eval('.ms-filter-btn .ms-label', els => els.map(e => e.textContent.trim()));
+  ok(JSON.stringify(labels) === JSON.stringify(['Dispositif', 'Partenaire', 'Équipe / laboratoire']),
+    'trois filtres à choix multiple');
+  ok(await page.locator('.pil-cardlet').count() === 14, '14 projets sans filtre');
+
+  // Un dispositif seul : les CIFRE.
+  await page.click('#flt-dispositif .ms-filter-btn');
+  await page.waitForTimeout(80);
+  const dispos = await page.$$eval('#flt-dispositif .ms-option', els => els.map(e => e.textContent.trim()));
+  ok(dispos.includes('CIFRE') && dispos.includes('Projet interne'),
+    'les options sont les dispositifs réellement présents');
+  await page.check('#flt-dispositif input[value="CIFRE"]');
+  await page.waitForTimeout(120);
+  const cifreTitres = await page.$$eval('.pil-tag', els => els.map(e => e.textContent.trim()));
+  ok(cifreTitres.length === 4 && cifreTitres.every(t => t === 'CIFRE'),
+    'le Kanban ne montre plus que les CIFRE');
+  ok((await page.locator('#flt-dispositif .ms-count').textContent()).includes('1 sélectionné'),
+    'le bouton annonce le nombre de valeurs retenues');
+  ok((await page.locator('#proj-head .pil-sub').textContent()).includes('4 projets sur 14'),
+    'le sous-titre dit combien de projets sont masqués');
+
+  // Choix multiple : CIFRE + Chaire.
+  await page.check('#flt-dispositif input[value="Chaire"]');
+  await page.waitForTimeout(120);
+  ok(await page.locator('.pil-cardlet').count() === 6, 'choix multiple : CIFRE et Chaire ensemble');
+
+  // Les puces de filtres actifs sont retirables d'un clic, panneau refermé.
+  await page.click('#proj-title');
+  await page.waitForTimeout(80);
+  ok(await page.locator('#flt-dispositif .ms-filter-panel').isHidden(), 'un clic ailleurs referme le panneau');
+  const chips = await page.$$eval('.pil-chip', els => els.map(e => e.textContent.replace('×', '').trim()));
+  ok(JSON.stringify(chips.sort()) === JSON.stringify(['CIFRE', 'Chaire']), 'les filtres actifs restent visibles');
+  await page.click('.pil-chip:has-text("Chaire") button');
+  await page.waitForTimeout(120);
+  ok(await page.locator('.pil-cardlet').count() === 4, 'retirer une puce relâche ce filtre');
+  ok((await page.locator('#flt-dispositif .ms-count').textContent()).includes('1 sélectionné'),
+    'et le bouton du filtre se met à jour');
+
+  // Tout effacer.
+  await page.click('#flt-dispositif .ms-filter-btn'); // le panneau a été refermé plus haut
+  await page.waitForTimeout(80);
+  await page.check('#flt-dispositif input[value="Chaire"]');
+  await page.waitForTimeout(120);
+  await page.click('#proj-title');
+  await page.click('#filter-reset');
+  await page.waitForTimeout(120);
+  ok(await page.locator('.pil-cardlet').count() === 14, '« Tout effacer » relâche tous les filtres');
+  ok(await page.locator('.pil-chip').count() === 0, 'et retire les puces');
+
+  // Filtre par partenaire, puis par équipe de recherche.
+  await page.click('#flt-partenaire .ms-filter-btn');
+  await page.waitForTimeout(80);
+  const partenaires = await page.$$eval('#flt-partenaire .ms-option', els => els.map(e => e.textContent.trim()));
+  ok(partenaires.includes('Projet interne (sans partenaire)'),
+    'un projet sans partenaire est filtrable comme projet interne');
+  await page.check('#flt-partenaire input[value="Kerlink"]');
+  await page.waitForTimeout(120);
+  ok(await page.locator('.pil-cardlet').count() === 2, 'filtre par partenaire');
+  await page.click('#proj-title');
+  await page.click('#filter-reset');
+  await page.waitForTimeout(120);
+
+  await page.click('#flt-equipe .ms-filter-btn');
+  await page.waitForTimeout(80);
+  await page.check('#flt-equipe input[value="CIDRE"]');
+  await page.waitForTimeout(120);
+  ok(await page.locator('.pil-cardlet').count() === 4, 'filtre par équipe de recherche');
+
+  // La recherche globale et les filtres se combinent.
+  await page.fill('#search', 'labcom');
+  await page.waitForTimeout(280);
+  ok(await page.locator('.pil-cardlet').count() === 2, 'recherche et filtres se cumulent');
+
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
+async function testPilotageStructuresNonFiltrees(browser) {
+  console.log('\n=== pilotage.html : un filtre de section ne masque pas le nom d\'un partenaire ===');
+  // Le cas qui avait fait douter d'un décompte : une CIFRE en discussion avec
+  // un prospect, alors que la section Grist n'affiche que les partenaires.
+  const cfg = pilotageConfig();
+  const S = cfg.tables.Structures.data;
+  S.id.push(90);
+  S.nom_acteur.push('Eviden');
+  S.type_acteur.push('Economique');
+  S.acteur_categorie.push('Prospect');
+  ['entreprise_activite', 'entreprise_taille', 'axe_sequoia', 'pilier_sequoia',
+    'recherche_structure', 'recherche_equipe_labo', 'recherche_equipe_activite']
+    .forEach(c => S[c].push(''));
+  const O = cfg.tables.Opportunites.data;
+  O.id.push(499);
+  O.Sujet.push('CIFRE en discussion avec un prospect');
+  O.Type.push('CIFRE');
+  O.Statut.push('Qualification');
+  O.Montant.push(150000);
+  O.Partenaires.push(['L', 90]);
+  O.EquipeCluster.push(null);
+  O.DateDebut.push(rel(-10));
+  ['Echeance', 'LettresAttendues', 'LettresRecues'].forEach(c => O[c].push(null));
+  O.Commentaire.push('');
+  // La section n'expose que les partenaires : le prospect n'arrive jamais
+  // dans onRecords.
+  cfg.filterExprSource = "(rec) => rec.acteur_categorie !== 'Prospect'";
+
+  const { page, context, consoleErrors } = await openWidget(browser, 'pilotage.html', cfg);
+  await page.click('.pil-nav-item[data-view="projets"]');
+  await page.waitForTimeout(150);
+
+  const carte = page.locator('.pil-cardlet[data-id="499"]');
+  ok(await carte.count() === 1, 'le projet du prospect est bien présent');
+  ok((await carte.locator('.pil-cardlet-partner').textContent()).trim() === 'Eviden',
+    'et il nomme son partenaire, même exclu de la section');
+  ok(await carte.locator('.pil-interne').count() === 0,
+    'il n\'est pas pris à tort pour un projet interne');
+
+  // Le décompte des dispositifs et la liste des porteurs doivent concorder.
+  await page.click('.pil-nav-item[data-view="dashboard"]');
+  await page.waitForTimeout(150);
+  const cifreRow = page.locator('.pil-card:has-text("Dispositifs structurants") .pil-row:has-text("CIFRE")').first();
+  ok((await cifreRow.locator('.pil-row-side').textContent()).trim().startsWith('5'),
+    'cinq CIFRE actives comptées');
+  const noms = (await cifreRow.locator('.pil-row-meta').textContent()).split(' · ');
+  ok(noms.length === 5, 'et cinq noms de porteurs listés, pas quatre');
+  ok(noms.includes('Eviden'), 'le prospect est nommé parmi eux');
+
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
 // PLAYWRIGHT_CHROMIUM_PATH lets a sandboxed/offline environment point at a
 // pre-installed browser (no network access to download one); omit it to use
 // Playwright's own managed install (after `npx playwright install chromium`).
@@ -2211,6 +2348,8 @@ try {
   await testPilotageSuggestions(browser);
   await testPilotageStatutsActuels(browser);
   await testPilotageRechercheEtVueUnique(browser);
+  await testPilotageFiltresKanban(browser);
+  await testPilotageStructuresNonFiltrees(browser);
   await testPilotagePaletteDuDocument(browser);
   await testPilotageCreerOpportunite(browser);
   await testPilotagePopups(browser);

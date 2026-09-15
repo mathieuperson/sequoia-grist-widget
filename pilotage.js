@@ -160,6 +160,30 @@ function sumMontants(projects) {
   }, 0);
 }
 
+// Tous les porteurs d'une liste de projets, en une ligne lisible. Aucune
+// troncature silencieuse : afficher « 5 » projets et seulement quatre noms
+// fait douter du chiffre, donc au-delà de MAX_HOLDERS le reste est annoncé
+// (« +2 »). Un projet sans partenaire est compté comme interne plutôt
+// qu'omis — c'est une catégorie, pas un trou.
+const MAX_HOLDERS = 5;
+
+function projectHolders(projects, max) {
+  const limit = max || MAX_HOLDERS;
+  const names = [];
+  let internes = 0;
+  (projects || []).forEach(p => {
+    const ids = (p && p.partnerIds) || [];
+    if (!ids.length) { internes++; return; }
+    String((p && p.partnerName) || '').split(', ').forEach(n => {
+      const name = n.trim();
+      if (name && !names.includes(name)) names.push(name);
+    });
+  });
+  if (internes) names.push(internes > 1 ? internes + ' projets internes' : 'projet interne');
+  if (names.length <= limit) return names.join(' · ');
+  return names.slice(0, limit).join(' · ') + ' +' + (names.length - limit);
+}
+
 // ---------------------------------------------------------------------
 // Urgence des actions
 // ---------------------------------------------------------------------
@@ -518,7 +542,7 @@ if (typeof window !== 'undefined') {
     PILOTAGE_STAGES, PILOTAGE_URGENCES, PILOTAGE_DISPOSITIFS, PILOTAGE_SUGGESTION_RULES,
     matchStage, stageRank, stageColor, stageTextColor, stageFamilies, isStageIn, orderStages,
     dispositifOf, dispositifClass, isCifre,
-    formatMontantOrDash, sumMontants,
+    formatMontantOrDash, sumMontants, projectHolders, MAX_HOLDERS,
     urgenceOf, daysLate, groupActionsByUrgence,
     estimatedEffortMinutes, formatEffort, actionMotif,
     relanceTone, formatAnciennete, partnersToFollowUp,

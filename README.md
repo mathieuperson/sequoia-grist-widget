@@ -45,6 +45,14 @@ Une **palette de progression** colore le pipeline : chaque étape a sa couleur, 
 les barres du tableau de bord et sur la puce d'étape des actions — voir
 [Couleurs de statut](#couleurs-de-statut--la-palette-vient-du-document).
 
+Trois **filtres à choix multiple** au-dessus du plateau : **Dispositif**, **Partenaire** et **Équipe /
+laboratoire**. Chacun propose les valeurs réellement présentes dans les projets (jamais un filtre qui ne rendrait
+rien), avec recherche et « tout cocher / décocher » — on isole donc les CIFRE seules, ou CIFRE + Chaire, ou tout
+ce qui passe par le CIDRE. Les filtres actifs restent visibles en puces retirables d'un clic, avec un « Tout
+effacer », et le sous-titre annonce combien de projets sont masqués (« 4 projets sur 14 »). Un projet sans
+partenaire est filtrable comme « Projet interne (sans partenaire) » : c'est une catégorie, pas un trou. La
+recherche globale et les filtres se cumulent.
+
 **Créer une opportunité** se fait depuis cette vue : le bouton « + Nouvelle opportunité » en tête, ou le bouton
 en pied de chaque colonne, qui pré-sélectionne son étape. Le formulaire propose les **choix réels** des colonnes
 Statut et Type du document, l'équipe de recherche sur la première colonne de référence inscriptible découverte
@@ -70,7 +78,11 @@ Les actions cochées et les suggestions acceptées sont mémorisées dans les op
 (`grist.setOption`), comme les réglages du dashboard CIFRE : l'état suit le document, pas le navigateur.
 
 Partenaires et équipes de recherche viennent de la même table Structures, distingués par les colonnes
-*Laboratoire* / *Équipe – activité* (renseignées ⇒ équipe de recherche). L'équipe rattachée à un projet est lue
+*Laboratoire* / *Équipe – activité* (renseignées ⇒ équipe de recherche). Cette table est lue **sans filtre**
+(via `docApi.fetchTable`, pas via les lignes que la section laisse passer) : un filtre posé sur la section Grist
+— par exemple « sans les prospects » — ne doit pas faire disparaître le nom du partenaire d'un projet, ni des
+porteurs listés sous un dispositif. Une référence qu'on n'arrive tout de même pas à résoudre s'affiche par son
+id (`#123`) plutôt que de disparaître : un nom manquant en silence fait douter des décomptes qui l'entourent. L'équipe rattachée à un projet est lue
 sur ses colonnes de référence vers Structures autres que Partenaire(s) (Établissement / Laboratoire / Équipe
 Cluster), découvertes à la lecture du type Grist — même mécanisme que `crm.html`.
 
@@ -261,6 +273,7 @@ groupes « En retard / Aujourd'hui / Cette semaine » ne se vident pas avec le t
 
 - `common.css` / `common.js` sont partagés par tous les widgets (design, helpers de formatage, couleurs de statut lues dans le document, upload/téléchargement de pièces jointes via l'API REST Grist).
 - `pilotage.js` porte la logique métier du widget de pilotage en fonctions pures (aucun accès à `grist` ni au DOM), pour qu'elle soit testable sans navigateur ; `pilotage.html` ne fait que lire les tables, rendre et écrire.
+- Le filtre à choix multiple (bouton + panneau à cases à cocher, recherche, tout cocher/décocher) est partagé : `msFilterMarkup()` / `createMultiSelect()` dans `common.js`, styles `.ms-*` dans `common.css`. Utilisé par `pilotage.html` et `cifre-financement.html`.
 - Les widgets `interactions.html` et `opportunites.html` écrivent dans le document (compte-rendu markdown, pièces jointes, statut d'opportunité) via `grist.getTable().update()`.
 - `crm.html` écrit dans plusieurs tables via `grist.docApi.applyUserActions()` (helpers `addRecord` / `updateRecord` / `removeRecord` de `common.js`) et résout leurs colonnes avec `resolveColumns()`.
 - Le compte-rendu (CR) accepte le markdown ; coller une image l'upload automatiquement en pièce jointe Grist et l'insère dans le texte.

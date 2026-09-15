@@ -88,6 +88,33 @@ eq(p.formatMontantOrDash(''), '—', 'formatMontantOrDash: vide -> tiret');
 eq(p.sumMontants([{ montant: 1000 }, { montant: '2000' }, { montant: null }, {}]), 3000,
   'sumMontants: ignore les montants absents, accepte les nombres en texte');
 
+// ---- projectHolders : jamais de troncature silencieuse ----
+const H1 = { partnerIds: [1], partnerName: 'ANTAI' };
+const H2 = { partnerIds: [2], partnerName: 'YellowScan' };
+const H3 = { partnerIds: [3], partnerName: 'Orange' };
+const H4 = { partnerIds: [4], partnerName: 'Eviden' };
+const H5 = { partnerIds: [5], partnerName: 'Sopra Steria' };
+const H6 = { partnerIds: [6], partnerName: 'Zenika' };
+eq(p.projectHolders([H1, H2, H3, H4]), 'ANTAI · YellowScan · Orange · Eviden',
+  'projectHolders: quatre porteurs, quatre noms');
+// Le cas qui avait fait douter d'un décompte : cinq projets, cinq noms.
+eq(p.projectHolders([H1, H2, H3, H4, H5]), 'ANTAI · YellowScan · Orange · Eviden · Sopra Steria',
+  'projectHolders: cinq porteurs -> cinq noms, aucun n\'est coupé en silence');
+eq(p.projectHolders([H1, H2, H3, H4, H5, H6]),
+  'ANTAI · YellowScan · Orange · Eviden · Sopra Steria +1',
+  'projectHolders: au-delà de la limite, le reste est annoncé');
+eq(p.projectHolders([H1, H2, H3], 2), 'ANTAI · YellowScan +1', 'projectHolders: limite paramétrable');
+eq(p.projectHolders([H1, { partnerIds: [1], partnerName: 'ANTAI' }]), 'ANTAI',
+  'projectHolders: deux projets d\'un même partenaire -> un seul nom');
+eq(p.projectHolders([H1, { partnerIds: [], partnerName: '' }]), 'ANTAI · projet interne',
+  'projectHolders: un projet sans partenaire est compté comme interne');
+eq(p.projectHolders([{ partnerIds: [], partnerName: '' }, { partnerIds: [], partnerName: '' }]),
+  '2 projets internes', 'projectHolders: plusieurs projets internes sont regroupés');
+eq(p.projectHolders([{ partnerIds: [1, 2], partnerName: 'ANTAI, YellowScan' }]), 'ANTAI · YellowScan',
+  'projectHolders: un projet à deux partenaires les nomme tous les deux');
+eq(p.projectHolders([]), '', 'projectHolders: aucun projet -> vide');
+eq(p.projectHolders(null), '', 'projectHolders: liste absente -> vide');
+
 // ---- Urgence ----
 eq(p.urgenceOf(D(2026, 9, 5), NOW), 'retard', 'urgenceOf: échéance passée -> retard');
 eq(p.urgenceOf(D(2026, 9, 8), NOW), 'aujourdhui', 'urgenceOf: aujourd\'hui');
