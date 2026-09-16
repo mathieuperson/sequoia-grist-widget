@@ -835,7 +835,7 @@ body { overflow: hidden; }
     // un projet en cours. Relancer un acteur sans montage en cours n'est pas
     // le sujet de cet onglet.
     const activeOf = (id) => model.projects.filter(pr => pr.partnerIds.includes(id) && !pilotage.isStageIn(pr.stage, 'clos'));
-    const relances = partnersToFollowUp(
+    const relances = pilotage.partnersToFollowUp(
       model.partners.filter(p => !p.prospect && activeOf(p.id).length &&
         matchesQuery([p.name, p.type, p.activite])),
       { seuil: 30, now }
@@ -856,7 +856,7 @@ body { overflow: hidden; }
         '</div>';
     }).join('') : '<p class="pil-empty">Aucun partenaire à relancer.</p>';
 
-    const semaine = groupActionsByUrgence(model.actions, now)
+    const semaine = pilotage.groupActionsByUrgence(model.actions, now)
       .filter(g => ['retard', 'aujourdhui', 'semaine'].includes(g.key))
       .reduce((all, g) => all.concat(g.actions.map(a => ({ action: a, group: g }))), [])
       .filter(o => matchesQuery([o.action.label, o.action.partnerName, o.action.projectTitle]))
@@ -909,7 +909,7 @@ body { overflow: hidden; }
   // ne dit pas quoi faire.
   function nextActionFor(partnerId, suggestions) {
     const open = model.actions.filter(a => !a.done && a.partnerId === partnerId);
-    const groups = groupActionsByUrgence(open, today());
+    const groups = pilotage.groupActionsByUrgence(open, today());
     if (groups.length) return groups[0].actions[0].label;
     const s = (suggestions || []).find(x => x.partnerId === partnerId);
     return s ? s.label + ' (suggéré)' : '';
@@ -939,7 +939,7 @@ body { overflow: hidden; }
           '<div class="pil-row-title">' + H(g.label) + '</div>' +
           '<div class="pil-row-meta">' + H(projectHolders(g.list)) + '</div>' +
         '</div>' +
-        '<div class="pil-row-side">' + g.list.length + '<br>' + H(formatMontantOrDash(sumMontants(g.list))) + '</div>' +
+        '<div class="pil-row-side">' + g.list.length + '<br>' + H(formatMontantOrDash(pilotage.sumMontants(g.list))) + '</div>' +
       '</div>').join('');
   }
 
@@ -1018,9 +1018,9 @@ body { overflow: hidden; }
 
   function renderProjets() {
     const visible = visibleProjects();
-    const cols = kanbanColumns(visible, model.stages);
+    const cols = pilotage.kanbanColumns(visible, model.stages);
     const internes = visible.filter(p => !p.partnerIds.length).length;
-    const pondere = sumMontants(visible.filter(p => pilotage.isStageIn(p.stage, 'pondere')));
+    const pondere = pilotage.sumMontants(visible.filter(p => pilotage.isStageIn(p.stage, 'pondere')));
     const total = model.projects.length;
     const filtre = visible.length !== total;
     const moveOptions = cols.map(c => '<option value="' + H(c.stage) + '">' + H(c.stage) + '</option>').join('');
@@ -1122,7 +1122,7 @@ body { overflow: hidden; }
       matchesQuery([a.label, a.partnerName, a.projectTitle]));
     const open = visible.filter(a => !a.done);
     const doneToday = visible.filter(a => a.done && a.doneOn === todayKey());
-    const retard = open.filter(a => urgenceOf(a.due, now) === 'retard').length;
+    const retard = open.filter(a => pilotage.urgenceOf(a.due, now) === 'retard').length;
 
     const suggestions = pilotage.runSuggestionRules(model, { now, dismissed: options.dismissed });
     const suggestBlock = suggestions.length ? '<section class="pil-suggest">' +
@@ -1137,7 +1137,7 @@ body { overflow: hidden; }
           '<button type="button" class="pil-btn" data-suggest="' + H(s.id) + '">Ajouter</button>' +
         '</div>').join('') + '</div></section>' : '';
 
-    const groups = groupActionsByUrgence(visible, now).map(g =>
+    const groups = pilotage.groupActionsByUrgence(visible, now).map(g =>
       '<section class="pil-card">' +
         '<div class="pil-group-head">' +
           '<span class="pil-dot ' + g.tone + '" style="margin-top:0"></span>' +
