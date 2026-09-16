@@ -849,8 +849,8 @@ body { overflow: hidden; }
           '<div class="pil-row-meta">' + H(projets.map(pr => pr.title).join(' · ')) + '</div>' +
           '<div class="pil-row-meta">' + H(next || 'Aucune action planifiée') + '</div>' +
         '</div>' +
-        '<div class="pil-row-side"><span class="' + relanceTone(o.days) + '">' +
-          H(o.days === null ? 'jamais contacté' : formatAnciennete(o.days)) + '</span><br>' +
+        '<div class="pil-row-side"><span class="' + pilotage.relanceTone(o.days) + '">' +
+          H(o.days === null ? 'jamais contacté' : pilotage.formatAnciennete(o.days)) + '</span><br>' +
           H(o.partner.lastContact ? formatDate(o.partner.lastContact) : '—') +
         '</div>' +
         '</div>';
@@ -928,8 +928,8 @@ body { overflow: hidden; }
   // colonne du document ne les porte aujourd'hui.
   function renderDispositifs() {
     const actifs = model.projects.filter(p => !pilotage.isStageIn(p.stage, 'clos'));
-    const groups = PILOTAGE_DISPOSITIFS.map(d => {
-      const list = actifs.filter(p => dispositifOf(p.dispositif) === d);
+    const groups = pilotage.PILOTAGE_DISPOSITIFS.map(d => {
+      const list = actifs.filter(p => pilotage.dispositifOf(p.dispositif) === d);
       return { label: d.label, list };
     }).filter(g => g.list.length);
     if (!groups.length) return '<p class="pil-empty">Aucun dispositif en cours.</p>';
@@ -937,7 +937,7 @@ body { overflow: hidden; }
       '<div class="pil-row">' +
         '<div class="pil-row-main">' +
           '<div class="pil-row-title">' + H(g.label) + '</div>' +
-          '<div class="pil-row-meta">' + H(projectHolders(g.list)) + '</div>' +
+          '<div class="pil-row-meta">' + H(pilotage.projectHolders(g.list)) + '</div>' +
         '</div>' +
         '<div class="pil-row-side">' + g.list.length + '<br>' + H(formatMontantOrDash(pilotage.sumMontants(g.list))) + '</div>' +
       '</div>').join('');
@@ -1166,8 +1166,8 @@ body { overflow: hidden; }
   }
 
   function renderAction(a, now) {
-    const motif = actionMotif(a, { now, relanceSeuil: 30 });
-    const effort = formatEffort(estimatedEffortMinutes(a));
+    const motif = pilotage.actionMotif(a, { now, relanceSeuil: 30 });
+    const effort = pilotage.formatEffort(pilotage.estimatedEffortMinutes(a));
     const d = daysSince(a.due, now);
     return '<div class="pil-action' + (a.done ? ' done' : '') + '">' +
       '<label class="pil-check-wrap">' +
@@ -1511,7 +1511,7 @@ body { overflow: hidden; }
     const project = model.projects.find(p => p.id === projectId);
     if (!project) return;
 
-    const dispositifs = typeChoices.length ? typeChoices : PILOTAGE_DISPOSITIFS.map(d => d.label);
+    const dispositifs = typeChoices.length ? typeChoices : pilotage.PILOTAGE_DISPOSITIFS.map(d => d.label);
     const stages = model.stages;
     const row = opp.records.find(r => r.id === projectId);
     if (!row) return;
@@ -1584,7 +1584,7 @@ body { overflow: hidden; }
   function openOpportuniteModal(stage) {
     const opp = related.opportunites;
     if (!opp.tableId) { setStatus(‘Table Opportunités introuvable’); return; }
-    const dispositifs = typeChoices.length ? typeChoices : PILOTAGE_DISPOSITIFS.map(d => d.label);
+    const dispositifs = typeChoices.length ? typeChoices : pilotage.PILOTAGE_DISPOSITIFS.map(d => d.label);
     const stages = model.stages;
     openModal({
       title: ‘Nouvelle opportunité’,
