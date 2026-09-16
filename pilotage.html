@@ -1762,17 +1762,25 @@ body { overflow: hidden; }
   // Démarrage
   // ---------------------------------------------------------------------
   grist.onRecords(async function (records, maps) {
-    mappings = maps || {};
-    if (structTableId === null) {
-      try { structTableId = await grist.getTable().getTableId(); } catch (err) { console.error(err); }
+    try {
+      mappings = maps || {};
+      if (structTableId === null) {
+        try { structTableId = await grist.getTable().getTableId(); } catch (err) { console.error(err); }
+      }
+      if (!related.interactions) {
+        await loadOptions();
+        await loadRelated();
+      }
+      await loadStructures();
+      console.log('About to call buildModel', { structuresCount: structures.length, relatedKeys: Object.keys(related) });
+      model = buildModel();
+      console.log('buildModel succeeded', { model });
+      render();
+      console.log('render succeeded');
+    } catch (err) {
+      console.error('ERROR in onRecords:', err);
+      el('view-dashboard').innerHTML = '<p style="color:red">Erreur: ' + err.message + '</p>';
     }
-    if (!related.interactions) {
-      await loadOptions();
-      await loadRelated();
-    }
-    await loadStructures();
-    model = buildModel();
-    render();
   });
 
   if (typeof grist.onOptions === 'function') grist.onOptions(async function () {
