@@ -33,7 +33,7 @@ const PILOTAGE_STAGES = [
   { label: 'Contractualisation',  families: ['pondere'] },
   { label: 'Projet lancé',        families: ['lance'] },
   { label: 'Concrétisé / En cours', families: ['lance'] },
-  { label: 'Terminé',             families: ['clos'] },
+  { label: 'Terminé',             families: ['termine'] },
   { label: 'Abandonné',           families: ['clos'] }
 // La clé de comparaison est dérivée du libellé, pas saisie à côté : deux
 // sources de vérité pour la même chose finiraient par diverger.
@@ -381,7 +381,7 @@ function pipelineRows(projects, stages) {
     ? orderStages(stages)
     : orderStages((projects || []).map(p => p.stage));
   const rows = labels
-    .filter(label => !isStageIn(label, 'clos'))
+    .filter(label => !isStageIn(label, 'clos') || isStageIn(label, 'termine'))
     .map(label => {
       const key = normalizeKey(label);
       const inStage = (projects || []).filter(p => normalizeKey(p.stage) === key);
