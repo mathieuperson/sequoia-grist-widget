@@ -716,7 +716,7 @@ body { overflow: hidden; }
       categorie: txt(formatValue(sField(s, 'Categorie'))),
       activite: txt(formatValue(sField(s, 'Activite'))),
       prospect: isProspect(s),
-      lastContact: pilotage.lastInteractionFor(interactions, s.id)
+      lastContact: lastInteractionFor(interactions, s.id)
     }));
     const partnerById = {};
     partners.forEach(p => { partnerById[p.id] = p; });
@@ -765,7 +765,7 @@ body { overflow: hidden; }
         name: txt(formatValue(sField(s, 'Nom'))) || ('#' + s.id)
       })),
       contacts: cont.records.length,
-      stages: stageChoices.length ? stageChoices : pilotage.orderStages(projects.map(p => p.stage))
+      stages: stageChoices.length ? stageChoices : orderStages(projects.map(p => p.stage))
     };
   }
 
@@ -774,8 +774,8 @@ body { overflow: hidden; }
   function mostAdvancedProject(projects, partnerIds) {
     return projects
       .filter(p => p.partnerIds.some(id => partnerIds.includes(id)))
-      .filter(p => !pilotage.isStageIn(p.stage, 'clos'))
-      .sort((a, b) => pilotage.stageRank(b.stage) - pilotage.stageRank(a.stage))[0] || null;
+      .filter(p => !isStageIn(p.stage, 'clos'))
+      .sort((a, b) => stageRank(b.stage) - stageRank(a.stage))[0] || null;
   }
 
   // La recherche globale filtre la vue courante plutôt que d'ouvrir une
@@ -801,7 +801,7 @@ body { overflow: hidden; }
 
   function renderDashboard() {
     const now = today();
-    const k = pilotage.computeKpis(model, now);
+    const k = computeKpis(model, now);
     const dateLabel = now.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
     const kpis = [
@@ -815,11 +815,11 @@ body { overflow: hidden; }
         k.cifreLancees ? 'dont ' + k.cifreLancees + ' lancée' + (k.cifreLancees > 1 ? 's' : '') : 'hors étapes closes')
     ].join('');
 
-    const suggestions = pilotage.runSuggestionRules(model, { now, dismissed: options.dismissed });
-    const rows = pilotage.pipelineRows(model.projects, model.stages);
+    const suggestions = runSuggestionRules(model, { now, dismissed: options.dismissed });
+    const rows = pipelineRows(model.projects, model.stages);
     const pipeline = rows.length ? rows.map(r => {
       const pct = Math.round(r.ratio * 100);
-      const color = pilotage.stageColor(r.stage);
+      const color = stageColor(r.stage);
       return '<div class="pil-bar-row">' +
         '<div class="pil-bar-label">' +
           '<span class="pil-bar-dot" style="background:' + color + '"></span>' +
@@ -834,8 +834,8 @@ body { overflow: hidden; }
     // Recentré sur la gestion de projets : seuls les partenaires qui portent
     // un projet en cours. Relancer un acteur sans montage en cours n'est pas
     // le sujet de cet onglet.
-    const activeOf = (id) => model.projects.filter(pr => pr.partnerIds.includes(id) && !pilotage.isStageIn(pr.stage, 'clos'));
-    const relances = pilotage.partnersToFollowUp(
+    const activeOf = (id) => model.projects.filter(pr => pr.partnerIds.includes(id) && !isStageIn(pr.stage, 'clos'));
+    const relances = partnersToFollowUp(
       model.partners.filter(p => !p.prospect && activeOf(p.id).length &&
         matchesQuery([p.name, p.type, p.activite])),
       { seuil: 30, now }
@@ -849,14 +849,14 @@ body { overflow: hidden; }
           '<div class="pil-row-meta">' + H(projets.map(pr => pr.title).join(' · ')) + '</div>' +
           '<div class="pil-row-meta">' + H(next || 'Aucune action planifiée') + '</div>' +
         '</div>' +
-        '<div class="pil-row-side"><span class="' + pilotage.relanceTone(o.days) + '">' +
-          H(o.days === null ? 'jamais contacté' : pilotage.formatAnciennete(o.days)) + '</span><br>' +
+        '<div class="pil-row-side"><span class="' + relanceTone(o.days) + '">' +
+          H(o.days === null ? 'jamais contacté' : formatAnciennete(o.days)) + '</span><br>' +
           H(o.partner.lastContact ? formatDate(o.partner.lastContact) : '—') +
         '</div>' +
         '</div>';
     }).join('') : '<p class="pil-empty">Aucun partenaire à relancer.</p>';
 
-    const semaine = pilotage.groupActionsByUrgence(model.actions, now)
+    const semaine = groupActionsByUrgence(model.actions, now)
       .filter(g => ['retard', 'aujourdhui', 'semaine'].includes(g.key))
       .reduce((all, g) => all.concat(g.actions.map(a => ({ action: a, group: g }))), [])
       .filter(o => matchesQuery([o.action.label, o.action.partnerName, o.action.projectTitle]))
@@ -909,7 +909,7 @@ body { overflow: hidden; }
   // ne dit pas quoi faire.
   function nextActionFor(partnerId, suggestions) {
     const open = model.actions.filter(a => !a.done && a.partnerId === partnerId);
-    const groups = pilotage.groupActionsByUrgence(open, today());
+    const groups = groupActionsByUrgence(open, today());
     if (groups.length) return groups[0].actions[0].label;
     const s = (suggestions || []).find(x => x.partnerId === partnerId);
     return s ? s.label + ' (suggéré)' : '';
@@ -927,9 +927,9 @@ body { overflow: hidden; }
   // chaque projet. "Lettres de soutien émises" n'apparaît pas : aucune
   // colonne du document ne les porte aujourd'hui.
   function renderDispositifs() {
-    const actifs = model.projects.filter(p => !pilotage.isStageIn(p.stage, 'clos'));
-    const groups = pilotage.PILOTAGE_DISPOSITIFS.map(d => {
-      const list = actifs.filter(p => pilotage.dispositifOf(p.dispositif) === d);
+    const actifs = model.projects.filter(p => !isStageIn(p.stage, 'clos'));
+    const groups = PILOTAGE_DISPOSITIFS.map(d => {
+      const list = actifs.filter(p => dispositifOf(p.dispositif) === d);
       return { label: d.label, list };
     }).filter(g => g.list.length);
     if (!groups.length) return '<p class="pil-empty">Aucun dispositif en cours.</p>';
@@ -937,9 +937,9 @@ body { overflow: hidden; }
       '<div class="pil-row">' +
         '<div class="pil-row-main">' +
           '<div class="pil-row-title">' + H(g.label) + '</div>' +
-          '<div class="pil-row-meta">' + H(pilotage.projectHolders(g.list)) + '</div>' +
+          '<div class="pil-row-meta">' + H(projectHolders(g.list)) + '</div>' +
         '</div>' +
-        '<div class="pil-row-side">' + g.list.length + '<br>' + H(formatMontantOrDash(pilotage.sumMontants(g.list))) + '</div>' +
+        '<div class="pil-row-side">' + g.list.length + '<br>' + H(formatMontantOrDash(sumMontants(g.list))) + '</div>' +
       '</div>').join('');
   }
 
@@ -1018,15 +1018,15 @@ body { overflow: hidden; }
 
   function renderProjets() {
     const visible = visibleProjects();
-    const cols = pilotage.kanbanColumns(visible, model.stages);
+    const cols = kanbanColumns(visible, model.stages);
     const internes = visible.filter(p => !p.partnerIds.length).length;
-    const pondere = pilotage.sumMontants(visible.filter(p => pilotage.isStageIn(p.stage, 'pondere')));
+    const pondere = sumMontants(visible.filter(p => isStageIn(p.stage, 'pondere')));
     const total = model.projects.length;
     const filtre = visible.length !== total;
     const moveOptions = cols.map(c => '<option value="' + H(c.stage) + '">' + H(c.stage) + '</option>').join('');
 
     const board = cols.length ? cols.map(c =>
-      '<div class="pil-col" data-stage="' + H(c.stage) + '" style="border-top-color:' + pilotage.stageColor(c.stage) + '">' +
+      '<div class="pil-col" data-stage="' + H(c.stage) + '" style="border-top-color:' + stageColor(c.stage) + '">' +
         '<div class="pil-col-head"><span class="pil-col-title">' + H(c.stage) + '</span>' +
           '<span class="pil-col-count">' + c.count + '</span></div>' +
         '<div class="pil-col-sum">' + H(formatMontantOrDash(c.montant)) + '</div>' +
@@ -1100,7 +1100,7 @@ body { overflow: hidden; }
       ? H(p.partnerName)
       : '<span class="pil-interne">Projet interne</span>';
     return '<article class="pil-cardlet" draggable="true" tabindex="0" data-id="' + p.id + '">' +
-      '<span class="pil-tag ' + pilotage.dispositifClass(p.dispositif) + '">' + H(p.dispositif || 'Autre collaboration') + '</span>' +
+      '<span class="pil-tag ' + dispositifClass(p.dispositif) + '">' + H(p.dispositif || 'Autre collaboration') + '</span>' +
       '<h3 class="pil-cardlet-title">' + H(p.title) + '</h3>' +
       '<div class="pil-cardlet-partner">' + porteur + '</div>' +
       '<div class="pil-cardlet-foot">' +
@@ -1122,9 +1122,9 @@ body { overflow: hidden; }
       matchesQuery([a.label, a.partnerName, a.projectTitle]));
     const open = visible.filter(a => !a.done);
     const doneToday = visible.filter(a => a.done && a.doneOn === todayKey());
-    const retard = open.filter(a => pilotage.urgenceOf(a.due, now) === 'retard').length;
+    const retard = open.filter(a => urgenceOf(a.due, now) === 'retard').length;
 
-    const suggestions = pilotage.runSuggestionRules(model, { now, dismissed: options.dismissed });
+    const suggestions = runSuggestionRules(model, { now, dismissed: options.dismissed });
     const suggestBlock = suggestions.length ? '<section class="pil-suggest">' +
       '<div class="pil-card-head"><div><h2 class="pil-card-title">Actions suggérées</h2></div>' +
         '<div style="margin-left:auto"><span class="pil-card-aside">déduites des données du CRM</span></div></div>' +
@@ -1137,7 +1137,7 @@ body { overflow: hidden; }
           '<button type="button" class="pil-btn" data-suggest="' + H(s.id) + '">Ajouter</button>' +
         '</div>').join('') + '</div></section>' : '';
 
-    const groups = pilotage.groupActionsByUrgence(visible, now).map(g =>
+    const groups = groupActionsByUrgence(visible, now).map(g =>
       '<section class="pil-card">' +
         '<div class="pil-group-head">' +
           '<span class="pil-dot ' + g.tone + '" style="margin-top:0"></span>' +
@@ -1166,8 +1166,8 @@ body { overflow: hidden; }
   }
 
   function renderAction(a, now) {
-    const motif = pilotage.actionMotif(a, { now, relanceSeuil: 30 });
-    const effort = pilotage.formatEffort(pilotage.estimatedEffortMinutes(a));
+    const motif = actionMotif(a, { now, relanceSeuil: 30 });
+    const effort = formatEffort(estimatedEffortMinutes(a));
     const d = daysSince(a.due, now);
     return '<div class="pil-action' + (a.done ? ' done' : '') + '">' +
       '<label class="pil-check-wrap">' +
@@ -1180,8 +1180,8 @@ body { overflow: hidden; }
           H([a.partnerName || 'Interne', a.projectTitle].filter(Boolean).join(' · ')) + '</div>' +
         '<div class="pil-action-tags">' +
           (motif ? '<span class="pil-motif ' + motif.tone + '">' + H(motif.label) + '</span>' : '') +
-          (a.stage ? '<span class="pil-stage-chip" style="background:' + pilotage.stageColor(a.stage) +
-            ';color:' + pilotage.stageTextColor(a.stage) + '">' + H(a.stage) + '</span>' : '') +
+          (a.stage ? '<span class="pil-stage-chip" style="background:' + stageColor(a.stage) +
+            ';color:' + stageTextColor(a.stage) + '">' + H(a.stage) + '</span>' : '') +
         '</div>' +
       '</div>' +
       '<div class="pil-action-side">' +
@@ -1320,7 +1320,7 @@ body { overflow: hidden; }
   }
 
   async function acceptSuggestion(id) {
-    const s = pilotage.runSuggestionRules(model, { now: today(), dismissed: options.dismissed })
+    const s = runSuggestionRules(model, { now: today(), dismissed: options.dismissed })
       .find(x => x.id === id);
     if (!s) return;
     const inter = related.interactions;
@@ -1466,9 +1466,9 @@ body { overflow: hidden; }
 
   function structureSelectField(label, name, structures) {
     const options = structures.map(s =>
-      ‘<label style="display:flex;gap:8px;align-items:center;margin:4px 0"><input type="checkbox" name="’ + name + ‘" value="’ + s.id + ‘" data-name="’ + H(s.name) + ‘"> ‘ + H(s.name) + ‘</label>’
-    ).join(‘’);
-    return field(label, ‘<div style="padding:6px;max-height:150px;overflow-y:auto">’ + (options || ‘<p style="color:var(--text-muted);font-size:12px">Aucune structure disponible</p>’) + ‘</div>’);
+      '<label style="display:flex;gap:8px;align-items:center;margin:4px 0"><input type="checkbox" name="' + name + '" value="' + s.id + '" data-name="' + H(s.name) + '"> ' + H(s.name) + '</label>'
+    ).join('');
+    return field(label, '<div style="padding:6px;max-height:150px;overflow-y:auto">' + (options || '<p style="color:var(--text-muted);font-size:12px">Aucune structure disponible</p>') + '</div>');
   }
 
   function getStructuresForForm(researchType) {
@@ -1484,65 +1484,65 @@ body { overflow: hidden; }
     }
 
     // Filtrer par type de recherche
-    if (researchType === ‘etablissement’) {
+    if (researchType === 'etablissement') {
       filtered = filtered.filter(s => {
         const s_struct = structures.find(x => x.id === s.id);
-        return s_struct && txt(formatValue(sField(s_struct, ‘RechercheStructure’))) === ‘Établissement’;
+        return s_struct && txt(formatValue(sField(s_struct, 'RechercheStructure'))) === 'Établissement';
       });
-    } else if (researchType === ‘laboratoire’) {
+    } else if (researchType === 'laboratoire') {
       filtered = filtered.filter(s => {
         const s_struct = structures.find(x => x.id === s.id);
-        return s_struct && txt(formatValue(sField(s_struct, ‘RechercheStructure’))) === ‘Laboratoire’;
+        return s_struct && txt(formatValue(sField(s_struct, 'RechercheStructure'))) === 'Laboratoire';
       });
-    } else if (researchType === ‘equipe’) {
+    } else if (researchType === 'equipe') {
       filtered = filtered.filter(s => {
         const s_struct = structures.find(x => x.id === s.id);
-        return s_struct && txt(formatValue(sField(s_struct, ‘RechercheEquipeActivite’))); // Équipe a une activité
+        return s_struct && txt(formatValue(sField(s_struct, 'RechercheEquipeActivite'))); // Équipe a une activité
       });
     }
 
-    return filtered.sort((a, b) => a.name.localeCompare(b.name, ‘fr’));
+    return filtered.sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   }
 
   // Édition d’une opportunité existante
   function editOpportuniteModal(projectId) {
     const opp = related.opportunites;
-    if (!opp.tableId) { setStatus(‘Table Opportunités introuvable’); return; }
+    if (!opp.tableId) { setStatus('Table Opportunités introuvable'); return; }
     const project = model.projects.find(p => p.id === projectId);
     if (!project) return;
 
-    const dispositifs = typeChoices.length ? typeChoices : pilotage.PILOTAGE_DISPOSITIFS.map(d => d.label);
+    const dispositifs = typeChoices.length ? typeChoices : PILOTAGE_DISPOSITIFS.map(d => d.label);
     const stages = model.stages;
     const row = opp.records.find(r => r.id === projectId);
     if (!row) return;
 
     openModal({
-      title: ‘Éditer : ‘ + project.title,
-      submit: ‘Enregistrer’,
+      title: 'Éditer : ' + project.title,
+      submit: 'Enregistrer',
       fields:
-        field(‘Sujet’, ‘<input name="sujet" value="’ + H(project.title) + ‘" required>’) +
-        multiSelectField(‘Type’, ‘type’, dispositifs) +
-        selectField(‘Étape’, ‘statut’, stages, project.stage) +
-        selectField(‘Partenaire’, ‘partner’, model.partners.slice()
-          .sort((a, b) => a.name.localeCompare(b.name, ‘fr’)).map(p => p.name), ‘’,
-          ‘<option value="">— Projet interne (sans partenaire) —</option>’) +
-        (opp.cols.Etablissement ? structureSelectField(‘Établissement’, ‘etablissement’, getStructuresForForm(‘etablissement’)) : ‘’) +
-        (opp.cols.Laboratoire ? structureSelectField(‘Laboratoire’, ‘laboratoire’, getStructuresForForm(‘laboratoire’)) : ‘’) +
-        (opp.cols.EquipeCluster ? structureSelectField(‘Équipe Cluster’, ‘equipe’, getStructuresForForm(‘equipe’)) : ‘’) +
+        field('Sujet', '<input name="sujet" value="' + H(project.title) + '" required>') +
+        multiSelectField('Type', 'type', dispositifs) +
+        selectField('Étape', 'statut', stages, project.stage) +
+        selectField('Partenaire', 'partner', model.partners.slice()
+          .sort((a, b) => a.name.localeCompare(b.name, 'fr')).map(p => p.name), '',
+          '<option value="">— Projet interne (sans partenaire) —</option>') +
+        (opp.cols.Etablissement ? structureSelectField('Établissement', 'etablissement', getStructuresForForm('etablissement')) : '') +
+        (opp.cols.Laboratoire ? structureSelectField('Laboratoire', 'laboratoire', getStructuresForForm('laboratoire')) : '') +
+        (opp.cols.EquipeCluster ? structureSelectField('Équipe Cluster', 'equipe', getStructuresForForm('equipe')) : '') +
         (opp.teamWriteCol
-          ? field(opp.teamWriteLabel || ‘Équipe de recherche’,
-              ‘<select name="team"><option value="">—</option>’ + teamOptions() + ‘</select>’)
-          : ‘’) +
-        field(‘Montant (€)’, ‘<input type="number" name="montant" value="’ + (project.montant || ‘’) + ‘" min="0" step="1000">’) +
-        field(‘Date de début’, ‘<input type="date" name="debut" value="’ + (project.stageSince ? gristDateToInputValue(project.stageSince) : ‘’) + ‘">’) +
-        field(‘Échéance / date de dépôt’, ‘<input type="date" name="echeance" value="’ + (project.depotDue ? gristDateToInputValue(project.depotDue) : ‘’) + ‘">’),
+          ? field(opp.teamWriteLabel || 'Équipe de recherche',
+              '<select name="team"><option value="">—</option>' + teamOptions() + '</select>')
+          : '') +
+        field('Montant (€)', '<input type="number" name="montant" value="' + (project.montant || '') + '" min="0" step="1000">') +
+        field('Date de début', '<input type="date" name="debut" value="' + (project.stageSince ? gristDateToInputValue(project.stageSince) : '') + '">') +
+        field('Échéance / date de dépôt', '<input type="date" name="echeance" value="' + (project.depotDue ? gristDateToInputValue(project.depotDue) : '') + '">'),
       onSubmit: async (form) => {
         const sujet = form.sujet.value.trim();
-        if (!sujet) return ‘Un sujet est nécessaire.’;
+        if (!sujet) return 'Un sujet est nécessaire.';
         const fields = {};
         if (opp.cols.Sujet && sujet !== project.title) fields[opp.cols.Sujet] = sujet;
         if (opp.cols.Type) {
-          const types = Array.from(form.querySelectorAll(‘input[name="type"]:checked’)).map(x => x.value);
+          const types = Array.from(form.querySelectorAll('input[name="type"]:checked')).map(x => x.value);
           if (types.length) fields[opp.cols.Type] = types;
         }
         if (opp.cols.Statut && form.statut.value !== project.stage) fields[opp.cols.Statut] = form.statut.value;
@@ -1551,30 +1551,30 @@ body { overflow: hidden; }
         if (opp.cols.Echeance && form.echeance.value) fields[opp.cols.Echeance] = inputValueToGristDate(form.echeance.value);
         if (opp.cols.Partenaires && form.partner.value) {
           const partner = model.partners.find(x => x.name === form.partner.value);
-          if (partner) fields[opp.cols.Partenaires] = [‘L’, partner.id];
+          if (partner) fields[opp.cols.Partenaires] = ['L', partner.id];
         }
         if (opp.cols.Etablissement) {
-          const evals = Array.from(form.querySelectorAll(‘input[name="etablissement"]:checked’)).map(x => Number(x.value));
-          if (evals.length) fields[opp.cols.Etablissement] = [‘L’, ...evals];
+          const evals = Array.from(form.querySelectorAll('input[name="etablissement"]:checked')).map(x => Number(x.value));
+          if (evals.length) fields[opp.cols.Etablissement] = ['L', ...evals];
         }
         if (opp.cols.Laboratoire) {
-          const labs = Array.from(form.querySelectorAll(‘input[name="laboratoire"]:checked’)).map(x => Number(x.value));
-          if (labs.length) fields[opp.cols.Laboratoire] = [‘L’, ...labs];
+          const labs = Array.from(form.querySelectorAll('input[name="laboratoire"]:checked')).map(x => Number(x.value));
+          if (labs.length) fields[opp.cols.Laboratoire] = ['L', ...labs];
         }
         if (opp.cols.EquipeCluster) {
-          const equipes = Array.from(form.querySelectorAll(‘input[name="equipe"]:checked’)).map(x => Number(x.value));
-          if (equipes.length) fields[opp.cols.EquipeCluster] = [‘L’, ...equipes];
+          const equipes = Array.from(form.querySelectorAll('input[name="equipe"]:checked')).map(x => Number(x.value));
+          if (equipes.length) fields[opp.cols.EquipeCluster] = ['L', ...equipes];
         }
         if (opp.teamWriteCol && form.team && form.team.value) {
-          fields[opp.teamWriteCol] = [‘L’, Number(form.team.value)];
+          fields[opp.teamWriteCol] = ['L', Number(form.team.value)];
         }
         try {
           if (Object.keys(fields).length > 0) {
             await updateRecord(opp.tableId, projectId, fields);
           }
           await refresh();
-          setStatus(‘Opportunité enregistrée ✓’);
-        } catch (err) { console.error(err); return ‘Erreur d’enregistrement.’; }
+          setStatus('Opportunité enregistrée ✓');
+        } catch (err) { console.error(err); return 'Erreur d’enregistrement.'; }
       }
     });
   }
@@ -1583,36 +1583,36 @@ body { overflow: hidden; }
   // l’étape quand on part du bouton d’une colonne.
   function openOpportuniteModal(stage) {
     const opp = related.opportunites;
-    if (!opp.tableId) { setStatus(‘Table Opportunités introuvable’); return; }
-    const dispositifs = typeChoices.length ? typeChoices : pilotage.PILOTAGE_DISPOSITIFS.map(d => d.label);
+    if (!opp.tableId) { setStatus('Table Opportunités introuvable'); return; }
+    const dispositifs = typeChoices.length ? typeChoices : PILOTAGE_DISPOSITIFS.map(d => d.label);
     const stages = model.stages;
     openModal({
-      title: ‘Nouvelle opportunité’,
-      submit: ‘Créer l’opportunité’,
+      title: 'Nouvelle opportunité',
+      submit: 'Créer l’opportunité',
       fields:
-        field(‘Sujet’, ‘<input name="sujet" required>’) +
-        multiSelectField(‘Type’, ‘type’, dispositifs) +
-        selectField(‘Étape’, ‘statut’, stages, stage || stages[0]) +
-        selectField(‘Partenaire’, ‘partner’, model.partners.slice()
-          .sort((a, b) => a.name.localeCompare(b.name, ‘fr’)).map(p => p.name), ‘’,
-          ‘<option value="">— Projet interne (sans partenaire) —</option>’) +
-        (opp.cols.Etablissement ? structureSelectField(‘Établissement’, ‘etablissement’, getStructuresForForm(‘etablissement’)) : ‘’) +
-        (opp.cols.Laboratoire ? structureSelectField(‘Laboratoire’, ‘laboratoire’, getStructuresForForm(‘laboratoire’)) : ‘’) +
-        (opp.cols.EquipeCluster ? structureSelectField(‘Équipe Cluster’, ‘equipe’, getStructuresForForm(‘equipe’)) : ‘’) +
+        field('Sujet', '<input name="sujet" required>') +
+        multiSelectField('Type', 'type', dispositifs) +
+        selectField('Étape', 'statut', stages, stage || stages[0]) +
+        selectField('Partenaire', 'partner', model.partners.slice()
+          .sort((a, b) => a.name.localeCompare(b.name, 'fr')).map(p => p.name), '',
+          '<option value="">— Projet interne (sans partenaire) —</option>') +
+        (opp.cols.Etablissement ? structureSelectField('Établissement', 'etablissement', getStructuresForForm('etablissement')) : '') +
+        (opp.cols.Laboratoire ? structureSelectField('Laboratoire', 'laboratoire', getStructuresForForm('laboratoire')) : '') +
+        (opp.cols.EquipeCluster ? structureSelectField('Équipe Cluster', 'equipe', getStructuresForForm('equipe')) : '') +
         (opp.teamWriteCol
-          ? field(opp.teamWriteLabel || ‘Équipe de recherche’,
-              ‘<select name="team"><option value="">—</option>’ + teamOptions() + ‘</select>’)
-          : ‘’) +
-        field(‘Montant (€)’, ‘<input type="number" name="montant" min="0" step="1000">’) +
-        field(‘Date de début’, ‘<input type="date" name="debut">’) +
-        field(‘Échéance / date de dépôt’, ‘<input type="date" name="echeance">’),
+          ? field(opp.teamWriteLabel || 'Équipe de recherche',
+              '<select name="team"><option value="">—</option>' + teamOptions() + '</select>')
+          : '') +
+        field('Montant (€)', '<input type="number" name="montant" min="0" step="1000">') +
+        field('Date de début', '<input type="date" name="debut">') +
+        field('Échéance / date de dépôt', '<input type="date" name="echeance">'),
       onSubmit: async (form) => {
         const sujet = form.sujet.value.trim();
-        if (!sujet) return ‘Un sujet est nécessaire.’;
+        if (!sujet) return 'Un sujet est nécessaire.';
         const fields = {};
         if (opp.cols.Sujet) fields[opp.cols.Sujet] = sujet;
         if (opp.cols.Type) {
-          const types = Array.from(form.querySelectorAll(‘input[name="type"]:checked’)).map(x => x.value);
+          const types = Array.from(form.querySelectorAll('input[name="type"]:checked')).map(x => x.value);
           if (types.length) fields[opp.cols.Type] = types;
         }
         if (opp.cols.Statut) fields[opp.cols.Statut] = form.statut.value;
@@ -1621,28 +1621,28 @@ body { overflow: hidden; }
         if (opp.cols.Echeance && form.echeance.value) fields[opp.cols.Echeance] = inputValueToGristDate(form.echeance.value);
         if (opp.cols.Partenaires && form.partner.value) {
           const partner = model.partners.find(x => x.name === form.partner.value);
-          if (partner) fields[opp.cols.Partenaires] = [‘L’, partner.id];
+          if (partner) fields[opp.cols.Partenaires] = ['L', partner.id];
         }
         if (opp.cols.Etablissement) {
-          const evals = Array.from(form.querySelectorAll(‘input[name="etablissement"]:checked’)).map(x => Number(x.value));
-          if (evals.length) fields[opp.cols.Etablissement] = [‘L’, ...evals];
+          const evals = Array.from(form.querySelectorAll('input[name="etablissement"]:checked')).map(x => Number(x.value));
+          if (evals.length) fields[opp.cols.Etablissement] = ['L', ...evals];
         }
         if (opp.cols.Laboratoire) {
-          const labs = Array.from(form.querySelectorAll(‘input[name="laboratoire"]:checked’)).map(x => Number(x.value));
-          if (labs.length) fields[opp.cols.Laboratoire] = [‘L’, ...labs];
+          const labs = Array.from(form.querySelectorAll('input[name="laboratoire"]:checked')).map(x => Number(x.value));
+          if (labs.length) fields[opp.cols.Laboratoire] = ['L', ...labs];
         }
         if (opp.cols.EquipeCluster) {
-          const equipes = Array.from(form.querySelectorAll(‘input[name="equipe"]:checked’)).map(x => Number(x.value));
-          if (equipes.length) fields[opp.cols.EquipeCluster] = [‘L’, ...equipes];
+          const equipes = Array.from(form.querySelectorAll('input[name="equipe"]:checked')).map(x => Number(x.value));
+          if (equipes.length) fields[opp.cols.EquipeCluster] = ['L', ...equipes];
         }
         if (opp.teamWriteCol && form.team && form.team.value) {
-          fields[opp.teamWriteCol] = [‘L’, Number(form.team.value)];
+          fields[opp.teamWriteCol] = ['L', Number(form.team.value)];
         }
         try {
           await addRecord(opp.tableId, fields);
           await refresh();
-          setStatus(‘Opportunité créée ✓’);
-        } catch (err) { console.error(err); return ‘Erreur d’enregistrement.’; }
+          setStatus('Opportunité créée ✓');
+        } catch (err) { console.error(err); return 'Erreur d’enregistrement.'; }
       }
     });
   }
@@ -1762,25 +1762,17 @@ body { overflow: hidden; }
   // Démarrage
   // ---------------------------------------------------------------------
   grist.onRecords(async function (records, maps) {
-    try {
-      mappings = maps || {};
-      if (structTableId === null) {
-        try { structTableId = await grist.getTable().getTableId(); } catch (err) { console.error(err); }
-      }
-      if (!related.interactions) {
-        await loadOptions();
-        await loadRelated();
-      }
-      await loadStructures();
-      console.log('About to call buildModel', { structuresCount: structures.length, relatedKeys: Object.keys(related) });
-      model = buildModel();
-      console.log('buildModel succeeded', { model });
-      render();
-      console.log('render succeeded');
-    } catch (err) {
-      console.error('ERROR in onRecords:', err);
-      el('view-dashboard').innerHTML = '<p style="color:red">Erreur: ' + err.message + '</p>';
+    mappings = maps || {};
+    if (structTableId === null) {
+      try { structTableId = await grist.getTable().getTableId(); } catch (err) { console.error(err); }
     }
+    if (!related.interactions) {
+      await loadOptions();
+      await loadRelated();
+    }
+    await loadStructures();
+    model = buildModel();
+    render();
   });
 
   if (typeof grist.onOptions === 'function') grist.onOptions(async function () {
