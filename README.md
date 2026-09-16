@@ -8,10 +8,6 @@ Widgets personnalisés Grist pour le CRM SequoIA (déployés via GitHub Pages).
 |---|---|---|---|
 | **Pilotage Partenariats & Innovation** | `/pilotage.html` | Structures | Complet (lit et écrit Interactions / Opportunités) |
 | **CRM SequoIA — fiche 360** | `/crm.html` | Structures | Complet (lit et écrit Contacts / Interactions / Opportunités) |
-| Fiche partenaire | `/index.html` | Structures | Lecture |
-| Fiche contact | `/contacts.html` | Contacts | Lecture |
-| Fiche interaction | `/interactions.html` | Interactions | Lecture + écriture (CR, pièces jointes) |
-| Pipeline opportunités (Kanban) | `/opportunites.html` | Opportunités | Lecture + écriture (statut) |
 | Dashboard financement CIFRE | `/cifre-financement.html` | Thèses (ou toute table de thèses doctorales) | Lecture |
 | Cartographie | `/cartographie.html` | Structures | Complet (`allowSelectBy`, suit la sélection Grist) |
 
@@ -200,7 +196,7 @@ document**. Grist enregistre la couleur de chaque choix d'une colonne Choice dan
 les enregistre, puis `statusStyle()` / `statusColor()` / `statusTextColor()` (`common.js`) les servent à tous
 les widgets.
 
-Conséquence : un statut a la même couleur dans la table, dans le Kanban d'`opportunites.html`, sur la fiche 360
+Conséquence : un statut a la même couleur dans la table, sur la fiche 360
 et dans le pilotage — et **changer une couleur dans Grist suffit**, sans toucher au code ni redéployer.
 
 Deux détails qui comptent :
@@ -274,6 +270,5 @@ groupes « En retard / Aujourd'hui / Cette semaine » ne se vident pas avec le t
 - `common.css` / `common.js` sont partagés par tous les widgets (design, helpers de formatage, couleurs de statut lues dans le document, upload/téléchargement de pièces jointes via l'API REST Grist).
 - `pilotage.js` porte la logique métier du widget de pilotage en fonctions pures (aucun accès à `grist` ni au DOM), pour qu'elle soit testable sans navigateur ; `pilotage.html` ne fait que lire les tables, rendre et écrire.
 - Le filtre à choix multiple (bouton + panneau à cases à cocher, recherche, tout cocher/décocher) est partagé : `msFilterMarkup()` / `createMultiSelect()` dans `common.js`, styles `.ms-*` dans `common.css`. Utilisé par `pilotage.html` et `cifre-financement.html`.
-- Les widgets `interactions.html` et `opportunites.html` écrivent dans le document (compte-rendu markdown, pièces jointes, statut d'opportunité) via `grist.getTable().update()`.
 - `crm.html` écrit dans plusieurs tables via `grist.docApi.applyUserActions()` (helpers `addRecord` / `updateRecord` / `removeRecord` de `common.js`) et résout leurs colonnes avec `resolveColumns()`.
 - Le compte-rendu (CR) accepte le markdown ; coller une image l'upload automatiquement en pièce jointe Grist et l'insère dans le texte.
