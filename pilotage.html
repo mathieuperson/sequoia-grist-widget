@@ -494,6 +494,26 @@ body { overflow: hidden; }
         PiecesAttendues: ['PiecesAttendues', 'Lettres attendues', 'Pièces attendues'],
         PiecesRecues: ['PiecesRecues', 'Lettres reçues', 'Pièces reçues']
       }
+    },
+    // La todo liste. Une action est une tâche — distincte d'une interaction,
+    // qui est un échange — et se rattache librement à une opportunité, à des
+    // partenaires, à la réunion dont elle sort, ou à rien. Tant que la table
+    // n'existe pas, la vue retombe sur les actions déduites des interactions.
+    actions: {
+      // Son absence n'est pas une anomalie à signaler : le widget sait s'en
+      // passer, contrairement aux trois autres tables.
+      optional: true,
+      tableCandidates: ['Actions_MP', 'ActionsMP', 'ACTIONS_MP', 'Actions', 'Action'],
+      roles: {
+        Intitule: ['Intitule', 'Intitulé', 'Libelle', 'Libellé', 'Titre', 'Objet'],
+        Echeance: ['Echeance', 'Échéance', 'Date_echeance', 'Date'],
+        Fait: ['Fait', 'Faite', 'Termine', 'Terminé', 'Done'],
+        FaitLe: ['Fait_le', 'FaitLe', 'Fait le', 'Date_fait'],
+        Opportunite: ['Opportunite', 'Opportunité', 'Opportunites', 'Opportunités'],
+        Partenaires: ['Partenaires', 'Partenaire', 'Structures', 'Structure'],
+        Interaction: ['Interaction', 'Interactions'],
+        Notes: ['Notes', 'Note', 'Commentaire', 'Détail']
+      }
     }
   };
 
@@ -551,6 +571,9 @@ body { overflow: hidden; }
         const label = (meta.find(m => m.id === writable) || {}).label || writable;
         return {
           tableId, cols,
+          // Une référence simple se stocke en nombre, une RefList en
+          // ['L', …ids] : l'écriture doit suivre ce que porte le document.
+          listCols: meta.filter(c => /^(RefList|ChoiceList):?/.test(c.type)).map(c => c.id),
           linkCols: linkCols.length ? linkCols : [],
           // Les colonnes de rattachement autres que Partenaire(s) portent
           // les équipes de recherche du projet.
@@ -563,7 +586,7 @@ body { overflow: hidden; }
       } catch (err) { /* table suivante */ }
     }
     return {
-      tableId: null, cols: {}, linkCols: [], teamCols: [], teamWriteCol: null, teamWriteLabel: null, records: [],
+      tableId: null, cols: {}, listCols: [], linkCols: [], teamCols: [], teamWriteCol: null, teamWriteLabel: null, records: [],
       error: 'Table introuvable (' + conf.tableCandidates.join(' / ') + ')'
     };
   }
@@ -742,39 +765,75 @@ body { overflow: hidden; }
       thematiques: txt(formatValue(sField(s, 'RechercheEquipeActivite')))
     }));
 
-    // Les actions sont portées par les interactions (Prochaine échéance +
-    // Suites) : c'est déjà le "prochain pas" du CRM, aucune table à créer.
-    const actions = interactions
+    // Le contexte d'une action — projet, partenaire, échéance de dépôt —
+    // alimente l'urgence et les motifs ; il est le même qu'elle vienne de la
+    // table ou d'une interaction.
+    const contexte = (project, partner) => ({
+      partnerId: partner ? partner.id : null,
+      partnerName: partner ? partner.name : '',
+      partnerLastContact: partner ? partner.lastContact : null,
+      projectId: project ? project.id : null,
+      projectTitle: project ? project.title : '',
+      stage: project ? project.stage : '',
+      montant: project ? project.montant : null,
+      hasTeam: project ? project.hasTeam : true,
+      stageSince: project ? project.stageSince : null,
+      depotDue: project ? project.depotDue : null,
+      depotLabel: partner ? partner.name : ''
+    });
+
+    // La todo liste vit dans sa table : « Fait » y est enregistré, donc
+    // visible dans le document et durable.
+    const act = related.actions || { records: [], cols: {} };
+    const tableActions = act.tableId ? act.records.map(r => {
+      const partnerIds = refIdsFromValue(r[act.cols.Partenaires]);
+      const projectIds = refIdsFromValue(r[act.cols.Opportunite]);
+      const project = projectIds.map(id => projectById[id]).find(Boolean) ||
+        mostAdvancedProject(projects, partnerIds);
+      const partner = partnerIds.map(id => partnerById[id]).find(Boolean) || null;
+      const faitLe = r[act.cols.FaitLe] ?? null;
+      return Object.assign({
+        id: 'act:' + r.id,
+        rowId: r.id,
+        source: 'table',
+        label: txt(formatValue(r[act.cols.Intitule])) || 'Action sans intitulé',
+        due: r[act.cols.Echeance] ?? null,
+        done: !!r[act.cols.Fait],
+        doneOn: faitLe,
+        notes: txt(formatValue(r[act.cols.Notes])),
+        interactionId: refIdsFromValue(r[act.cols.Interaction])[0] ?? null,
+        origin: (options.origin && options.origin['act:' + r.id]) || 'manuelle'
+      }, contexte(project, partner));
+    }) : [];
+
+    // Les actions déduites des interactions (Prochaine échéance + Suites).
+    // Elles précèdent la table Actions : on les garde affichées, et cochables,
+    // le temps que la liste en cours se vide.
+    const derivedActions = interactions
       .filter(i => i.due !== null || i.suites)
       .map(i => {
         const key = 'int:' + i.id;
         const project = i.projectIds.map(id => projectById[id]).find(Boolean) ||
           mostAdvancedProject(projects, i.partnerIds);
         const partner = i.partnerIds.map(id => partnerById[id]).find(Boolean) || null;
-        return {
+        return Object.assign({
           id: key,
           rowId: i.id,
+          source: 'interaction',
           label: i.suites || ('Relancer ' + (partner ? partner.name : 'ce partenaire')),
           due: i.due,
           done: !!options.done[key],
           doneOn: options.done[key] || null,
-          origin: (options.origin && options.origin[key]) || 'manuelle',
-          partnerId: partner ? partner.id : null,
-          partnerName: partner ? partner.name : '',
-          partnerLastContact: partner ? partner.lastContact : null,
-          projectId: project ? project.id : null,
-          projectTitle: project ? project.title : '',
-          stage: project ? project.stage : '',
-          montant: project ? project.montant : null,
-          hasTeam: project ? project.hasTeam : true,
-          stageSince: project ? project.stageSince : null,
-          depotDue: project ? project.depotDue : null,
-          depotLabel: partner ? partner.name : ''
-        };
+          notes: '',
+          interactionId: i.id,
+          origin: (options.origin && options.origin[key]) || 'manuelle'
+        }, contexte(project, partner));
       });
 
     return {
-      projects, partners, teams, interactions, actions,
+      projects, partners, teams, interactions,
+      actions: tableActions.concat(derivedActions),
+      hasActionTable: !!act.tableId,
       contacts: cont.records.length,
       stages: stageChoices.length ? stageChoices : orderStages(projects.map(p => p.stage))
     };
@@ -1193,6 +1252,11 @@ body { overflow: hidden; }
           (motif ? '<span class="pil-motif ' + motif.tone + '">' + H(motif.label) + '</span>' : '') +
           (a.stage ? '<span class="pil-stage-chip" style="background:' + stageColor(a.stage) +
             ';color:' + stageTextColor(a.stage) + '">' + H(a.stage) + '</span>' : '') +
+          // Tant que les deux sources coexistent, dire laquelle porte la ligne :
+          // une action déduite d'un échange se solde en vidant son échéance,
+          // pas en cochant une case dans la table.
+          (a.source === 'interaction' && model.hasActionTable
+            ? '<span class="pil-tag tag-autre">issue d’un échange</span>' : '') +
         '</div>' +
       '</div>' +
       '<div class="pil-action-side">' +
@@ -1240,7 +1304,9 @@ body { overflow: hidden; }
   // Une table absente est signalée sans casser le reste de la vue, comme
   // dans crm.html.
   function renderErrors() {
-    const errs = Object.keys(RELATED).map(k => related[k] && related[k].error).filter(Boolean);
+    const errs = Object.keys(RELATED)
+      .filter(k => !RELATED[k].optional)
+      .map(k => related[k] && related[k].error).filter(Boolean);
     if (!errs.length) return;
     const host = el('view-' + view);
     host.insertAdjacentHTML('afterbegin',
@@ -1304,6 +1370,23 @@ body { overflow: hidden; }
   async function toggleAction(key, checked) {
     const a = model.actions.find(x => x.id === key);
     if (!a) return;
+    // Une action de la table porte son état dans le document : rien à garder
+    // dans les options du widget, et la date se pose au même moment.
+    if (a.source === 'table') {
+      const act = related.actions;
+      const fields = { [act.cols.Fait]: checked };
+      if (act.cols.FaitLe) fields[act.cols.FaitLe] = checked ? inDays(0) : null;
+      try {
+        setStatus('Enregistrement…');
+        await updateRecord(act.tableId, a.rowId, fields);
+        await refresh();
+        setStatus('Enregistré ✓');
+      } catch (err) {
+        console.error(err);
+        setStatus('Erreur d’enregistrement');
+      }
+      return;
+    }
     const inter = related.interactions;
     options.dueBackup = options.dueBackup || {};
     try {
@@ -1334,23 +1417,37 @@ body { overflow: hidden; }
     const s = runSuggestionRules(model, { now: today(), dismissed: options.dismissed })
       .find(x => x.id === id);
     if (!s) return;
+    const act = related.actions;
     const inter = related.interactions;
-    if (!inter.tableId) { setStatus('Table Interactions introuvable'); return; }
     const fields = {};
-    if (inter.cols.Suites) fields[inter.cols.Suites] = s.label;
-    if (inter.cols.Objet) fields[inter.cols.Objet] = s.label;
-    if (inter.cols.ProchaineEcheance) fields[inter.cols.ProchaineEcheance] = inDays(7);
-    if (inter.cols.Partenaires && s.partnerId) fields[inter.cols.Partenaires] = ['L', s.partnerId];
-    if (inter.cols.Opportunites && s.projectId) fields[inter.cols.Opportunites] = ['L', s.projectId];
-    // Volontairement sans Date : une interaction sans date est une suite
-    // prévue, pas un échange qui a eu lieu. Lui en donner une fausserait le
-    // "dernier contact" du partenaire.
+    let tableId = null;
+    let prefixe = '';
+    if (act && act.tableId) {
+      tableId = act.tableId;
+      prefixe = 'act:';
+      if (act.cols.Intitule) fields[act.cols.Intitule] = s.label;
+      if (act.cols.Echeance) fields[act.cols.Echeance] = inDays(7);
+      if (act.cols.Partenaires && s.partnerId) fields[act.cols.Partenaires] = refValue(act, act.cols.Partenaires, [s.partnerId]);
+      if (act.cols.Opportunite && s.projectId) fields[act.cols.Opportunite] = refValue(act, act.cols.Opportunite, [s.projectId]);
+    } else {
+      if (!inter.tableId) { setStatus('Table Interactions introuvable'); return; }
+      tableId = inter.tableId;
+      prefixe = 'int:';
+      if (inter.cols.Suites) fields[inter.cols.Suites] = s.label;
+      if (inter.cols.Objet) fields[inter.cols.Objet] = s.label;
+      if (inter.cols.ProchaineEcheance) fields[inter.cols.ProchaineEcheance] = inDays(7);
+      if (inter.cols.Partenaires && s.partnerId) fields[inter.cols.Partenaires] = ['L', s.partnerId];
+      if (inter.cols.Opportunites && s.projectId) fields[inter.cols.Opportunites] = ['L', s.projectId];
+      // Volontairement sans Date : une interaction sans date est une suite
+      // prévue, pas un échange qui a eu lieu. Lui en donner une fausserait le
+      // "dernier contact" du partenaire.
+    }
     try {
       setStatus('Enregistrement…');
-      const rowId = await addRecord(inter.tableId, fields);
+      const rowId = await addRecord(tableId, fields);
       options.dismissed.push(s.id);
       options.origin = options.origin || {};
-      if (rowId) options.origin['int:' + rowId] = 'suggestion';
+      if (rowId) options.origin[prefixe + rowId] = 'suggestion';
       await saveOptions();
       await refresh();
       setStatus('Action ajoutée ✓');
@@ -1409,29 +1506,53 @@ body { overflow: hidden; }
 
   function openActionModal() {
     const partenaires = sortedPartners();
+    const act = related.actions || { cols: {} };
+    const projets = model.projects.slice()
+      .filter(p => !isStageIn(p.stage, 'clos'))
+      .sort((a, b) => a.title.localeCompare(b.title, 'fr'));
     openModal({
       title: 'Créer une action',
       submit: 'Créer l’action',
-      selects: { partner: { values: partenaires.map(p => p.name) } },
+      selects: {
+        partner: { values: partenaires.map(p => p.name) },
+        projet: { values: projets.map(p => p.title), labelAll: 'Aucune opportunité' }
+      },
       fields:
         field('Intitulé', '<input name="label" required>') +
         msField('Partenaire', 'partner') +
-        field('Échéance', '<input type="date" name="due" value="' + todayKey() + '">'),
+        (act.tableId ? msField('Opportunité', 'projet') : '') +
+        field('Échéance', '<input type="date" name="due" value="' + todayKey() + '">') +
+        (act.tableId ? field('Notes', '<textarea name="notes"></textarea>') : ''),
       onSubmit: async (form, selects) => {
-        const inter = related.interactions;
-        if (!inter.tableId) return 'Table Interactions introuvable.';
         const label = form.label.value.trim();
         if (!label) return 'Un intitulé est nécessaire.';
-        const fields = {};
-        if (inter.cols.Suites) fields[inter.cols.Suites] = label;
-        if (inter.cols.Objet) fields[inter.cols.Objet] = label;
-        if (inter.cols.ProchaineEcheance) fields[inter.cols.ProchaineEcheance] = inputValueToGristDate(form.due.value);
-        if (inter.cols.Partenaires) {
-          const ids = structureIds(partenaires, selects.partner.getSelected());
-          if (ids.length) fields[inter.cols.Partenaires] = ['L', ...ids];
-        }
+        const partnerIds = structureIds(partenaires, selects.partner.getSelected());
         try {
-          await addRecord(inter.tableId, fields);
+          if (act.tableId) {
+            const fields = {};
+            if (act.cols.Intitule) fields[act.cols.Intitule] = label;
+            if (act.cols.Echeance) fields[act.cols.Echeance] = inputValueToGristDate(form.due.value);
+            if (act.cols.Notes && form.notes.value.trim()) fields[act.cols.Notes] = form.notes.value.trim();
+            if (act.cols.Partenaires && partnerIds.length) fields[act.cols.Partenaires] = refValue(act, act.cols.Partenaires, partnerIds);
+            if (act.cols.Opportunite) {
+              const ids = selects.projet.getSelected()
+                .map(t => (projets.find(p => p.title === t) || {}).id)
+                .filter(Boolean);
+              if (ids.length) fields[act.cols.Opportunite] = refValue(act, act.cols.Opportunite, ids);
+            }
+            await addRecord(act.tableId, fields);
+          } else {
+            // Sans table Actions, la tâche s'écrit comme avant : une suite
+            // attendue portée par une interaction.
+            const inter = related.interactions;
+            if (!inter.tableId) return 'Table Interactions introuvable.';
+            const fields = {};
+            if (inter.cols.Suites) fields[inter.cols.Suites] = label;
+            if (inter.cols.Objet) fields[inter.cols.Objet] = label;
+            if (inter.cols.ProchaineEcheance) fields[inter.cols.ProchaineEcheance] = inputValueToGristDate(form.due.value);
+            if (inter.cols.Partenaires && partnerIds.length) fields[inter.cols.Partenaires] = ['L', ...partnerIds];
+            await addRecord(inter.tableId, fields);
+          }
           await refresh();
           setStatus('Action créée ✓');
         } catch (err) { console.error(err); return 'Erreur d’enregistrement.'; }
@@ -1479,6 +1600,12 @@ body { overflow: hidden; }
   // en font partie : c'est souvent à eux que se rattache une idée.
   function sortedPartners() {
     return model.partners.slice().sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  }
+
+  // La valeur à écrire dans une colonne de référence, selon qu'elle accepte
+  // une liste ou une seule ligne — sur une Ref simple, le premier choix.
+  function refValue(rel, colId, ids) {
+    return (rel.listCols || []).includes(colId) ? ['L', ...ids] : ids[0];
   }
 
   function selectField(label, name, values, current, extra) {

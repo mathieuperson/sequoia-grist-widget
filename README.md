@@ -6,7 +6,7 @@ Widgets personnalisés Grist pour le CRM SequoIA (déployés via GitHub Pages).
 
 | Widget | URL | Table | Accès requis |
 |---|---|---|---|
-| **Pilotage Partenariats & Innovation** | `/pilotage.html` | Structures | Complet (lit et écrit Interactions / Opportunités) |
+| **Pilotage Partenariats & Innovation** | `/pilotage.html` | Structures | Complet (lit et écrit Interactions / Opportunités / Actions) |
 | **CRM SequoIA — fiche 360** | `/crm.html` | Structures | Complet (lit et écrit Contacts / Interactions / Opportunités) |
 | Dashboard financement CIFRE | `/cifre-financement.html` | Thèses (ou toute table de thèses doctorales) | Lecture |
 | Cartographie | `/cartographie.html` | Structures | Complet (`allowSelectBy`, suit la sélection Grist) |
@@ -66,12 +66,23 @@ traitée) et la range dans « Terminé aujourd'hui » ; décocher restaure l'éc
 Le bloc **Actions suggérées** applique un moteur de règles extensible (`PILOTAGE_SUGGESTION_RULES` dans
 `pilotage.js`), chaque suggestion affichant sa justification chiffrée : projet clos depuis plus de 60 j sans
 échange depuis, partenaire silencieux depuis plus de 90 j alors qu'un projet est actif, pièce attendue
-manquante avant une date de dépôt. « Ajouter » crée l'action réelle — une ligne d'Interactions avec ses
-suites, son échéance et son partenaire, **volontairement sans date** : une suite prévue n'est pas un échange
-qui a eu lieu, et la dater fausserait le « dernier contact » du partenaire.
+manquante avant une date de dépôt. « Ajouter » crée l'action réelle.
 
-Les actions cochées et les suggestions acceptées sont mémorisées dans les options du widget
-(`grist.setOption`), comme les réglages du dashboard CIFRE : l'état suit le document, pas le navigateur.
+### La table Actions
+
+Une action est une **tâche**, distincte d'une interaction, qui est un échange : elle se rattache librement à
+une opportunité, à des partenaires, à la réunion dont elle sort, ou à rien (une tâche interne). Elle vit dans
+une table dédiée, résolue par son nom parmi `Actions_MP` / `ActionsMP` / `Actions`, avec les rôles `Intitule`,
+`Echeance`, `Fait`, `Fait_le`, `Opportunite`, `Partenaires`, `Interaction`, `Notes`. Cocher une action écrit
+`Fait` et `Fait_le` dans le document : l'état est visible dans Grist, et non plus seulement dans le widget.
+Les colonnes de référence sont écrites selon leur type réel — `['L', …ids]` pour une RefList, l'id seul pour
+une référence simple.
+
+Cette table est **optionnelle** : son absence n'est pas signalée comme une anomalie. Sans elle, la vue retombe
+sur les actions déduites des interactions — celles qui portent une « Prochaine échéance » ou des « Suites ».
+Ces actions déduites restent affichées quand la table existe, marquées « issue d'un échange » le temps que la
+liste en cours se vide ; elles se soldent comme avant (l'échéance est vidée, avec restauration au décochage) et
+leur état vit dans les options du widget (`grist.setOption`).
 
 Partenaires et équipes de recherche viennent de la même table Structures, distingués par les colonnes
 *Laboratoire* / *Équipe – activité* (renseignées ⇒ équipe de recherche). Cette table est lue **sans filtre**
