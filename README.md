@@ -76,7 +76,8 @@ La vue porte les deux gestes qui font qu'une todo liste sert vraiment : écrire 
 « Relancer @Thales sur #TrustAI lundi » vaut trois champs remplis. Sont reconnus `aujourd'hui`, `demain`,
 `après-demain`, les jours de la semaine (la prochaine occurrence, aujourd'hui exclu), `la semaine prochaine`,
 `dans N jours/semaines/mois`, `+Nj`, `+Ns`, `JJ/MM[/AAAA]` (une date passée vise l'an prochain) et
-`sans échéance`. `@` désigne un partenaire, `#` une opportunité, retrouvés par correspondance approchée —
+`sans échéance`. `!!` (ou `p1`) marque la priorité haute, `!` la basse ; `~30min` ou `~2h` donnent la durée.
+`@` désigne un partenaire, `#` une opportunité, retrouvés par correspondance approchée —
 « @thales » suffit pour « Thales SIX GTS France ». Ce qui est reconnu quitte l'intitulé, préposition
 orpheline comprise, et un aperçu montre l'interprétation avant de valider. La fonction est pure et couverte
 par `tests/pilotage.test.mjs`.
@@ -102,6 +103,19 @@ une table dédiée, résolue par son nom parmi `Actions_MP` / `ActionsMP` / `Act
 `Fait` et `Fait_le` dans le document : l'état est visible dans Grist, et non plus seulement dans le widget.
 Les colonnes de référence sont écrites selon leur type réel — `['L', …ids]` pour une RefList, l'id seul pour
 une référence simple.
+
+Quatre colonnes **optionnelles** allument chacune sa fonction le jour où elle existe, et restent silencieuses
+sinon — même principe que « Lettres attendues » sur les opportunités :
+
+| Colonne | Type | Ce qu'elle apporte |
+|---|---|---|
+| `Priorite` | Choice (`Haute` / `Normale` / `Basse`) | Tranche à échéance égale : à l'intérieur d'un groupe d'urgence, c'est elle qui ordonne. Affichée `!!` / `!` devant l'intitulé. Ne remplace pas l'urgence : une action « basse » en retard reste en retard. |
+| `Duree_min` | Numeric (minutes) | Remplace l'heuristique de `estimatedEffortMinutes()` quand elle est renseignée, ce qui rend la charge du jour juste. |
+| `Debut` | Date | Diffère l'action : tant que la date n'est pas venue, elle va dans le groupe « Différées » et ne pèse ni sur la charge ni sur les compteurs du jour. |
+| `Recurrence` | Text (`chaque lundi`, `tous les 30 jours`, `mensuel`…) | Cocher l'action crée l'occurrence suivante, avec ses rattachements, sa priorité et sa durée. La règle est écrite en clair, donc lisible sans le widget. |
+
+`nextOccurrence()` part de l'échéance courante quand elle est à venir, sinon d'aujourd'hui : une relance
+mensuelle oubliée pendant trois mois repart de maintenant plutôt que de rattraper son retard d'un coup.
 
 Cette table est **optionnelle** : son absence n'est pas signalée comme une anomalie. Sans elle, la vue retombe
 sur les actions déduites des interactions — celles qui portent une « Prochaine échéance » ou des « Suites ».

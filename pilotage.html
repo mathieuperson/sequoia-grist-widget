@@ -328,6 +328,12 @@ body { overflow: hidden; }
 /* La ligne au curseur clavier, pour savoir sur quoi porteront x et 1-3. */
 .pil-action.cursor { background: var(--sequoia-green-light); }
 
+/* Priorité : un signe devant l'intitulé plutôt qu'une étiquette de plus, la
+   ligne en porte déjà assez. Le rouge est celui des retards. */
+.pil-prio { font-family: var(--pil-mono); font-weight: 700; font-size: 12px; margin-right: 5px; }
+.pil-prio.haute { color: var(--danger); }
+.pil-prio.basse { color: var(--text-muted); font-weight: 400; }
+
 /* ---------- Saisie rapide ---------- */
 .pil-quick { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
 .pil-quick-input {
@@ -545,7 +551,13 @@ body { overflow: hidden; }
         Opportunite: ['Opportunite', 'Opportunité', 'Opportunites', 'Opportunités'],
         Partenaires: ['Partenaires', 'Partenaire', 'Structures', 'Structure'],
         Interaction: ['Interaction', 'Interactions'],
-        Notes: ['Notes', 'Note', 'Commentaire', 'Détail']
+        Notes: ['Notes', 'Note', 'Commentaire', 'Détail'],
+        // Toutes optionnelles : chaque colonne allume sa fonction le jour où
+        // elle existe, et reste silencieuse sinon.
+        Priorite: ['Priorite', 'Priorité', 'Importance'],
+        Duree: ['Duree_min', 'Duree', 'Durée', 'Durée (min)', 'Duree_minutes', 'Estimation'],
+        Debut: ['Debut', 'Début', 'Date_debut', 'A_partir_de', 'Differee'],
+        Recurrence: ['Recurrence', 'Récurrence', 'Repetition', 'Répétition']
       }
     }
   };
@@ -839,6 +851,10 @@ body { overflow: hidden; }
         doneOn: faitLe,
         notes: txt(formatValue(r[act.cols.Notes])),
         interactionId: refIdsFromValue(r[act.cols.Interaction])[0] ?? null,
+        priorite: txt(formatValue(r[act.cols.Priorite])),
+        duree: Number(r[act.cols.Duree]) || null,
+        start: r[act.cols.Debut] ?? null,
+        recurrence: txt(formatValue(r[act.cols.Recurrence])),
         origin: (options.origin && options.origin['act:' + r.id]) || 'manuelle'
       }, contexte(project, partner));
     }) : [];
@@ -863,6 +879,10 @@ body { overflow: hidden; }
           doneOn: options.done[key] || null,
           notes: '',
           interactionId: i.id,
+          priorite: '',
+          duree: null,
+          start: null,
+          recurrence: '',
           origin: (options.origin && options.origin[key]) || 'manuelle'
         }, contexte(project, partner));
       });
@@ -1277,7 +1297,7 @@ body { overflow: hidden; }
       // La capture en une ligne : l'échéance et les rattachements se lisent
       // dans la phrase, sans ouvrir de formulaire.
       '<div class="pil-quick">' +
-        '<input class="pil-quick-input" id="quick-action" placeholder="Nouvelle action : « Relancer @Thales sur #TrustAI lundi »"' +
+        '<input class="pil-quick-input" id="quick-action" placeholder="Nouvelle action : « Relancer @Thales sur #TrustAI lundi !! ~30min »"' +
           ' aria-label="Ajouter une action en une ligne" autocomplete="off">' +
         '<button type="button" class="pil-btn primary" id="quick-add">Ajouter</button>' +
         '<div class="pil-quick-hint" id="quick-hint"></div>' +
@@ -1299,13 +1319,21 @@ body { overflow: hidden; }
     const motif = actionMotif(a, { now, relanceSeuil: 30 });
     const effort = formatEffort(estimatedEffortMinutes(a));
     const d = daysSince(a.due, now);
+    const prio = prioriteOf(a.priorite);
+    const recur = parseRecurrence(a.recurrence);
     return '<div class="pil-action' + (a.done ? ' done' : '') + '">' +
       '<label class="pil-check-wrap">' +
         '<input type="checkbox" class="pil-check" data-action="' + H(a.id) + '"' + (a.done ? ' checked' : '') +
         ' aria-label="Terminer : ' + H(a.label) + '">' +
       '</label>' +
       '<div class="pil-row-main">' +
-        '<div class="pil-action-title">' + H(a.label) + '</div>' +
+        '<div class="pil-action-title">' +
+          // La priorité se lit avant l'intitulé : c'est ce qui dit par quoi
+          // commencer quand deux actions tombent le même jour.
+          (prio && prio.key !== 'normale'
+            ? '<span class="pil-prio ' + prio.key + '" title="Priorité ' + H(prio.label.toLowerCase()) + '">' +
+              (prio.key === 'haute' ? '!!' : '!') + '</span>' : '') +
+          H(a.label) + '</div>' +
         '<div class="pil-action-ctx">' +
           H([a.partnerName || 'Interne', a.projectTitle].filter(Boolean).join(' · ')) + '</div>' +
         '<div class="pil-action-tags">' +
@@ -1317,6 +1345,10 @@ body { overflow: hidden; }
           // pas en cochant une case dans la table.
           (a.source === 'interaction' && model.hasActionTable
             ? '<span class="pil-tag tag-autre">issue d’un échange</span>' : '') +
+          (recur ? '<span class="pil-tag tag-autre" title="Cocher créera l’occurrence suivante">↻ ' +
+            H(a.recurrence) + '</span>' : '') +
+          (a.start && isDeferred(a, now)
+            ? '<span class="pil-tag tag-autre">à partir du ' + H(formatDate(a.start)) + '</span>' : '') +
         '</div>' +
       '</div>' +
       '<div class="pil-action-side">' +
@@ -1442,11 +1474,15 @@ body { overflow: hidden; }
       const act = related.actions;
       const fields = { [act.cols.Fait]: checked };
       if (act.cols.FaitLe) fields[act.cols.FaitLe] = checked ? inDays(0) : null;
+      // Une action récurrente qu'on solde laisse la suivante derrière elle :
+      // la relance périodique ne se retape pas chaque fois.
+      const suite = checked ? nextOccurrence(a.recurrence, a.due, today()) : null;
       try {
         setStatus('Enregistrement…');
         await updateRecord(act.tableId, a.rowId, fields);
+        if (suite !== null) await addRecord(act.tableId, nextRecurrenceFields(act, a, suite));
         await refresh();
-        setStatus('Enregistré ✓');
+        setStatus(suite !== null ? 'Fait ✓ — prochaine le ' + formatDate(suite) : 'Enregistré ✓');
       } catch (err) {
         console.error(err);
         setStatus('Erreur d’enregistrement');
@@ -1477,6 +1513,25 @@ body { overflow: hidden; }
       console.error(err);
       setStatus('Erreur d’enregistrement');
     }
+  }
+
+  // L'occurrence suivante reprend tout de l'action soldée sauf son état :
+  // même intitulé, mêmes rattachements, même règle de répétition.
+  function nextRecurrenceFields(act, a, due) {
+    const fields = {};
+    if (act.cols.Intitule) fields[act.cols.Intitule] = a.label;
+    if (act.cols.Echeance) fields[act.cols.Echeance] = due;
+    if (act.cols.Recurrence) fields[act.cols.Recurrence] = a.recurrence;
+    if (act.cols.Priorite && a.priorite) fields[act.cols.Priorite] = a.priorite;
+    if (act.cols.Duree && a.duree) fields[act.cols.Duree] = a.duree;
+    if (act.cols.Notes && a.notes) fields[act.cols.Notes] = a.notes;
+    if (act.cols.Partenaires && a.partnerId) {
+      fields[act.cols.Partenaires] = refValue(act, act.cols.Partenaires, [a.partnerId]);
+    }
+    if (act.cols.Opportunite && a.projectId) {
+      fields[act.cols.Opportunite] = refValue(act, act.cols.Opportunite, [a.projectId]);
+    }
+    return fields;
   }
 
   // Reporter une action : sur la table, c'est son échéance ; sur une action
@@ -1513,6 +1568,8 @@ body { overflow: hidden; }
     const projet = quickMatch(model.projects, p.projectHint, 'title');
     if (p.partnerHint) bouts.push(partner ? 'partenaire ' + partner.name : 'partenaire « ' + p.partnerHint + ' » inconnu');
     if (p.projectHint) bouts.push(projet ? 'opportunité ' + projet.title : 'opportunité « ' + p.projectHint + ' » inconnue');
+    if (p.priorite) bouts.push('priorité ' + p.priorite.toLowerCase());
+    if (p.duree) bouts.push(formatEffort(p.duree));
     hint.textContent = (p.label || '(intitulé vide)') + (bouts.length ? ' — ' + bouts.join(', ') : '');
   }
 
@@ -1543,6 +1600,8 @@ body { overflow: hidden; }
         if (act.cols.Echeance && p.due !== null) fields[act.cols.Echeance] = p.due;
         if (act.cols.Partenaires && partner) fields[act.cols.Partenaires] = refValue(act, act.cols.Partenaires, [partner.id]);
         if (act.cols.Opportunite && projet) fields[act.cols.Opportunite] = refValue(act, act.cols.Opportunite, [projet.id]);
+        if (act.cols.Priorite && p.priorite) fields[act.cols.Priorite] = p.priorite;
+        if (act.cols.Duree && p.duree) fields[act.cols.Duree] = p.duree;
         await addRecord(act.tableId, fields);
       } else {
         const inter = related.interactions;
@@ -1674,6 +1733,15 @@ body { overflow: hidden; }
         msField('Partenaire', 'partner') +
         (act.tableId ? msField('Opportunité', 'projet') : '') +
         field('Échéance', '<input type="date" name="due" value="' + todayKey() + '">') +
+        // Chaque champ n'apparaît que si le document porte sa colonne.
+        (act.cols.Priorite ? selectField('Priorité', 'priorite',
+          PILOTAGE_PRIORITES.map(x => x.label), 'Normale') : '') +
+        (act.cols.Duree ? field('Durée estimée (min)',
+          '<input type="number" name="duree" min="0" step="15" placeholder="30">') : '') +
+        (act.cols.Debut ? field('À faire à partir du (facultatif)',
+          '<input type="date" name="debut">') : '') +
+        (act.cols.Recurrence ? field('Répétition (facultatif)',
+          '<input name="recurrence" placeholder="chaque lundi, tous les 30 jours…">') : '') +
         (act.tableId ? field('Notes', '<textarea name="notes"></textarea>') : ''),
       onSubmit: async (form, selects) => {
         const label = form.label.value.trim();
@@ -1685,6 +1753,12 @@ body { overflow: hidden; }
             if (act.cols.Intitule) fields[act.cols.Intitule] = label;
             if (act.cols.Echeance) fields[act.cols.Echeance] = inputValueToGristDate(form.due.value);
             if (act.cols.Notes && form.notes.value.trim()) fields[act.cols.Notes] = form.notes.value.trim();
+            if (act.cols.Priorite && form.priorite) fields[act.cols.Priorite] = form.priorite.value;
+            if (act.cols.Duree && form.duree && form.duree.value) fields[act.cols.Duree] = Number(form.duree.value);
+            if (act.cols.Debut && form.debut && form.debut.value) fields[act.cols.Debut] = inputValueToGristDate(form.debut.value);
+            if (act.cols.Recurrence && form.recurrence && form.recurrence.value.trim()) {
+              fields[act.cols.Recurrence] = form.recurrence.value.trim();
+            }
             if (act.cols.Partenaires && partnerIds.length) fields[act.cols.Partenaires] = refValue(act, act.cols.Partenaires, partnerIds);
             if (act.cols.Opportunite) {
               const ids = selects.projet.getSelected()

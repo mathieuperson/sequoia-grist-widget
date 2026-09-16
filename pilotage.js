@@ -194,8 +194,41 @@ const PILOTAGE_URGENCES = [
   { key: 'aujourdhui', label: "Aujourd'hui",    rule: '',                      tone: 'warn' },
   { key: 'semaine',    label: 'Cette semaine',  rule: 'ÉCHÉANCE SOUS 7 JOURS', tone: 'ok' },
   { key: 'plustard',   label: 'Plus tard',      rule: '',                      tone: 'muted' },
-  { key: 'sansdate',   label: 'Sans échéance',  rule: 'À DATER',               tone: 'muted' }
+  { key: 'sansdate',   label: 'Sans échéance',  rule: 'À DATER',               tone: 'muted' },
+  // Dernier groupe : ce qu'on a volontairement repoussé ne doit pas encombrer
+  // le haut de la liste, mais rester consultable.
+  { key: 'differee',   label: 'Différées',      rule: 'PAS AVANT LEUR DATE DE DÉBUT', tone: 'muted' }
 ];
+
+// Priorité explicite, quand le document la porte. Elle tranche à échéance
+// égale — deux dossiers le même jour n'ont pas le même poids — et ne
+// remplace pas l'urgence : une tâche « basse » en retard reste en retard.
+const PILOTAGE_PRIORITES = [
+  { key: 'haute',   rank: 0, label: 'Haute',   match: ['haute', 'hautepriorite', 'urgent', 'p1', '1'], tone: 'danger' },
+  { key: 'normale', rank: 1, label: 'Normale', match: ['normale', 'moyenne', 'p2', '2'],               tone: 'muted' },
+  { key: 'basse',   rank: 2, label: 'Basse',   match: ['basse', 'faible', 'p3', 'p4', '3', '4'],       tone: 'muted' }
+];
+
+function prioriteOf(value) {
+  const k = normalizeKey(value);
+  if (!k) return null;
+  return PILOTAGE_PRIORITES.find(p => p.match.includes(k)) ||
+    PILOTAGE_PRIORITES.find(p => p.match.some(m => k.includes(m))) || null;
+}
+
+// Rang de tri : sans priorité renseignée, on se place au milieu, pour ne
+// devancer ni doubler ce qui est explicitement marqué.
+function prioriteRank(value) {
+  const p = prioriteOf(value);
+  return p ? p.rank : 1;
+}
+
+// Une action différée n'est pas encore à faire : tant que sa date de début
+// n'est pas venue, elle n'a rien à faire dans la liste du jour.
+function isDeferred(action, now) {
+  const d = daysSince(action && action.start, now);
+  return d !== null && d < 0;
+}
 
 // daysSince est positif dans le passé, négatif dans le futur.
 function urgenceOf(due, now) {
@@ -205,6 +238,14 @@ function urgenceOf(due, now) {
   if (d === 0) return 'aujourdhui';
   if (d >= -7) return 'semaine';
   return 'plustard';
+}
+
+// L'urgence d'une action, différé compris : une action qui ne commence que
+// la semaine prochaine se range dans « Différées », quelle que soit son
+// échéance, pour ne pas peser sur aujourd'hui.
+function urgenceOfAction(action, now) {
+  if (isDeferred(action, now)) return 'differee';
+  return urgenceOf(action && action.due, now);
 }
 
 // Nombre de jours de retard (0 si l'action n'est pas en retard).
@@ -219,7 +260,7 @@ function daysLate(due, now) {
 function groupActionsByUrgence(actions, now) {
   const buckets = {};
   (actions || []).filter(a => !a.done).forEach(a => {
-    const key = urgenceOf(a.due, now);
+    const key = urgenceOfAction(a, now);
     (buckets[key] = buckets[key] || []).push(a);
   });
   return PILOTAGE_URGENCES
@@ -230,6 +271,10 @@ function groupActionsByUrgence(actions, now) {
       rule: g.rule,
       tone: g.tone,
       actions: buckets[g.key].sort((a, b) => {
+        // La priorité d'abord : à l'intérieur d'un même groupe d'urgence,
+        // c'est elle qui dit par quoi commencer.
+        const pa = prioriteRank(a.priorite), pb = prioriteRank(b.priorite);
+        if (pa !== pb) return pa - pb;
         const da = daysSince(a.due, now), db = daysSince(b.due, now);
         if (da === null && db === null) return 0;
         if (da === null) return 1;
@@ -259,6 +304,10 @@ const EFFORT_RULES = [
 const EFFORT_BY_STAGE = { montage: 120, contractualisation: 60, recherchedequipe: 90 };
 
 function estimatedEffortMinutes(action) {
+  // Une durée saisie vaut mieux que la meilleure heuristique : c'est celle
+  // qui rend la charge de la journée juste.
+  const saisie = Number(action && action.duree);
+  if (saisie > 0) return saisie;
   const text = normalizeKey((action && action.label) || '');
   // La règle la plus lourde qui correspond gagne : "compléter le volet
   // budgétaire du dossier" est un dossier avant d'être un "compléter".
@@ -609,6 +658,25 @@ function parseQuickAction(text, now) {
       reste.slice(m.index + m[0].length)).replace(/\s{2,}/g, ' ').trim();
     return mots.join(' ');
   };
+  // Priorité et durée : « !! » pour haute, « ! » pour basse (la normale est
+  // le défaut, elle n'a pas à se dire), « ~30min » ou « ~2h » pour la durée.
+  let priorite = '';
+  let duree = null;
+  const jeton = (motif, garde) => {
+    const re = new RegExp('(?:^|\\s)' + motif + '(?=\\s|$|[.,;])', 'i');
+    const m = reste.match(re);
+    if (!m) return false;
+    garde(m);
+    reste = (reste.slice(0, m.index) + ' ' + reste.slice(m.index + m[0].length)).trim();
+    return true;
+  };
+  jeton('!!|p1', () => { priorite = 'Haute'; }) ||
+    jeton('!|p3|p4', () => { priorite = 'Basse'; });
+  jeton('~(\\d+)\\s*(?:min|mn|m)', (m) => { duree = Number(m[1]); }) ||
+    jeton('~(\\d+(?:[.,]\\d+)?)\\s*(?:h|heures?)', (m) => {
+      duree = Math.round(parseFloat(m[1].replace(',', '.')) * 60);
+    });
+
   const partnerHint = prendre('@');
   const projectHint = prendre('#');
 
@@ -623,7 +691,51 @@ function parseQuickAction(text, now) {
     label = mots.join(' ');
   }
 
-  return { label, due: due === undefined ? null : due, partnerHint, projectHint };
+  return { label, due: due === undefined ? null : due, partnerHint, projectHint, priorite, duree };
+}
+
+// ---------------------------------------------------------------------
+// Récurrence
+// ---------------------------------------------------------------------
+// Une relance périodique ne se retape pas chaque fois : cocher l'action
+// crée la suivante. La règle est écrite en clair dans le document
+// (« chaque lundi », « tous les 30 jours »), lisible sans le widget.
+//
+// Rend { kind, n, weekday } ou null si la case ne dit rien d'exploitable.
+function parseRecurrence(text) {
+  const k = normalizeKey(text);
+  if (!k) return null;
+  const jour = PILOTAGE_JOURS.find(([nom]) => k.includes(normalizeKey(nom)));
+  if (jour && /(chaque|tous|toutes)/.test(k)) return { kind: 'weekday', weekday: jour[1], n: 1 };
+  const jours = k.match(/(?:tous|toutes)?les?(\d+)jours?/) || k.match(/(\d+)jours?/);
+  if (jours) return { kind: 'days', n: Number(jours[1]) };
+  const semaines = k.match(/(\d+)semaines?/);
+  if (semaines) return { kind: 'days', n: Number(semaines[1]) * 7 };
+  const mois = k.match(/(\d+)mois/);
+  if (mois) return { kind: 'months', n: Number(mois[1]) };
+  if (k.includes('quotidien') || k.includes('chaquejour')) return { kind: 'days', n: 1 };
+  if (k.includes('hebdo') || k.includes('chaquesemaine')) return { kind: 'days', n: 7 };
+  if (k.includes('mensuel') || k.includes('chaquemois')) return { kind: 'months', n: 1 };
+  if (k.includes('trimestriel')) return { kind: 'months', n: 3 };
+  if (k.includes('annuel') || k.includes('chaqueannee')) return { kind: 'months', n: 12 };
+  return null;
+}
+
+// Échéance de l'occurrence suivante. On part de l'échéance courante quand
+// elle est à venir, sinon d'aujourd'hui : une relance mensuelle oubliée
+// pendant trois mois repart de maintenant, elle ne rattrape pas le retard.
+function nextOccurrence(rule, due, now) {
+  const spec = typeof rule === 'string' ? parseRecurrence(rule) : rule;
+  if (!spec) return null;
+  const base = (due !== null && due !== undefined && daysSince(due, now) <= 0)
+    ? due : dayStart(now);
+  if (spec.kind === 'weekday') return nextWeekday(base, spec.weekday);
+  if (spec.kind === 'days') return base + spec.n * 86400;
+  if (spec.kind === 'months') {
+    const d = new Date(base * 1000);
+    return Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + spec.n, d.getUTCDate()) / 1000);
+  }
+  return null;
 }
 
 // Repères de report, pour solder une action en retard sans ouvrir de
@@ -667,6 +779,8 @@ function runSuggestionRules(data, options) {
 if (typeof window !== 'undefined') {
   window.pilotage = {
     PILOTAGE_STAGES, PILOTAGE_URGENCES, PILOTAGE_DISPOSITIFS, PILOTAGE_SUGGESTION_RULES,
+    PILOTAGE_PRIORITES, prioriteOf, prioriteRank, isDeferred, urgenceOfAction,
+    parseRecurrence, nextOccurrence,
     matchStage, stageRank, stageColor, stageTextColor, stageFamilies, isStageIn, orderStages,
     dispositifOf, dispositifClass, isCifre,
     formatMontantOrDash, sumMontants, projectHolders, MAX_HOLDERS,

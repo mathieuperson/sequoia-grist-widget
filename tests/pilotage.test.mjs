@@ -345,6 +345,72 @@ eq(q('Préparer le lendemain du séminaire').due, null, 'saisie rapide: pas de f
 eq(q('').label, '', 'saisie rapide: chaîne vide');
 eq(q(null).due, null, 'saisie rapide: entrée nulle');
 
+eq(q('Relancer Thales !!').priorite, 'Haute', 'saisie rapide: !! -> priorité haute');
+eq(q('Relancer Thales !!').label, 'Relancer Thales', 'saisie rapide: le jeton de priorité quitte l’intitulé');
+eq(q('Ranger les notes !').priorite, 'Basse', 'saisie rapide: ! -> priorité basse');
+eq(q('Dossier p1 demain').priorite, 'Haute', 'saisie rapide: p1');
+eq(q('Relancer Thales').priorite, '', 'saisie rapide: sans jeton -> priorité vide (normale par défaut)');
+eq(q('Appeler ~15min').duree, 15, 'saisie rapide: durée en minutes');
+eq(q('Rédiger la note ~2h').duree, 120, 'saisie rapide: durée en heures');
+eq(q('Rédiger ~1,5h').duree, 90, 'saisie rapide: durée décimale à la française');
+eq(q('Appeler ~15min').label, 'Appeler', 'saisie rapide: le jeton de durée quitte l’intitulé');
+const tout = q('Relancer @Zenika #VisionMer lundi !! ~45min');
+eq([tout.label, tout.due, tout.priorite, tout.duree, tout.partnerHint, tout.projectHint],
+  ['Relancer', D(2026, 9, 14), 'Haute', 45, 'Zenika', 'VisionMer'],
+  'saisie rapide: tous les jetons dans une seule phrase');
+
+// --- Priorité ---------------------------------------------------------
+eq(p.prioriteOf('Haute').key, 'haute', 'priorité: libellé du document');
+eq(p.prioriteOf('P1').key, 'haute', 'priorité: notation p1');
+eq(p.prioriteOf('Basse').key, 'basse', 'priorité: basse');
+eq(p.prioriteOf(''), null, 'priorité: vide -> aucune');
+eq(p.prioriteRank(''), 1, 'priorité: sans valeur, on se range au milieu');
+eq(p.prioriteRank('Haute') < p.prioriteRank('') , true, '...derrière ce qui est marqué haute');
+eq(p.prioriteRank('') < p.prioriteRank('Basse'), true, '...et devant ce qui est marqué basse');
+// À échéance égale, la priorité tranche.
+const memeJour = [
+  { label: 'Basse', due: NOW, priorite: 'Basse' },
+  { label: 'Haute', due: NOW, priorite: 'Haute' },
+  { label: 'Sans', due: NOW }
+];
+eq(p.groupActionsByUrgence(memeJour, NOW)[0].actions.map(a => a.label), ['Haute', 'Sans', 'Basse'],
+  'groupes: à échéance égale, la priorité ordonne');
+
+// --- Différé ----------------------------------------------------------
+eq(p.isDeferred({ start: D(2026, 9, 20) }, NOW), true, 'différé: début à venir');
+eq(p.isDeferred({ start: D(2026, 9, 1) }, NOW), false, 'différé: début passé');
+eq(p.isDeferred({ start: NOW }, NOW), false, 'différé: commence aujourd’hui -> à faire');
+eq(p.isDeferred({}, NOW), false, 'différé: sans date de début');
+eq(p.urgenceOfAction({ due: D(2026, 9, 1), start: D(2026, 9, 20) }, NOW), 'differee',
+  'différé: une action pas encore commencée sort du retard');
+eq(p.urgenceOfAction({ due: D(2026, 9, 1) }, NOW), 'retard', 'différé: sans début, l’échéance décide');
+eq(p.groupActionsByUrgence([{ label: 'X', due: NOW, start: D(2026, 9, 30) }], NOW)[0].key, 'differee',
+  'groupes: les différées ont leur propre groupe');
+
+// --- Durée saisie -----------------------------------------------------
+eq(p.estimatedEffortMinutes({ label: 'Relancer', duree: 90 }), 90, 'effort: la durée saisie gagne');
+eq(p.estimatedEffortMinutes({ label: 'Relancer', duree: 0 }) !== 0, true, 'effort: 0 n’est pas une durée');
+eq(p.chargeOf([{ duree: 30 }, { duree: 45 }]), 75, 'charge: somme des durées saisies');
+
+// --- Récurrence -------------------------------------------------------
+eq(p.parseRecurrence('chaque lundi'), { kind: 'weekday', weekday: 1, n: 1 }, 'récurrence: chaque lundi');
+eq(p.parseRecurrence('tous les 30 jours'), { kind: 'days', n: 30 }, 'récurrence: tous les N jours');
+eq(p.parseRecurrence('toutes les 2 semaines'), { kind: 'days', n: 14 }, 'récurrence: N semaines');
+eq(p.parseRecurrence('chaque mois'), { kind: 'months', n: 1 }, 'récurrence: mensuelle');
+eq(p.parseRecurrence('trimestriel'), { kind: 'months', n: 3 }, 'récurrence: trimestrielle');
+eq(p.parseRecurrence('hebdomadaire'), { kind: 'days', n: 7 }, 'récurrence: hebdomadaire');
+eq(p.parseRecurrence('quand j’y penserai'), null, 'récurrence: texte libre non exploitable -> null');
+eq(p.parseRecurrence(''), null, 'récurrence: vide');
+// L'échéance à venir sert de base ; une échéance dépassée repart d'aujourd'hui,
+// sinon une relance oubliée trois mois rattraperait son retard d'un coup.
+eq(p.nextOccurrence('tous les 7 jours', D(2026, 9, 10), NOW), D(2026, 9, 17),
+  'récurrence: part de l’échéance quand elle est à venir');
+eq(p.nextOccurrence('tous les 7 jours', D(2026, 6, 1), NOW), D(2026, 9, 15),
+  'récurrence: une échéance dépassée repart d’aujourd’hui');
+eq(p.nextOccurrence('chaque lundi', null, NOW), D(2026, 9, 14), 'récurrence: sans échéance -> depuis aujourd’hui');
+eq(p.nextOccurrence('chaque mois', D(2026, 9, 10), NOW), D(2026, 10, 10), 'récurrence: mensuelle garde le jour');
+eq(p.nextOccurrence('au petit bonheur', NOW, NOW), null, 'récurrence: règle illisible -> pas d’occurrence');
+
 eq(p.snoozeTargets(NOW).map(t => t.due), [D(2026, 9, 9), D(2026, 9, 14), D(2026, 9, 15)],
   'report: demain, lundi, +1 semaine');
 eq(p.chargeOf([{ due: NOW }, { due: NOW }, { done: true, due: NOW }]) > 0, true,
