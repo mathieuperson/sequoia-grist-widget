@@ -1,0 +1,14 @@
+{
+  "name": "sequoia-grist-widget",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node tests/common.test.mjs && node tests/pilotage.test.mjs",
+    "test:browser": "node tests/browser/run.mjs",
+    "preview": "node tests/browser/screenshot.mjs",
+    "preview:pilotage": "node tests/browser/screenshot-pilotage.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.1"
+  }
+}

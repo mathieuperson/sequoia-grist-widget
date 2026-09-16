@@ -1,0 +1,1785 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pilotage Partenariats &amp; Innovation — Cluster SequoIA</title>
+<link rel="stylesheet" href="./common.css">
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<script src="./common.js"></script>
+<script src="./pilotage.js"></script>
+<style>
+/* Charte alignée sur common.css (vert #1f6b3f, fond #f4f6f5, police
+   système). Seules les valeurs absentes de common.css sont ajoutées ici,
+   et dérivées des siennes : aucune ombre, aucun dégradé, densité élevée. */
+:root {
+  --pil-sidebar: 236px;
+  --pil-surface-2: #fafbfa;
+  --pil-kanban-col: #edf0ee;
+  --pil-sep: #eef1ef;
+  --pil-warn: #8a6b22;
+  --pil-warn-soft: #c19a3c;
+  --pil-suggest-bg: #fbfaf4;
+  --pil-suggest-border: #e4e2d2;
+  --pil-bar: #8fae96;
+  --pil-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+  /* Palette de progression du pipeline — repli seulement : stageColor()
+     utilise d'abord les couleurs réelles des choix de la colonne Statut,
+     lues dans le document. Ces valeurs reprennent la même langue (gris →
+     bleu → orange → jaune → vert, rouge à part pour l'abandon) et servent
+     le temps de l'aller-retour, ou pour une étape cible que le document ne
+     connaît pas encore. */
+  --stage-idee: #9ca3af;
+  --stage-prospection: var(--status-prospection);
+  --stage-premierechange: #60a5fa;
+  --stage-qualification: var(--status-qualification);
+  --stage-recherchedequipe: #fb923c;
+  --stage-montage: var(--status-montage);
+  --stage-contractualisation: var(--status-contractualisation);
+  --stage-projetlance: var(--status-concretise);
+  --stage-concretiseencours: var(--status-concretise);
+  --stage-termine: #1b6b4a;
+  --stage-termineabandonne: var(--status-abandonne);
+  --stage-abandonne: var(--status-abandonne);
+}
+
+body { overflow: hidden; }
+
+/* ---------- Ossature ---------- */
+.pil { display: flex; height: 100vh; overflow: hidden; }
+
+/* `hidden` doit l'emporter sur le display:flex ci-dessous (?vue=…). */
+.pil-sidebar[hidden] { display: none; }
+.pil-sidebar {
+  width: var(--pil-sidebar); min-width: var(--pil-sidebar);
+  background: var(--card-bg); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow-y: auto;
+}
+.pil-brand { display: flex; gap: 9px; align-items: center; padding: 14px 16px; }
+.pil-logo {
+  width: 26px; height: 26px; border-radius: 7px; background: var(--sequoia-green);
+  color: #fff; font-weight: 700; font-size: 14px;
+  display: flex; align-items: center; justify-content: center; flex: none;
+}
+.pil-brand-name { font-size: 13.5px; font-weight: 600; line-height: 1.2; }
+.pil-nav-group { margin-top: 10px; }
+.pil-nav-title {
+  font-family: var(--pil-mono); font-size: 9.5px; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--text-muted); padding: 0 16px 6px;
+}
+.pil-nav-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  width: 100%; min-height: 34px; padding: 7px 16px 7px 13px;
+  border: 0; border-left: 3px solid transparent; background: none;
+  font: inherit; font-size: 13.5px; color: var(--text); text-align: left; cursor: pointer;
+}
+.pil-nav-item:hover { background: var(--pil-surface-2); }
+.pil-nav-item.active {
+  border-left-color: var(--sequoia-green); background: var(--sequoia-green-light); font-weight: 600;
+}
+.pil-nav-item:focus-visible { outline: 2px solid var(--sequoia-green); outline-offset: -2px; }
+.pil-nav-count { font-family: var(--pil-mono); font-size: 10.5px; color: var(--text-muted); }
+.pil-user {
+  margin-top: auto; display: flex; gap: 9px; align-items: center;
+  padding: 12px 16px; border-top: 1px solid var(--border);
+}
+.pil-avatar {
+  width: 27px; height: 27px; border-radius: 20px; background: var(--sequoia-green-light);
+  color: var(--sequoia-green-dark); font-size: 11px; font-weight: 600;
+  display: flex; align-items: center; justify-content: center; flex: none;
+}
+
+.pil-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.pil-topbar {
+  display: flex; gap: 12px; align-items: center;
+  padding: 12px 22px; border-bottom: 1px solid var(--border); background: var(--card-bg);
+}
+.pil-search {
+  flex: 1; max-width: 460px; min-height: 36px; padding: 8px 12px;
+  border: 1px solid var(--border); border-radius: 8px; font: inherit; font-size: 13.5px;
+  background: var(--bg); color: var(--text);
+}
+.pil-search:focus { outline: 2px solid var(--sequoia-green); outline-offset: -1px; border-color: var(--sequoia-green); }
+.pil-topbar-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+.pil-btn {
+  min-height: 36px; padding: 8px 13px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--card-bg); font: inherit; font-size: 12.5px; color: var(--text); cursor: pointer;
+}
+.pil-btn:hover { background: var(--pil-surface-2); }
+.pil-btn:focus-visible { outline: 2px solid var(--sequoia-green); outline-offset: 1px; }
+.pil-btn.primary { background: var(--sequoia-green); border-color: var(--sequoia-green); color: #fff; font-weight: 600; }
+.pil-btn.primary:hover { background: var(--sequoia-green-dark); border-color: var(--sequoia-green-dark); }
+
+.pil-scroll { flex: 1; overflow: auto; padding: 22px; }
+.pil-view[hidden] { display: none; }
+.pil-view-head { display: flex; align-items: flex-start; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+.pil-view-head > div:first-child { flex: 1; min-width: 0; }
+.pil-view-head .pil-sub { margin-bottom: 0; }
+.pil-h1 { font-size: 29px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 6px; }
+.pil-sub { font-size: 13px; color: var(--text-muted); margin: 0 0 20px; }
+.pil-sub .pil-mono { font-family: var(--pil-mono); font-size: 11px; }
+.pil-status {
+  font-family: var(--pil-mono); font-size: 10px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--text-muted); float: right;
+}
+
+/* ---------- Bandeau d'indicateurs ---------- */
+.pil-kpis {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(146px, 1fr));
+  gap: 12px; margin-bottom: 18px;
+}
+.pil-kpi { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 14px 15px; }
+.pil-kpi-label { font-size: 12.5px; color: var(--text-muted); margin-bottom: 8px; line-height: 1.35; }
+.pil-kpi-value { font-size: 30px; font-weight: 700; letter-spacing: -0.03em; line-height: 1; }
+.pil-kpi-value.danger { color: var(--danger); }
+.pil-kpi-value.green { color: var(--sequoia-green); }
+.pil-kpi-hint { font-family: var(--pil-mono); font-size: 9.5px; letter-spacing: 0.06em; color: var(--text-muted); margin-top: 8px; line-height: 1.5; }
+
+/* ---------- Sections ---------- */
+.pil-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.pil-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 16px; }
+.pil-card-head {
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 15px 18px 12px; border-bottom: 1px solid var(--pil-sep);
+}
+.pil-card-title { font-size: 16px; font-weight: 600; margin: 0; }
+.pil-card-sub { font-size: 12.5px; color: var(--text-muted); margin: 3px 0 0; }
+.pil-card-aside {
+  margin-left: auto; font-family: var(--pil-mono); font-size: 9.5px;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted);
+}
+.pil-card-body { padding: 8px 18px 16px; }
+.pil-link {
+  background: none; border: 0; padding: 0; font: inherit; font-size: 12.5px;
+  color: var(--sequoia-green); cursor: pointer; text-decoration: underline;
+}
+.pil-empty { font-size: 13px; color: var(--text-muted); padding: 10px 0; }
+
+/* Pipeline (barres) */
+.pil-bar-row { display: grid; grid-template-columns: 148px 1fr auto; gap: 12px; align-items: center; padding: 6px 0; }
+.pil-bar-label { font-size: 13.5px; }
+.pil-bar-label span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.pil-bar-track { height: 13px; border-radius: 4px; background: var(--pil-kanban-col); overflow: hidden; }
+.pil-bar-fill { height: 100%; background: var(--pil-bar); }
+.pil-bar-dot { width: 9px; height: 9px; border-radius: 20px; flex: none; display: inline-block; }
+.pil-bar-label { display: flex; align-items: center; gap: 8px; }
+.pil-bar-meta { font-family: var(--pil-mono); font-size: 10.5px; color: var(--text-muted); white-space: nowrap; }
+
+/* Listes de lignes */
+.pil-row { display: flex; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--pil-sep); }
+.pil-row:last-child { border-bottom: 0; }
+.pil-row-main { min-width: 0; flex: 1; }
+.pil-row-title { font-size: 13.5px; font-weight: 600; }
+.pil-row-meta { font-size: 12.5px; color: var(--text-muted); margin-top: 2px; }
+.pil-row-side { text-align: right; white-space: nowrap; font-family: var(--pil-mono); font-size: 10.5px; color: var(--text-muted); }
+.pil-row-side .danger { color: var(--danger); }
+.pil-row-side .warn { color: var(--pil-warn); }
+.pil-dot { width: 7px; height: 7px; border-radius: 20px; flex: none; margin-top: 6px; background: var(--status-default); }
+.pil-dot.danger { background: var(--danger); }
+.pil-dot.warn { background: var(--pil-warn-soft); }
+.pil-dot.ok { background: var(--pil-bar); }
+.pil-dot.muted { background: var(--status-default); }
+
+/* Table des interactions */
+.pil-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.pil-table th {
+  text-align: left; font-family: var(--pil-mono); font-size: 9.5px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--text-muted); font-weight: 400;
+  padding: 6px 10px 6px 0; border-bottom: 1px solid var(--pil-sep);
+}
+.pil-table td { padding: 9px 10px 9px 0; border-bottom: 1px solid var(--pil-sep); vertical-align: top; }
+.pil-table tr:last-child td { border-bottom: 0; }
+.pil-table .mono { font-family: var(--pil-mono); font-size: 10.5px; color: var(--text-muted); white-space: nowrap; }
+.pil-table-wrap { overflow-x: auto; }
+
+/* ---------- Étiquettes de dispositif ---------- */
+.pil-tag {
+  display: inline-block; font-family: var(--pil-mono); font-size: 9.5px; letter-spacing: 0.08em;
+  text-transform: uppercase; padding: 3px 6px; border-radius: 4px; white-space: nowrap;
+}
+.tag-cifre  { background: #f5e8f7; color: #7d2e7d; }
+.tag-chaire { background: #f0eaf6; color: #5c3f7d; }
+.tag-labcom { background: #e7f1f8; color: #2b5c7d; }
+.tag-national { background: #f8f0e0; color: #7a5a14; }
+.tag-interne  { background: #e9edf1; color: #3f5261; }
+.tag-europe { background: #ece9f8; color: #4a3d86; }
+.tag-stage  { background: #dce8f2; color: #1e4a7a; }
+.tag-autre  { background: #eef0ef; color: #5a625e; }
+
+/* ---------- Kanban ---------- */
+/* Barre de filtres du Kanban */
+.pil-filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 14px; }
+.pil-filter-chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.pil-chip {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 28px;
+  padding: 3px 5px 3px 9px; border: 1px solid var(--border); border-radius: 20px;
+  background: var(--sequoia-green-light); color: var(--sequoia-green-dark); font-size: 12px;
+}
+.pil-chip button {
+  border: 0; background: none; color: inherit; cursor: pointer; font: inherit;
+  line-height: 1; padding: 4px 6px; border-radius: 20px; min-width: 24px;
+}
+.pil-chip button:hover { background: rgba(0, 0, 0, 0.07); }
+.pil-filter-reset {
+  border: 0; background: none; font: inherit; font-size: 12px; color: var(--text-muted);
+  cursor: pointer; text-decoration: underline; padding: 6px 4px;
+}
+
+.pil-kanban { display: flex; gap: 12px; align-items: flex-start; overflow-x: auto; padding-bottom: 14px; }
+.pil-col {
+  width: 258px; min-width: 258px; background: var(--pil-kanban-col);
+  border-radius: 10px; padding: 12px; border-top: 3px solid var(--status-default);
+}
+.pil-col-add {
+  width: 100%; min-height: 40px; margin-top: 9px; padding: 8px;
+  border: 1px dashed var(--border); border-radius: 8px; background: none;
+  font: inherit; font-size: 12.5px; color: var(--text-muted); cursor: pointer;
+}
+.pil-col-add:hover { border-color: var(--sequoia-green); color: var(--sequoia-green); background: var(--card-bg); }
+.pil-col-add:focus-visible { outline: 2px solid var(--sequoia-green); outline-offset: 1px; }
+.pil-col-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+.pil-col-title { font-size: 13.5px; font-weight: 600; }
+.pil-col-count { margin-left: auto; font-family: var(--pil-mono); font-size: 10.5px; color: var(--text-muted); }
+.pil-col-sum { font-family: var(--pil-mono); font-size: 10px; letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 10px; }
+.pil-col-cards { min-height: 52px; display: flex; flex-direction: column; gap: 9px; border-radius: 8px; }
+.pil-col-cards.dragover { outline: 2px dashed var(--sequoia-green); outline-offset: 2px; }
+.pil-cardlet {
+  background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px 11px; cursor: grab;
+}
+.pil-cardlet:focus-visible { outline: 2px solid var(--sequoia-green); outline-offset: 1px; }
+.pil-cardlet.dragging { opacity: 0.45; }
+.pil-cardlet-title { font-size: 13.5px; font-weight: 600; line-height: 1.35; margin: 7px 0 3px; }
+.pil-cardlet-partner { font-size: 12.5px; color: var(--text-muted); }
+.pil-cardlet-foot {
+  display: flex; gap: 8px; align-items: center; justify-content: space-between;
+  margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--pil-sep);
+  font-family: var(--pil-mono); font-size: 9.5px; letter-spacing: 0.06em; color: var(--text-muted);
+}
+.pil-cardlet-team { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: uppercase; }
+.pil-cardlet-montant { white-space: nowrap; flex: none; }
+/* Un projet sans partenaire est un projet interne, pas une donnée manquante. */
+.pil-interne { color: var(--text-muted); font-style: italic; }
+/* Alternative clavier au glisser-déposer : discrète, mais toujours dans
+   l'ordre de tabulation (jamais display:none). */
+.pil-move { margin-top: 8px; width: 100%; font: inherit; font-size: 11.5px; padding: 5px 6px;
+  border: 1px solid var(--border); border-radius: 6px; background: var(--card-bg); color: var(--text-muted);
+  opacity: 0; transition: opacity .12s; }
+.pil-cardlet:hover .pil-move, .pil-cardlet:focus-within .pil-move, .pil-move:focus { opacity: 1; }
+@media (hover: none) { .pil-move { opacity: 1; } }
+
+/* ---------- Mes actions ---------- */
+.pil-suggest { background: var(--pil-suggest-bg); border: 1px solid var(--pil-suggest-border); border-radius: 10px; margin-bottom: 16px; }
+.pil-suggest .pil-card-head { border-bottom-color: var(--pil-suggest-border); }
+.pil-suggest-row { display: flex; gap: 12px; align-items: flex-start; padding: 11px 0; border-bottom: 1px solid var(--pil-suggest-border); }
+.pil-suggest-row:last-child { border-bottom: 0; }
+.pil-suggest-why { font-size: 12.5px; color: var(--text-muted); margin-top: 2px; line-height: 1.45; }
+.pil-group-head {
+  display: flex; align-items: center; gap: 9px;
+  padding: 13px 18px; border-bottom: 1px solid var(--pil-sep);
+}
+.pil-group-title { font-size: 16px; font-weight: 600; }
+.pil-group-count { font-family: var(--pil-mono); font-size: 10.5px; color: var(--text-muted); }
+.pil-group-rule {
+  margin-left: auto; font-family: var(--pil-mono); font-size: 9.5px;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-muted);
+}
+.pil-action { display: flex; gap: 11px; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid var(--pil-sep); }
+.pil-action:last-child { border-bottom: 0; }
+.pil-check {
+  width: 18px; height: 18px; margin: 1px 0 0; flex: none; cursor: pointer;
+  accent-color: var(--sequoia-green);
+}
+/* La case fait 18px mais reste cliquable sur 44px (tactile). */
+.pil-check-wrap {
+  display: flex; align-items: flex-start; justify-content: center;
+  min-width: 44px; min-height: 44px; margin: -12px 0 -12px -12px; padding: 12px;
+}
+.pil-action-title { font-size: 13.5px; font-weight: 600; line-height: 1.35; }
+.pil-action-ctx { font-size: 12.5px; color: var(--text-muted); margin-top: 2px; }
+.pil-action-tags { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 7px; }
+.pil-motif {
+  font-family: var(--pil-mono); font-size: 9.5px; letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 3px 6px; border-radius: 4px; background: var(--pil-kanban-col); color: var(--text-muted);
+}
+.pil-motif.danger { background: #f7e8e5; color: #8f2f1c; }
+.pil-motif.warn { background: #f8f0e0; color: var(--pil-warn); }
+.pil-motif.ok { background: var(--sequoia-green-light); color: var(--sequoia-green-dark); }
+.pil-stage-chip {
+  display: inline-flex; align-items: center;
+  font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 20px;
+}
+.pil-action-side { margin-left: auto; text-align: right; white-space: nowrap; }
+.pil-action-due { font-family: var(--pil-mono); font-size: 10.5px; color: var(--text-muted); }
+.pil-action-due.danger { color: var(--danger); }
+.pil-action-effort { font-family: var(--pil-mono); font-size: 10.5px; color: var(--text-muted); margin-top: 4px; }
+.pil-action.done .pil-action-title { text-decoration: line-through; }
+.pil-action.done { opacity: 0.55; }
+
+/* ---------- Popup ---------- */
+.pil-modal-backdrop {
+  position: fixed; inset: 0; background: rgba(28, 35, 33, 0.38);
+  display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 40;
+}
+.pil-modal {
+  background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px;
+  width: 100%; max-width: 440px; max-height: 90vh; overflow: auto;
+}
+.pil-modal h2 { font-size: 16px; font-weight: 600; margin: 0; padding: 16px 18px 12px; border-bottom: 1px solid var(--pil-sep); }
+.pil-modal-body { padding: 14px 18px; display: flex; flex-direction: column; gap: 12px; }
+.pil-field { display: flex; flex-direction: column; gap: 5px; }
+.pil-field label { font-size: 12.5px; color: var(--text-muted); }
+.pil-field input, .pil-field select, .pil-field textarea {
+  min-height: 38px; padding: 8px 10px; border: 1px solid var(--border); border-radius: 7px;
+  font: inherit; font-size: 13.5px; background: var(--card-bg); color: var(--text);
+}
+.pil-field textarea { min-height: 92px; resize: vertical; }
+.pil-modal-foot {
+  display: flex; gap: 8px; justify-content: flex-end;
+  padding: 12px 18px 16px; border-top: 1px solid var(--pil-sep);
+}
+.pil-modal-msg { font-size: 12.5px; color: var(--danger); margin-right: auto; align-self: center; }
+
+/* ---------- Responsive ---------- */
+/* Sous 1024 px la barre latérale se replie en une barre d'onglets
+   horizontale ; le Kanban garde son défilement, le tableau de bord passe
+   en une colonne. */
+@media (max-width: 1023px) {
+  .pil { flex-direction: column; height: auto; min-height: 100vh; }
+  body { overflow: auto; }
+  .pil-sidebar {
+    width: auto; min-width: 0; flex-direction: row; align-items: center;
+    overflow-x: auto; border-right: 0; border-bottom: 1px solid var(--border);
+  }
+  .pil-nav-group { margin: 0; display: flex; }
+  .pil-nav-title, .pil-user { display: none; }
+  .pil-nav-item {
+    border-left: 0; border-bottom: 3px solid transparent; white-space: nowrap; padding: 10px 14px;
+  }
+  .pil-nav-item.active { border-left: 0; border-bottom-color: var(--sequoia-green); }
+  .pil-grid { grid-template-columns: minmax(0, 1fr); }
+  .pil-scroll { padding: 16px; }
+  .pil-h1 { font-size: 24px; }
+  .pil-bar-row { grid-template-columns: 116px 1fr auto; }
+}
+</style>
+</head>
+<body>
+<div class="pil">
+  <aside class="pil-sidebar">
+    <div class="pil-brand">
+      <span class="pil-logo" aria-hidden="true">S</span>
+      <span>
+        <span class="pil-brand-name">Cluster SequoIA</span><br>
+        <span class="pil-nav-title" style="padding:0">PARTENARIATS</span>
+      </span>
+    </div>
+    <nav class="pil-nav-group" aria-label="Mon activité">
+      <div class="pil-nav-title">Mon activité</div>
+      <button type="button" class="pil-nav-item active" data-view="dashboard">
+        <span>Tableau de bord</span>
+      </button>
+      <button type="button" class="pil-nav-item" data-view="projets">
+        <span>Projets</span><span class="pil-nav-count" id="nav-projets"></span>
+      </button>
+      <button type="button" class="pil-nav-item" data-view="actions">
+        <span>Mes actions</span><span class="pil-nav-count" id="nav-actions"></span>
+      </button>
+    </nav>
+    <div class="pil-user">
+      <span class="pil-avatar" id="user-initials">MB</span>
+      <span>
+        <span style="font-size:12.5px;font-weight:600" id="user-name">Mon activité</span><br>
+        <span style="font-size:11.5px;color:var(--text-muted)">Partenariats &amp; Innovation</span>
+      </span>
+    </div>
+  </aside>
+
+  <div class="pil-main">
+    <header class="pil-topbar">
+      <input type="search" class="pil-search" id="search"
+        placeholder="Rechercher un partenaire, une équipe, un projet, une note…"
+        aria-label="Rechercher un partenaire, une équipe, un projet, une note">
+      <div class="pil-topbar-actions">
+        <button type="button" class="pil-btn" id="btn-note">Ajouter une note</button>
+        <button type="button" class="pil-btn" id="btn-action">Créer une action</button>
+      </div>
+    </header>
+
+    <div class="pil-scroll">
+      <section class="pil-view" id="view-dashboard" aria-labelledby="dash-title"></section>
+      <section class="pil-view" id="view-projets" hidden aria-labelledby="proj-title">
+        <div id="proj-head"></div>
+        <div class="pil-filters" id="proj-filters"></div>
+        <div id="proj-board"></div>
+      </section>
+      <section class="pil-view" id="view-actions" hidden aria-labelledby="act-title"></section>
+    </div>
+  </div>
+</div>
+<div id="modal-host"></div>
+<script>
+(function () {
+  'use strict';
+
+  // Le widget est mappé sur Structures — comme crm.html et cartographie.html,
+  // pour que le mapping déjà réglé dans Grist se réutilise tel quel. Les
+  // trois autres tables sont lues via docApi.fetchTable et leurs colonnes
+  // résolues par leur nom : un widget n'est mappé que sur une table.
+  const COLUMNS = [
+    { name: 'Nom', title: 'Nom de la structure', optional: false },
+    { name: 'TypeActeur', title: "Type d'acteur", optional: true },
+    { name: 'Categorie', title: 'Catégorie', optional: true },
+    { name: 'Activite', title: 'Activité', optional: true },
+    { name: 'PilierSequoia', title: 'Pilier SequoIA', optional: true },
+    { name: 'AxeSequoia', title: 'Axe SequoIA', optional: true },
+    { name: 'RechercheStructure', title: 'Structure de recherche', optional: true },
+    { name: 'RechercheEquipeLabo', title: 'Laboratoire', optional: true },
+    { name: 'RechercheEquipeActivite', title: 'Équipe / activité', optional: true }
+  ];
+
+  // Mêmes candidats de tables et de colonnes que crm.html : un document qui
+  // nomme sa colonne "Date_interaction" ou "Prochaine échéance" reste lisible.
+  const RELATED = {
+    contacts: {
+      tableCandidates: ['Contacts', 'Contact'],
+      roles: {
+        NomComplet: ['Nom_Complet', 'NomComplet', 'Nom complet'],
+        Nom: ['Nom'], Prenom: ['Prenom', 'Prénom'],
+        Fonction: ['Fonction', 'Poste'],
+        Structures: ['Structures', 'Structure'],
+        Email: ['Email', 'Mail', 'Courriel'],
+        Telephone: ['Telephone', 'Téléphone', 'Tel']
+      }
+    },
+    interactions: {
+      tableCandidates: ['Interactions', 'Interaction'],
+      roles: {
+        Objet: ['Objet', 'Sujet', 'Titre'],
+        Date: ['Date'],
+        Type: ['Type'],
+        Partenaires: ['Partenaires', 'Partenaire', 'Structures', 'Structure'],
+        ProchaineEcheance: ['ProchaineEcheance', 'Prochaine_Echeance', 'Prochaine échéance', 'Echeance'],
+        Suites: ['Suites', 'Suite', 'Prochaine action'],
+        Opportunites: ['Opportunites', 'Opportunités', 'Opportunite'],
+        CR: ['CR', 'Compte_rendu', 'Compte-rendu', 'CompteRendu'],
+        ContactPartenaire: ['ContactPartenaire', 'Contact_Partenaire', 'Contact(s) partenaire']
+      }
+    },
+    opportunites: {
+      tableCandidates: ['Opportunites', 'Opportunités', 'Opportunite'],
+      roles: {
+        Sujet: ['Sujet', 'Objet', 'Titre'],
+        Type: ['Type', 'Dispositif'],
+        Statut: ['Statut', 'Status', 'Etape', 'Étape'],
+        Montant: ['Montant', 'Montant_€', 'Budget'],
+        Partenaires: ['Partenaires', 'Partenaire', 'Structures', 'Structure'],
+        DateDebut: ['DateDebut', 'Date_Debut', 'Date de début'],
+        Echeance: ['Echeance', 'Echéance', 'Date_fin', 'Date de dépôt'],
+        Etablissement: ['Etablissement(s) Cluster', 'Établissement(s) Cluster', 'Etablissement_Cluster', 'Établissement Cluster'],
+        Laboratoire: ['Laboratoire(s) Cluster', 'Laboratoire(s) Cluster', 'Laboratoire_Cluster', 'Laboratoire Cluster'],
+        EquipeCluster: ['Equipe(s) Cluster', 'Équipe(s) Cluster', 'EquipeCluster', 'Équipe_Cluster', 'Équipe Cluster'],
+        // Optionnelles : le jour où ces colonnes existent, la règle de
+        // suggestion "pièce manquante" s'allume d'elle-même.
+        PiecesAttendues: ['PiecesAttendues', 'Lettres attendues', 'Pièces attendues'],
+        PiecesRecues: ['PiecesRecues', 'Lettres reçues', 'Pièces reçues']
+      }
+    }
+  };
+
+  let mappings = {};
+  let structTableId = null;
+  // Structures lues sans filtre : un filtre posé sur la section Grist ne doit
+  // pas faire disparaître le nom du partenaire d'un projet. Le mapping des
+  // colonnes, lui, vient toujours de onRecords.
+  let structures = [];
+  let related = {};             // clé -> { tableId, cols, linkCols, records, error }
+  let stageChoices = [];        // choix réels de la colonne Statut
+  let typeChoices = [];         // choix réels de la colonne Type (dispositif)
+  let options = { done: {}, dismissed: [] };
+  let model = null;
+  let view = new URLSearchParams(location.search).get('vue') || 'dashboard';
+  let query = '';
+  let statusMsg = '';
+  // Filtres du Kanban, chacun un choix multiple. Vides = tout passe.
+  const projectFilters = { dispositif: [], partenaire: [], equipe: [] };
+  const FILTER_LABELS = { dispositif: 'Dispositif', partenaire: 'Partenaire', equipe: 'Équipe / laboratoire' };
+  const filterWidgets = {};
+
+  const el = (id) => document.getElementById(id);
+  const today = () => new Date();
+  const todayKey = () => new Date().toISOString().slice(0, 10);
+  const txt = (v) => (v === null || v === undefined) ? '' : String(v).trim();
+
+  grist.ready({ requiredAccess: 'full', columns: COLUMNS, allowSelectBy: true });
+
+  // ---------------------------------------------------------------------
+  // Couche d'accès aux données
+  // ---------------------------------------------------------------------
+  async function resolveRelated(key) {
+    const conf = RELATED[key];
+    for (const tableId of conf.tableCandidates) {
+      try {
+        const data = await fetchTableCached(tableId);
+        const cols = resolveColumns(dataColumns(data), conf.roles);
+        const meta = await fetchColumnMeta(tableId);
+        // Une ligne peut désigner une structure par plusieurs colonnes
+        // (Partenaire(s), mais aussi Établissement / Laboratoire / Équipe
+        // Cluster) : toutes comptent comme un rattachement.
+        const primary = cols.Partenaires;
+        const discovered = refColumnsTo(meta, structTableId);
+        const linkCols = [primary].concat(discovered.filter(c => c !== primary)).filter(Boolean);
+        const teamCols = discovered.filter(c => c !== primary);
+        // Grist refuse d'écrire dans une colonne formule : le formulaire de
+        // création ne propose l'équipe que s'il existe une colonne
+        // inscriptible, et il annonce laquelle par son vrai libellé.
+        const writable = teamCols.find(c => !meta.some(m => m.id === c && m.isFormula)) || null;
+        const label = (meta.find(m => m.id === writable) || {}).label || writable;
+        return {
+          tableId, cols,
+          linkCols: linkCols.length ? linkCols : [],
+          // Les colonnes de rattachement autres que Partenaire(s) portent
+          // les équipes de recherche du projet.
+          teamCols,
+          teamWriteCol: writable,
+          teamWriteLabel: label,
+          records: recordsFromTableData(data),
+          error: null
+        };
+      } catch (err) { /* table suivante */ }
+    }
+    return {
+      tableId: null, cols: {}, linkCols: [], teamCols: [], teamWriteCol: null, teamWriteLabel: null, records: [],
+      error: 'Table introuvable (' + conf.tableCandidates.join(' / ') + ')'
+    };
+  }
+
+  async function loadRelated() {
+    const keys = Object.keys(RELATED);
+    const results = await Promise.all(keys.map(resolveRelated));
+    keys.forEach((k, i) => { related[k] = results[i]; });
+    await loadOppChoices();
+  }
+
+  // Toutes les structures du document, pas seulement celles que la section
+  // laisse passer : c'est ce qui garantit qu'un projet nomme toujours son
+  // partenaire, prospect ou non.
+  async function loadStructures() {
+    if (!structTableId) return;
+    invalidateTableCache(structTableId);
+    try {
+      const data = await fetchTableCached(structTableId);
+      structures = recordsFromTableData(data).map(r => mapRecord(r, mappings));
+    } catch (err) {
+      console.error('Lecture de la table Structures impossible', err);
+    }
+  }
+
+  // Les étapes du Kanban et les dispositifs du formulaire viennent des choix
+  // réels des colonnes Statut et Type : rien n'est figé dans le widget, et le
+  // jour où les étapes changent dans Grist, les colonnes suivent.
+  async function loadOppChoices() {
+    stageChoices = [];
+    typeChoices = [];
+    const opp = related.opportunites;
+    if (!opp || !opp.tableId) return;
+    try {
+      const { token, baseUrl } = await grist.docApi.getAccessToken({ readOnly: true });
+      const res = await fetch(baseUrl + '/tables/' + encodeURIComponent(opp.tableId) +
+        '/columns?auth=' + encodeURIComponent(token));
+      if (!res.ok) return;
+      const columns = (await res.json()).columns || [];
+      const choicesOf = (colId) => {
+        const raw = columns.find(c => c.id === colId);
+        const wo = raw && raw.fields && raw.fields.widgetOptions;
+        if (!wo) return [];
+        try { return (JSON.parse(wo).choices || []).filter(Boolean).map(String); }
+        catch (err) { return []; }
+      };
+      stageChoices = choicesOf(opp.cols.Statut);
+      typeChoices = choicesOf(opp.cols.Type);
+      // Les couleurs d'étape viennent du document, pas du widget : la même
+      // opportunité garde sa couleur de la table au Kanban.
+      const statut = columns.find(c => c.id === opp.cols.Statut);
+      let wo = statut && statut.fields && statut.fields.widgetOptions;
+      if (typeof wo === 'string') { try { wo = JSON.parse(wo); } catch (err) { wo = null; } }
+      registerStatusStyles(choiceStylesFromWidgetOptions(wo).styles);
+    } catch (err) {
+      console.error('Lecture des choix de la table Opportunités impossible', err);
+    }
+  }
+
+  async function loadOptions() {
+    try {
+      const stored = await grist.getOption('pilotage');
+      if (stored) options = Object.assign(options, JSON.parse(stored));
+    } catch (err) { console.error('getOption failed', err); }
+    if (!options.done) options.done = {};
+    if (!options.dismissed) options.dismissed = [];
+  }
+
+  // Les actions cochées et les suggestions acceptées sont stockées dans les
+  // options du widget (grist.setOption) : pas de table à créer, et l'état
+  // suit le document plutôt que le navigateur.
+  async function saveOptions() {
+    try { await grist.setOption('pilotage', JSON.stringify(options)); }
+    catch (err) { console.error('setOption failed', err); }
+  }
+
+  // ---------------------------------------------------------------------
+  // Modèle
+  // ---------------------------------------------------------------------
+  const sField = (s, role) => (s && mappings[role]) ? s[role] : undefined;
+
+  // Une structure est une équipe de recherche dès qu'elle porte un
+  // laboratoire ou une activité d'équipe — ce sont les colonnes faites pour
+  // ça. Tout le reste est un partenaire.
+  function isTeam(s) {
+    return !!(txt(formatValue(sField(s, 'RechercheEquipeLabo'))) ||
+              txt(formatValue(sField(s, 'RechercheEquipeActivite'))));
+  }
+  function isProspect(s) {
+    return normalizeKey(formatValue(sField(s, 'Categorie'))).includes('prospect');
+  }
+
+  // Toutes les structures qu'une ligne désigne, par n'importe laquelle de
+  // ses colonnes de référence.
+  function linkedIds(record, cols) {
+    const out = [];
+    (cols || []).forEach(c => refIdsFromValue(record[c]).forEach(id => {
+      if (!out.includes(id)) out.push(id);
+    }));
+    return out;
+  }
+
+  function buildModel() {
+    const byId = {};
+    structures.forEach(s => { byId[s.id] = s; });
+    // Une référence qu'on n'arrive pas à résoudre s'affiche par son id
+    // plutôt que de disparaître : un nom manquant en silence fait douter des
+    // décomptes qui l'entourent.
+    const nameOf = (id) => {
+      const s = byId[id];
+      return (s && txt(formatValue(sField(s, 'Nom')))) || ('#' + id);
+    };
+
+    const inter = related.interactions || { records: [], cols: {}, linkCols: [] };
+    const opp = related.opportunites || { records: [], cols: {}, linkCols: [], teamCols: [] };
+    const cont = related.contacts || { records: [], cols: {} };
+
+    const interactions = inter.records.map(r => ({
+      id: r.id,
+      date: r[inter.cols.Date] ?? null,
+      type: txt(formatValue(r[inter.cols.Type])),
+      objet: txt(formatValue(r[inter.cols.Objet])),
+      cr: r[inter.cols.CR] || '',
+      suites: txt(formatValue(r[inter.cols.Suites])),
+      due: r[inter.cols.ProchaineEcheance] ?? null,
+      partnerIds: linkedIds(r, inter.linkCols),
+      contactIds: refIdsFromValue(r[inter.cols.ContactPartenaire]),
+      projectIds: refIdsFromValue(r[inter.cols.Opportunites])
+    }));
+
+    // Les colonnes de référence autres que Partenaire(s) portent les
+    // équipes de recherche rattachées au projet.
+    const projects = opp.records.map(r => {
+      const partnerIds = refIdsFromValue(r[opp.cols.Partenaires]);
+      const teamIds = linkedIds(r, opp.teamCols).filter(id => !partnerIds.includes(id));
+      return {
+        id: r.id,
+        title: txt(formatValue(r[opp.cols.Sujet])) || 'Sans titre',
+        dispositif: txt(formatValue(r[opp.cols.Type])),
+        stage: txt(formatValue(r[opp.cols.Statut])),
+        montant: r[opp.cols.Montant] ?? null,
+        partnerIds,
+        partnerId: partnerIds[0] ?? null,
+        partnerName: partnerIds.map(nameOf).filter(Boolean).join(', '),
+        teamIds,
+        teamNames: teamIds.map(nameOf).filter(Boolean),
+        hasTeam: teamIds.length > 0,
+        // Faute de colonne d'historique d'étape, la date de début est le
+        // meilleur repère disponible pour "depuis quand".
+        stageSince: r[opp.cols.DateDebut] ?? null,
+        depotDue: r[opp.cols.Echeance] ?? null,
+        piecesAttendues: Number(r[opp.cols.PiecesAttendues]) || 0,
+        piecesRecues: Number(r[opp.cols.PiecesRecues]) || 0
+      };
+    });
+
+    const projectById = {};
+    projects.forEach(p => { projectById[p.id] = p; });
+
+    const partners = structures.filter(s => !isTeam(s)).map(s => ({
+      id: s.id,
+      name: txt(formatValue(sField(s, 'Nom'))) || ('#' + s.id),
+      type: txt(formatValue(sField(s, 'TypeActeur'))),
+      categorie: txt(formatValue(sField(s, 'Categorie'))),
+      activite: txt(formatValue(sField(s, 'Activite'))),
+      prospect: isProspect(s),
+      lastContact: lastInteractionFor(interactions, s.id)
+    }));
+    const partnerById = {};
+    partners.forEach(p => { partnerById[p.id] = p; });
+
+    const teams = structures.filter(isTeam).map(s => ({
+      id: s.id,
+      name: txt(formatValue(sField(s, 'Nom'))) || ('#' + s.id),
+      labo: txt(formatValue(sField(s, 'RechercheEquipeLabo'))),
+      thematiques: txt(formatValue(sField(s, 'RechercheEquipeActivite')))
+    }));
+
+    // Les actions sont portées par les interactions (Prochaine échéance +
+    // Suites) : c'est déjà le "prochain pas" du CRM, aucune table à créer.
+    const actions = interactions
+      .filter(i => i.due !== null || i.suites)
+      .map(i => {
+        const key = 'int:' + i.id;
+        const project = i.projectIds.map(id => projectById[id]).find(Boolean) ||
+          mostAdvancedProject(projects, i.partnerIds);
+        const partner = i.partnerIds.map(id => partnerById[id]).find(Boolean) || null;
+        return {
+          id: key,
+          rowId: i.id,
+          label: i.suites || ('Relancer ' + (partner ? partner.name : 'ce partenaire')),
+          due: i.due,
+          done: !!options.done[key],
+          doneOn: options.done[key] || null,
+          origin: (options.origin && options.origin[key]) || 'manuelle',
+          partnerId: partner ? partner.id : null,
+          partnerName: partner ? partner.name : '',
+          partnerLastContact: partner ? partner.lastContact : null,
+          projectId: project ? project.id : null,
+          projectTitle: project ? project.title : '',
+          stage: project ? project.stage : '',
+          montant: project ? project.montant : null,
+          hasTeam: project ? project.hasTeam : true,
+          stageSince: project ? project.stageSince : null,
+          depotDue: project ? project.depotDue : null,
+          depotLabel: partner ? partner.name : ''
+        };
+      });
+
+    return {
+      projects, partners, teams, interactions, actions, structures: structures.map(s => ({
+        id: s.id,
+        name: txt(formatValue(sField(s, 'Nom'))) || ('#' + s.id)
+      })),
+      contacts: cont.records.length,
+      stages: stageChoices.length ? stageChoices : orderStages(projects.map(p => p.stage))
+    };
+  }
+
+  // Projet le plus avancé (hors étapes closes) parmi ceux d'un partenaire :
+  // c'est celui auquel rattacher une action qui ne cite pas d'opportunité.
+  function mostAdvancedProject(projects, partnerIds) {
+    return projects
+      .filter(p => p.partnerIds.some(id => partnerIds.includes(id)))
+      .filter(p => !isStageIn(p.stage, 'clos'))
+      .sort((a, b) => stageRank(b.stage) - stageRank(a.stage))[0] || null;
+  }
+
+  // La recherche globale filtre la vue courante plutôt que d'ouvrir une
+  // liste à part : on cherche pour travailler, pas pour naviguer.
+  function matchesQuery(strings) {
+    if (!query) return true;
+    return strings.filter(Boolean).join(' ').toLowerCase().includes(query);
+  }
+
+  // ---------------------------------------------------------------------
+  // Rendu — tableau de bord
+  // ---------------------------------------------------------------------
+  const H = (s) => escapeHtml(s);
+  const mono = (s) => '<span class="pil-nav-count">' + H(s) + '</span>';
+
+  function kpiCard(label, value, hint, tone) {
+    return '<div class="pil-kpi">' +
+      '<div class="pil-kpi-label">' + H(label) + '</div>' +
+      '<div class="pil-kpi-value' + (tone ? ' ' + tone : '') + '">' + H(value) + '</div>' +
+      (hint ? '<div class="pil-kpi-hint">' + H(hint) + '</div>' : '') +
+      '</div>';
+  }
+
+  function renderDashboard() {
+    const now = today();
+    const k = computeKpis(model, now);
+    const dateLabel = now.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+
+    const kpis = [
+      kpiCard('Actions en retard', k.actionsRetard, 'à traiter en priorité', k.actionsRetard ? 'danger' : ''),
+      kpiCard('Actions cette semaine', k.actionsSemaine, 'échéance sous 7 jours'),
+      kpiCard('Partenaires à relancer', k.partenairesARelancer, 'sans contact depuis 30 j'),
+      kpiCard('Projets en discussion', k.projetsEnDiscussion, 'idée → recherche d’équipe'),
+      kpiCard('Pipeline pondéré', formatMontantOrDash(k.pipelinePondere), 'qualification → contractualisation', 'green'),
+      kpiCard('Dossiers à déposer', k.dossiersADeposer, 'échéance de dépôt à venir'),
+      kpiCard('CIFRE identifiées', k.cifreIdentifiees,
+        k.cifreLancees ? 'dont ' + k.cifreLancees + ' lancée' + (k.cifreLancees > 1 ? 's' : '') : 'hors étapes closes')
+    ].join('');
+
+    const suggestions = runSuggestionRules(model, { now, dismissed: options.dismissed });
+    const rows = pipelineRows(model.projects, model.stages);
+    const pipeline = rows.length ? rows.map(r => {
+      const pct = Math.round(r.ratio * 100);
+      const color = stageColor(r.stage);
+      return '<div class="pil-bar-row">' +
+        '<div class="pil-bar-label">' +
+          '<span class="pil-bar-dot" style="background:' + color + '"></span>' +
+          '<span>' + H(r.stage) + '</span>' +
+        '</div>' +
+        '<div class="pil-bar-track"><div class="pil-bar-fill" style="width:' +
+          Math.max(pct, r.count ? 3 : 0) + '%;background:' + color + '"></div></div>' +
+        '<div class="pil-bar-meta">' + r.count + ' · ' + H(formatMontantOrDash(r.montant)) + '</div>' +
+        '</div>';
+    }).join('') : '<p class="pil-empty">Aucun projet dans le pipeline.</p>';
+
+    // Recentré sur la gestion de projets : seuls les partenaires qui portent
+    // un projet en cours. Relancer un acteur sans montage en cours n'est pas
+    // le sujet de cet onglet.
+    const activeOf = (id) => model.projects.filter(pr => pr.partnerIds.includes(id) && !isStageIn(pr.stage, 'clos'));
+    const relances = partnersToFollowUp(
+      model.partners.filter(p => !p.prospect && activeOf(p.id).length &&
+        matchesQuery([p.name, p.type, p.activite])),
+      { seuil: 30, now }
+    ).slice(0, 6);
+    const relanceRows = relances.length ? relances.map(o => {
+      const next = nextActionFor(o.partner.id, suggestions);
+      const projets = activeOf(o.partner.id);
+      return '<div class="pil-row">' +
+        '<div class="pil-row-main">' +
+          '<div class="pil-row-title">' + H(o.partner.name) + '</div>' +
+          '<div class="pil-row-meta">' + H(projets.map(pr => pr.title).join(' · ')) + '</div>' +
+          '<div class="pil-row-meta">' + H(next || 'Aucune action planifiée') + '</div>' +
+        '</div>' +
+        '<div class="pil-row-side"><span class="' + relanceTone(o.days) + '">' +
+          H(o.days === null ? 'jamais contacté' : formatAnciennete(o.days)) + '</span><br>' +
+          H(o.partner.lastContact ? formatDate(o.partner.lastContact) : '—') +
+        '</div>' +
+        '</div>';
+    }).join('') : '<p class="pil-empty">Aucun partenaire à relancer.</p>';
+
+    const semaine = groupActionsByUrgence(model.actions, now)
+      .filter(g => ['retard', 'aujourdhui', 'semaine'].includes(g.key))
+      .reduce((all, g) => all.concat(g.actions.map(a => ({ action: a, group: g }))), [])
+      .filter(o => matchesQuery([o.action.label, o.action.partnerName, o.action.projectTitle]))
+      .slice(0, 6);
+    const semaineRows = semaine.length ? semaine.map(o => {
+      const d = daysSince(o.action.due, now);
+      return '<div class="pil-row">' +
+        '<div class="pil-dot ' + o.group.tone + '"></div>' +
+        '<div class="pil-row-main">' +
+          '<div class="pil-row-title">' + H(o.action.label) + '</div>' +
+          '<div class="pil-row-meta">' + H([o.action.partnerName, o.action.projectTitle].filter(Boolean).join(' · ')) + '</div>' +
+        '</div>' +
+        '<div class="pil-row-side"><span class="' + (d > 0 ? 'danger' : '') + '">' + H(dueLabel(o.action.due, now)) + '</span></div>' +
+        '</div>';
+    }).join('') : '<p class="pil-empty">Rien à faire sous 7 jours.</p>';
+
+    return '<div class="pil-view-head"><div>' +
+        '<h1 class="pil-h1" id="dash-title">Pilotage des projets</h1>' +
+        '<p class="pil-sub">' + (statusMsg ? '<span class="pil-status">' + H(statusMsg) + '</span>' : '') +
+          H(dateLabel.charAt(0).toUpperCase() + dateLabel.slice(1)) + ' · Cluster SequoIA — Université de Rennes</p>' +
+      '</div></div>' +
+      '<div class="pil-kpis">' + kpis + '</div>' +
+      '<div class="pil-grid">' +
+        '<div>' +
+          card('Pipeline des opportunités', 'Largeur proportionnelle au nombre de projets de l’étape',
+            pipeline, '<button type="button" class="pil-link" data-goto="projets">Voir le Kanban →</button>') +
+          card('Partenaires à relancer', 'Projets en cours, du contact le plus ancien au plus récent',
+            relanceRows, '<span class="pil-card-aside">sans contact depuis 30 j</span>') +
+        '</div>' +
+        '<div>' +
+          card('À faire cette semaine', '', semaineRows,
+            '<button type="button" class="pil-link" data-goto="actions">Tout voir</button>') +
+          card('Dispositifs structurants', 'Projets actifs par dispositif', renderDispositifs(), '') +
+        '</div>' +
+      '</div>' +
+      card('Dernières interactions', '', renderInteractionsTable(), '<span class="pil-card-aside">date décroissante</span>');
+  }
+
+  function card(title, sub, body, aside) {
+    return '<section class="pil-card">' +
+      '<div class="pil-card-head"><div><h2 class="pil-card-title">' + H(title) + '</h2>' +
+        (sub ? '<p class="pil-card-sub">' + H(sub) + '</p>' : '') + '</div>' +
+        (aside ? '<div style="margin-left:auto">' + aside + '</div>' : '') + '</div>' +
+      '<div class="pil-card-body">' + body + '</div></section>';
+  }
+
+  // Prochaine action d'un partenaire, pour la liste des relances : son
+  // action ouverte la plus urgente, à défaut ce que le moteur de
+  // suggestions propose pour lui — une ligne de relance sans prochain pas
+  // ne dit pas quoi faire.
+  function nextActionFor(partnerId, suggestions) {
+    const open = model.actions.filter(a => !a.done && a.partnerId === partnerId);
+    const groups = groupActionsByUrgence(open, today());
+    if (groups.length) return groups[0].actions[0].label;
+    const s = (suggestions || []).find(x => x.partnerId === partnerId);
+    return s ? s.label + ' (suggéré)' : '';
+  }
+
+  function dueLabel(due, now) {
+    const d = daysSince(due, now);
+    if (d === null) return 'sans échéance';
+    if (d > 0) return 'retard ' + d + ' j';
+    if (d === 0) return "aujourd'hui";
+    return 'dans ' + (-d) + ' j';
+  }
+
+  // Les dispositifs structurants sont comptés depuis le dispositif porté par
+  // chaque projet. "Lettres de soutien émises" n'apparaît pas : aucune
+  // colonne du document ne les porte aujourd'hui.
+  function renderDispositifs() {
+    const actifs = model.projects.filter(p => !isStageIn(p.stage, 'clos'));
+    const groups = PILOTAGE_DISPOSITIFS.map(d => {
+      const list = actifs.filter(p => dispositifOf(p.dispositif) === d);
+      return { label: d.label, list };
+    }).filter(g => g.list.length);
+    if (!groups.length) return '<p class="pil-empty">Aucun dispositif en cours.</p>';
+    return groups.map(g =>
+      '<div class="pil-row">' +
+        '<div class="pil-row-main">' +
+          '<div class="pil-row-title">' + H(g.label) + '</div>' +
+          '<div class="pil-row-meta">' + H(projectHolders(g.list)) + '</div>' +
+        '</div>' +
+        '<div class="pil-row-side">' + g.list.length + '<br>' + H(formatMontantOrDash(sumMontants(g.list))) + '</div>' +
+      '</div>').join('');
+  }
+
+  function renderInteractionsTable() {
+    const rows = model.interactions
+      .filter(i => i.date !== null && i.date !== undefined && i.date !== '')
+      .filter(i => matchesQuery([i.objet, i.type, partnerNames(i.partnerIds), stripHtml(i.cr)]))
+      .sort((a, b) => (b.date || 0) - (a.date || 0))
+      .slice(0, 8);
+    if (!rows.length) return '<p class="pil-empty">Aucune interaction enregistrée.</p>';
+    return '<div class="pil-table-wrap"><table class="pil-table">' +
+      '<thead><tr><th>Date</th><th>Structure</th><th>Contact</th><th>Type</th><th>Compte rendu</th></tr></thead><tbody>' +
+      rows.map(i => '<tr>' +
+        '<td class="mono">' + H(formatDate(i.date)) + '</td>' +
+        '<td>' + H(partnerNames(i.partnerIds)) + '</td>' +
+        '<td>' + H(contactNames(i.contactIds)) + '</td>' +
+        '<td>' + H(i.type) + '</td>' +
+        '<td>' + H(excerpt(i.cr || i.objet, 90)) + '</td>' +
+        '</tr>').join('') +
+      '</tbody></table></div>';
+  }
+
+  function partnerNames(ids) {
+    return (ids || []).map(id => {
+      const s = structures.find(x => x.id === id);
+      return s ? txt(formatValue(sField(s, 'Nom'))) : '';
+    }).filter(Boolean).join(', ');
+  }
+
+  function contactNames(ids) {
+    const cont = related.contacts || { records: [], cols: {} };
+    return (ids || []).map(id => {
+      const c = cont.records.find(x => x.id === id);
+      if (!c) return '';
+      return txt(formatValue(c[cont.cols.NomComplet])) ||
+        [txt(formatValue(c[cont.cols.Prenom])), txt(formatValue(c[cont.cols.Nom]))].filter(Boolean).join(' ');
+    }).filter(Boolean).join(', ');
+  }
+
+  // ---------------------------------------------------------------------
+  // Rendu — Kanban
+  // ---------------------------------------------------------------------
+  // Valeurs de filtre portées par un projet. Un projet sans partenaire est
+  // filtrable comme « projet interne » : c'est une catégorie, pas un trou.
+  const INTERNE = 'Projet interne (sans partenaire)';
+  function projectFilterValues(p) {
+    return {
+      dispositif: [p.dispositif || 'Sans dispositif'],
+      partenaire: p.partnerIds.length ? (p.partnerName || '').split(', ').filter(Boolean) : [INTERNE],
+      equipe: p.teamNames.length ? p.teamNames : ['Sans équipe']
+    };
+  }
+
+  function matchesFilters(p) {
+    const values = projectFilterValues(p);
+    return Object.keys(projectFilters).every(key => {
+      const wanted = projectFilters[key];
+      return !wanted.length || values[key].some(v => wanted.includes(v));
+    });
+  }
+
+  // Les options proposées sont celles réellement présentes dans les projets,
+  // pour ne jamais offrir un filtre qui ne rendrait rien.
+  function filterOptions(key) {
+    const out = [];
+    model.projects.forEach(p => projectFilterValues(p)[key].forEach(v => {
+      if (v && !out.includes(v)) out.push(v);
+    }));
+    return out.sort((a, b) => a.localeCompare(b, 'fr'));
+  }
+
+  function visibleProjects() {
+    return model.projects.filter(p =>
+      matchesQuery([p.title, p.partnerName, p.dispositif, p.teamNames.join(' ')]) && matchesFilters(p));
+  }
+
+  function renderProjets() {
+    const visible = visibleProjects();
+    const cols = kanbanColumns(visible, model.stages);
+    const internes = visible.filter(p => !p.partnerIds.length).length;
+    const pondere = sumMontants(visible.filter(p => isStageIn(p.stage, 'pondere')));
+    const total = model.projects.length;
+    const filtre = visible.length !== total;
+    const moveOptions = cols.map(c => '<option value="' + H(c.stage) + '">' + H(c.stage) + '</option>').join('');
+
+    const board = cols.length ? cols.map(c =>
+      '<div class="pil-col" data-stage="' + H(c.stage) + '" style="border-top-color:' + stageColor(c.stage) + '">' +
+        '<div class="pil-col-head"><span class="pil-col-title">' + H(c.stage) + '</span>' +
+          '<span class="pil-col-count">' + c.count + '</span></div>' +
+        '<div class="pil-col-sum">' + H(formatMontantOrDash(c.montant)) + '</div>' +
+        '<div class="pil-col-cards" data-stage="' + H(c.stage) + '">' +
+          c.cards.map(p => renderCard(p, moveOptions)).join('') +
+        '</div>' +
+        '<button type="button" class="pil-col-add" data-add-stage="' + H(c.stage) + '"' +
+          ' aria-label="Créer une opportunité à l\'étape ' + H(c.stage) + '">+ Opportunité</button>' +
+      '</div>').join('') : '<p class="pil-empty">Aucune étape lisible sur la colonne Statut.</p>';
+
+    el('proj-head').innerHTML = '<div class="pil-view-head"><div>' +
+        '<h1 class="pil-h1" id="proj-title">Projets &amp; montages</h1>' +
+        '<p class="pil-sub">' + (statusMsg ? '<span class="pil-status">' + H(statusMsg) + '</span>' : '') +
+          visible.length + ' projet' + (visible.length > 1 ? 's' : '') +
+          (filtre ? ' sur ' + total : '') +
+          (internes ? ' · ' + internes + ' interne' + (internes > 1 ? 's' : '') : '') +
+          ' · pipeline pondéré ' + H(formatMontantOrDash(pondere)) + '<br>' +
+          'Glissez une carte pour faire avancer un projet, ou utilisez le menu « Déplacer vers… » de la carte.</p>' +
+      '</div>' +
+      '<button type="button" class="pil-btn primary" id="btn-opportunite">+ Nouvelle opportunité</button>' +
+      '</div>';
+    el('proj-board').innerHTML = '<div class="pil-kanban">' + board + '</div>';
+    renderFilterChips();
+  }
+
+  // Les composants de filtre sont construits une seule fois : ils vivent
+  // hors de la zone redessinée, sinon chaque rendu les détruirait.
+  function initFilters() {
+    const host = el('proj-filters');
+    host.innerHTML = Object.keys(FILTER_LABELS)
+      .map(key => msFilterMarkup('flt-' + key, FILTER_LABELS[key], 'Tous')).join('') +
+      '<div class="pil-filter-chips" id="proj-filter-chips"></div>';
+    Object.keys(FILTER_LABELS).forEach(key => {
+      filterWidgets[key] = createMultiSelect(el('flt-' + key), {
+        labelAll: 'Tous',
+        onChange: (selection) => { projectFilters[key] = selection; renderProjets(); }
+      });
+    });
+    // Un clic ailleurs referme le panneau ouvert.
+    document.addEventListener('click', () => {
+      document.querySelectorAll('.ms-filter-panel').forEach(panel => { panel.hidden = true; });
+    });
+  }
+
+  function refreshFilterOptions() {
+    Object.keys(FILTER_LABELS).forEach(key => {
+      if (filterWidgets[key]) filterWidgets[key].setOptions(filterOptions(key));
+      projectFilters[key] = filterWidgets[key] ? filterWidgets[key].getSelected() : [];
+    });
+  }
+
+  // Les filtres actifs restent visibles et retirables d'un clic, même
+  // panneau refermé.
+  function renderFilterChips() {
+    const host = el('proj-filter-chips');
+    if (!host) return;
+    const chips = [];
+    Object.keys(FILTER_LABELS).forEach(key => projectFilters[key].forEach(value => {
+      chips.push('<span class="pil-chip">' + H(value) +
+        '<button type="button" data-unfilter="' + H(key) + '" data-value="' + H(value) +
+        '" aria-label="Retirer le filtre ' + H(value) + '">×</button></span>');
+    }));
+    host.innerHTML = chips.join('') +
+      (chips.length ? '<button type="button" class="pil-filter-reset" id="filter-reset">Tout effacer</button>' : '');
+  }
+
+  function renderCard(p, moveOptions) {
+    // Un projet sans partenaire est un projet interne — une information, pas
+    // une donnée manquante.
+    const porteur = p.partnerIds.length
+      ? H(p.partnerName)
+      : '<span class="pil-interne">Projet interne</span>';
+    return '<article class="pil-cardlet" draggable="true" tabindex="0" data-id="' + p.id + '">' +
+      '<span class="pil-tag ' + dispositifClass(p.dispositif) + '">' + H(p.dispositif || 'Autre collaboration') + '</span>' +
+      '<h3 class="pil-cardlet-title">' + H(p.title) + '</h3>' +
+      '<div class="pil-cardlet-partner">' + porteur + '</div>' +
+      '<div class="pil-cardlet-foot">' +
+        '<span class="pil-cardlet-team">' + H(p.teamNames.join(' · ') || '—') + '</span>' +
+        '<span class="pil-cardlet-montant">' + H(formatMontantOrDash(p.montant)) + '</span>' +
+      '</div>' +
+      '<select class="pil-move" data-id="' + p.id + '" aria-label="Déplacer « ' + H(p.title) + ' » vers une autre étape">' +
+        '<option value="">Déplacer vers…</option>' + moveOptions +
+      '</select>' +
+      '</article>';
+  }
+
+  // ---------------------------------------------------------------------
+  // Rendu — Mes actions
+  // ---------------------------------------------------------------------
+  function renderActions() {
+    const now = today();
+    const visible = model.actions.filter(a =>
+      matchesQuery([a.label, a.partnerName, a.projectTitle]));
+    const open = visible.filter(a => !a.done);
+    const doneToday = visible.filter(a => a.done && a.doneOn === todayKey());
+    const retard = open.filter(a => urgenceOf(a.due, now) === 'retard').length;
+
+    const suggestions = runSuggestionRules(model, { now, dismissed: options.dismissed });
+    const suggestBlock = suggestions.length ? '<section class="pil-suggest">' +
+      '<div class="pil-card-head"><div><h2 class="pil-card-title">Actions suggérées</h2></div>' +
+        '<div style="margin-left:auto"><span class="pil-card-aside">déduites des données du CRM</span></div></div>' +
+      '<div class="pil-card-body">' + suggestions.map(s =>
+        '<div class="pil-suggest-row">' +
+          '<div class="pil-row-main">' +
+            '<div class="pil-row-title">' + H(s.label) + '</div>' +
+            '<div class="pil-suggest-why">' + H(s.why) + '</div>' +
+          '</div>' +
+          '<button type="button" class="pil-btn" data-suggest="' + H(s.id) + '">Ajouter</button>' +
+        '</div>').join('') + '</div></section>' : '';
+
+    const groups = groupActionsByUrgence(visible, now).map(g =>
+      '<section class="pil-card">' +
+        '<div class="pil-group-head">' +
+          '<span class="pil-dot ' + g.tone + '" style="margin-top:0"></span>' +
+          '<span class="pil-group-title">' + H(g.label) + '</span>' +
+          '<span class="pil-group-count">' + g.actions.length + '</span>' +
+          (g.rule ? '<span class="pil-group-rule">' + H(g.rule) + '</span>' : '') +
+        '</div>' +
+        '<div class="pil-card-body">' + g.actions.map(a => renderAction(a, now)).join('') + '</div>' +
+      '</section>').join('');
+
+    const doneBlock = doneToday.length ? card("Terminé aujourd'hui", '',
+      doneToday.map(a => renderAction(a, now)).join(''),
+      '<span class="pil-card-aside">' + doneToday.length + '</span>') : '';
+
+    return '<div class="pil-view-head"><div>' +
+        '<h1 class="pil-h1" id="act-title">Mes actions</h1>' +
+        '<p class="pil-sub">' + (statusMsg ? '<span class="pil-status">' + H(statusMsg) + '</span>' : '') +
+          open.length + ' action' + (open.length > 1 ? 's' : '') + ' ouverte' + (open.length > 1 ? 's' : '') +
+          ' · ' + retard + ' en retard · triées par urgence et par enjeu</p>' +
+      '</div>' +
+      '<button type="button" class="pil-btn primary" id="btn-action-vue">+ Nouvelle action</button>' +
+      '</div>' +
+      suggestBlock +
+      (groups || '<p class="pil-empty">Aucune action ouverte. Les échéances viennent de la colonne « Prochaine échéance » des interactions.</p>') +
+      doneBlock;
+  }
+
+  function renderAction(a, now) {
+    const motif = actionMotif(a, { now, relanceSeuil: 30 });
+    const effort = formatEffort(estimatedEffortMinutes(a));
+    const d = daysSince(a.due, now);
+    return '<div class="pil-action' + (a.done ? ' done' : '') + '">' +
+      '<label class="pil-check-wrap">' +
+        '<input type="checkbox" class="pil-check" data-action="' + H(a.id) + '"' + (a.done ? ' checked' : '') +
+        ' aria-label="Terminer : ' + H(a.label) + '">' +
+      '</label>' +
+      '<div class="pil-row-main">' +
+        '<div class="pil-action-title">' + H(a.label) + '</div>' +
+        '<div class="pil-action-ctx">' +
+          H([a.partnerName || 'Interne', a.projectTitle].filter(Boolean).join(' · ')) + '</div>' +
+        '<div class="pil-action-tags">' +
+          (motif ? '<span class="pil-motif ' + motif.tone + '">' + H(motif.label) + '</span>' : '') +
+          (a.stage ? '<span class="pil-stage-chip" style="background:' + stageColor(a.stage) +
+            ';color:' + stageTextColor(a.stage) + '">' + H(a.stage) + '</span>' : '') +
+        '</div>' +
+      '</div>' +
+      '<div class="pil-action-side">' +
+        '<div class="pil-action-due' + (d !== null && d > 0 ? ' danger' : '') + '">' + H(dueLabel(a.due, now)) + '</div>' +
+        (effort ? '<div class="pil-action-effort">' + H(effort) + '</div>' : '') +
+      '</div>' +
+      '</div>';
+  }
+
+  // ---------------------------------------------------------------------
+  // Rendu global et navigation
+  // ---------------------------------------------------------------------
+  const VIEWS = { dashboard: renderDashboard, projets: null, actions: renderActions };
+  // ?vue=kanban ou ?vue=actions : la même URL sert aussi de widget dédié à
+  // une seule vue, barre latérale masquée.
+  const VIEW_ALIASES = { kanban: 'projets', projects: 'projets', todo: 'actions', actions: 'actions' };
+  const singleView = VIEW_ALIASES[view] || ((view in VIEWS) ? view : null);
+  const locked = !!new URLSearchParams(location.search).get('vue');
+  if (locked) {
+    view = singleView || 'dashboard';
+    document.querySelector('.pil-sidebar').hidden = true;
+  } else {
+    view = 'dashboard';
+  }
+
+  function render() {
+    if (!model) return;
+    Object.keys(VIEWS).forEach(v => { el('view-' + v).hidden = v !== view; });
+    if (view === 'projets') {
+      refreshFilterOptions();
+      renderProjets();
+    } else {
+      el('view-' + view).innerHTML = VIEWS[view]();
+    }
+    document.querySelectorAll('.pil-nav-item[data-view]').forEach(b => {
+      const active = b.dataset.view === view;
+      b.classList.toggle('active', active);
+      b.setAttribute('aria-current', active ? 'page' : 'false');
+    });
+    el('nav-projets').textContent = model.projects.length || '';
+    el('nav-actions').textContent = model.actions.filter(a => !a.done).length || '';
+    renderErrors();
+  }
+
+  // Une table absente est signalée sans casser le reste de la vue, comme
+  // dans crm.html.
+  function renderErrors() {
+    const errs = Object.keys(RELATED).map(k => related[k] && related[k].error).filter(Boolean);
+    if (!errs.length) return;
+    const host = el('view-' + view);
+    host.insertAdjacentHTML('afterbegin',
+      '<p class="pil-empty" style="color:var(--danger)">' + H(errs.join(' · ')) + '</p>');
+  }
+
+  let statusTimer = null;
+  function setStatus(msg) {
+    statusMsg = msg;
+    clearTimeout(statusTimer);
+    statusTimer = setTimeout(() => { statusMsg = ''; render(); }, 2600);
+    render();
+  }
+
+  async function refresh() {
+    await loadRelated();
+    await loadStructures();
+    model = buildModel();
+    render();
+  }
+
+  function goto(v) {
+    if (locked || !(v in VIEWS)) return;
+    view = v;
+    render();
+    el('view-' + v).scrollIntoView({ block: 'start' });
+  }
+
+  // ---------------------------------------------------------------------
+  // Écritures
+  // ---------------------------------------------------------------------
+  const DAY = 86400;
+  function inDays(n) {
+    const d = new Date();
+    return Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 1000) + n * DAY;
+  }
+
+  async function moveProject(rowId, stage) {
+    const opp = related.opportunites;
+    if (!opp.tableId || !opp.cols.Statut) { setStatus('Colonne Statut introuvable'); return; }
+    const project = model.projects.find(p => p.id === rowId);
+    if (!project || project.stage === stage) return;
+    project.stage = stage;          // retour immédiat, avant l'aller-retour Grist
+    render();
+    try {
+      setStatus('Enregistrement…');
+      await updateRecord(opp.tableId, rowId, { [opp.cols.Statut]: stage });
+      await refresh();
+      setStatus('Enregistré ✓');
+    } catch (err) {
+      console.error(err);
+      setStatus('Erreur d’enregistrement');
+      await refresh();
+    }
+  }
+
+  // Cocher une action vide sa "Prochaine échéance" dans Grist — l'échéance
+  // est traitée — et garde la trace du jour dans les options du widget pour
+  // le bloc « Terminé aujourd'hui ». Décocher restaure l'échéance : rien
+  // n'est perdu.
+  async function toggleAction(key, checked) {
+    const a = model.actions.find(x => x.id === key);
+    if (!a) return;
+    const inter = related.interactions;
+    options.dueBackup = options.dueBackup || {};
+    try {
+      setStatus('Enregistrement…');
+      if (checked) {
+        options.done[key] = todayKey();
+        if (inter.tableId && inter.cols.ProchaineEcheance && a.due !== null && a.due !== undefined) {
+          options.dueBackup[key] = a.due;
+          await updateRecord(inter.tableId, a.rowId, { [inter.cols.ProchaineEcheance]: null });
+        }
+      } else {
+        delete options.done[key];
+        if (inter.tableId && inter.cols.ProchaineEcheance && options.dueBackup[key] !== undefined) {
+          await updateRecord(inter.tableId, a.rowId, { [inter.cols.ProchaineEcheance]: options.dueBackup[key] });
+          delete options.dueBackup[key];
+        }
+      }
+      await saveOptions();
+      await refresh();
+      setStatus('Enregistré ✓');
+    } catch (err) {
+      console.error(err);
+      setStatus('Erreur d’enregistrement');
+    }
+  }
+
+  async function acceptSuggestion(id) {
+    const s = runSuggestionRules(model, { now: today(), dismissed: options.dismissed })
+      .find(x => x.id === id);
+    if (!s) return;
+    const inter = related.interactions;
+    if (!inter.tableId) { setStatus('Table Interactions introuvable'); return; }
+    const fields = {};
+    if (inter.cols.Suites) fields[inter.cols.Suites] = s.label;
+    if (inter.cols.Objet) fields[inter.cols.Objet] = s.label;
+    if (inter.cols.ProchaineEcheance) fields[inter.cols.ProchaineEcheance] = inDays(7);
+    if (inter.cols.Partenaires && s.partnerId) fields[inter.cols.Partenaires] = ['L', s.partnerId];
+    if (inter.cols.Opportunites && s.projectId) fields[inter.cols.Opportunites] = ['L', s.projectId];
+    // Volontairement sans Date : une interaction sans date est une suite
+    // prévue, pas un échange qui a eu lieu. Lui en donner une fausserait le
+    // "dernier contact" du partenaire.
+    try {
+      setStatus('Enregistrement…');
+      const rowId = await addRecord(inter.tableId, fields);
+      options.dismissed.push(s.id);
+      options.origin = options.origin || {};
+      if (rowId) options.origin['int:' + rowId] = 'suggestion';
+      await saveOptions();
+      await refresh();
+      setStatus('Action ajoutée ✓');
+    } catch (err) {
+      console.error(err);
+      setStatus('Erreur d’enregistrement');
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Popups (création d'une action, d'une note, d'un partenaire)
+  // ---------------------------------------------------------------------
+  function partnerOptions() {
+    return model.partners.slice()
+      .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
+      .map(p => '<option value="' + p.id + '">' + H(p.name) + '</option>').join('');
+  }
+
+  function openModal(conf) {
+    const host = el('modal-host');
+    host.innerHTML = '<div class="pil-modal-backdrop" role="dialog" aria-modal="true" aria-label="' + H(conf.title) + '">' +
+      '<form class="pil-modal"><h2>' + H(conf.title) + '</h2>' +
+      '<div class="pil-modal-body">' + conf.fields + '</div>' +
+      '<div class="pil-modal-foot"><span class="pil-modal-msg" id="modal-msg"></span>' +
+        '<button type="button" class="pil-btn" data-close>Annuler</button>' +
+        '<button type="submit" class="pil-btn primary">' + H(conf.submit) + '</button>' +
+      '</div></form></div>';
+    const form = host.querySelector('form');
+    const close = () => { host.innerHTML = ''; };
+    host.querySelector('[data-close]').addEventListener('click', close);
+    host.querySelector('.pil-modal-backdrop').addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) close();
+    });
+    host.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const err = await conf.onSubmit(form);
+      if (err) el('modal-msg').textContent = err;
+      else close();
+    });
+    const first = form.querySelector('input, select, textarea');
+    if (first) first.focus();
+  }
+
+  function field(label, html) {
+    return '<div class="pil-field"><label>' + H(label) + '</label>' + html + '</div>';
+  }
+
+  function openActionModal() {
+    openModal({
+      title: 'Créer une action',
+      submit: 'Créer l’action',
+      fields:
+        field('Intitulé', '<input name="label" required>') +
+        field('Partenaire', '<select name="partner"><option value="">—</option>' + partnerOptions() + '</select>') +
+        field('Échéance', '<input type="date" name="due" value="' + todayKey() + '">'),
+      onSubmit: async (form) => {
+        const inter = related.interactions;
+        if (!inter.tableId) return 'Table Interactions introuvable.';
+        const label = form.label.value.trim();
+        if (!label) return 'Un intitulé est nécessaire.';
+        const fields = {};
+        if (inter.cols.Suites) fields[inter.cols.Suites] = label;
+        if (inter.cols.Objet) fields[inter.cols.Objet] = label;
+        if (inter.cols.ProchaineEcheance) fields[inter.cols.ProchaineEcheance] = inputValueToGristDate(form.due.value);
+        if (inter.cols.Partenaires && form.partner.value) fields[inter.cols.Partenaires] = ['L', Number(form.partner.value)];
+        try {
+          await addRecord(inter.tableId, fields);
+          await refresh();
+          setStatus('Action créée ✓');
+        } catch (err) { console.error(err); return 'Erreur d’enregistrement.'; }
+      }
+    });
+  }
+
+  function openNoteModal() {
+    openModal({
+      title: 'Ajouter une note',
+      submit: 'Enregistrer la note',
+      fields:
+        field('Partenaire', '<select name="partner" required>' + partnerOptions() + '</select>') +
+        field('Objet', '<input name="objet" required>') +
+        field('Type', '<input name="type" value="Réunion">') +
+        field('Compte rendu', '<textarea name="cr"></textarea>') +
+        field('Date', '<input type="date" name="date" value="' + todayKey() + '">'),
+      onSubmit: async (form) => {
+        const inter = related.interactions;
+        if (!inter.tableId) return 'Table Interactions introuvable.';
+        const objet = form.objet.value.trim();
+        if (!objet) return 'Un objet est nécessaire.';
+        const fields = {};
+        if (inter.cols.Objet) fields[inter.cols.Objet] = objet;
+        if (inter.cols.Date) fields[inter.cols.Date] = inputValueToGristDate(form.date.value);
+        if (inter.cols.Type) fields[inter.cols.Type] = form.type.value.trim();
+        if (inter.cols.CR && form.cr.value.trim()) fields[inter.cols.CR] = '<p>' + escapeHtml(form.cr.value.trim()) + '</p>';
+        if (inter.cols.Partenaires && form.partner.value) fields[inter.cols.Partenaires] = ['L', Number(form.partner.value)];
+        try {
+          await addRecord(inter.tableId, fields);
+          await refresh();
+          setStatus('Note enregistrée ✓');
+        } catch (err) { console.error(err); return 'Erreur d’enregistrement.'; }
+      }
+    });
+  }
+
+  function teamOptions() {
+    return model.teams.slice()
+      .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
+      .map(t => '<option value="' + t.id + '">' + H(t.name + (t.labo ? ' — ' + t.labo : '')) + '</option>').join('');
+  }
+
+  function selectField(label, name, values, current, extra) {
+    const options = (extra || '') + values.map(v =>
+      '<option' + (v === current ? ' selected' : '') + '>' + H(v) + '</option>').join('');
+    return field(label, '<select name="' + name + '">' + options + '</select>');
+  }
+
+  function multiSelectField(label, name, values) {
+    const checkboxes = values.map(v =>
+      '<label style="display:flex;gap:8px;align-items:center;margin:4px 0"><input type="checkbox" name="' + name + '" value="' + H(v) + '"> ' + H(v) + '</label>'
+    ).join('');
+    return field(label, '<div style="padding:6px">' + checkboxes + '</div>');
+  }
+
+  function structureSelectField(label, name, structures) {
+    const options = structures.map(s =>
+      ‘<label style="display:flex;gap:8px;align-items:center;margin:4px 0"><input type="checkbox" name="’ + name + ‘" value="’ + s.id + ‘" data-name="’ + H(s.name) + ‘"> ‘ + H(s.name) + ‘</label>’
+    ).join(‘’);
+    return field(label, ‘<div style="padding:6px;max-height:150px;overflow-y:auto">’ + (options || ‘<p style="color:var(--text-muted);font-size:12px">Aucune structure disponible</p>’) + ‘</div>’);
+  }
+
+  function getStructuresForForm(researchType) {
+    // Retourne les structures filtrées selon:
+    // 1. Les filtres actuels appliqués à la section Grist (si présents)
+    // 2. Le type de recherche (Établissement, Laboratoire, Équipe)
+    let filtered = model.structures || [];
+
+    // Si on a des structures filtrées par Grist, les utiliser
+    if (structTableId && mappings) {
+      const filteredIds = new Set(structures.map(s => s.id));
+      filtered = filtered.filter(s => filteredIds.has(s.id));
+    }
+
+    // Filtrer par type de recherche
+    if (researchType === ‘etablissement’) {
+      filtered = filtered.filter(s => {
+        const s_struct = structures.find(x => x.id === s.id);
+        return s_struct && txt(formatValue(sField(s_struct, ‘RechercheStructure’))) === ‘Établissement’;
+      });
+    } else if (researchType === ‘laboratoire’) {
+      filtered = filtered.filter(s => {
+        const s_struct = structures.find(x => x.id === s.id);
+        return s_struct && txt(formatValue(sField(s_struct, ‘RechercheStructure’))) === ‘Laboratoire’;
+      });
+    } else if (researchType === ‘equipe’) {
+      filtered = filtered.filter(s => {
+        const s_struct = structures.find(x => x.id === s.id);
+        return s_struct && txt(formatValue(sField(s_struct, ‘RechercheEquipeActivite’))); // Équipe a une activité
+      });
+    }
+
+    return filtered.sort((a, b) => a.name.localeCompare(b.name, ‘fr’));
+  }
+
+  // Édition d’une opportunité existante
+  function editOpportuniteModal(projectId) {
+    const opp = related.opportunites;
+    if (!opp.tableId) { setStatus(‘Table Opportunités introuvable’); return; }
+    const project = model.projects.find(p => p.id === projectId);
+    if (!project) return;
+
+    const dispositifs = typeChoices.length ? typeChoices : PILOTAGE_DISPOSITIFS.map(d => d.label);
+    const stages = model.stages;
+    const row = opp.records.find(r => r.id === projectId);
+    if (!row) return;
+
+    openModal({
+      title: ‘Éditer : ‘ + project.title,
+      submit: ‘Enregistrer’,
+      fields:
+        field(‘Sujet’, ‘<input name="sujet" value="’ + H(project.title) + ‘" required>’) +
+        multiSelectField(‘Type’, ‘type’, dispositifs) +
+        selectField(‘Étape’, ‘statut’, stages, project.stage) +
+        selectField(‘Partenaire’, ‘partner’, model.partners.slice()
+          .sort((a, b) => a.name.localeCompare(b.name, ‘fr’)).map(p => p.name), ‘’,
+          ‘<option value="">— Projet interne (sans partenaire) —</option>’) +
+        (opp.cols.Etablissement ? structureSelectField(‘Établissement’, ‘etablissement’, getStructuresForForm(‘etablissement’)) : ‘’) +
+        (opp.cols.Laboratoire ? structureSelectField(‘Laboratoire’, ‘laboratoire’, getStructuresForForm(‘laboratoire’)) : ‘’) +
+        (opp.cols.EquipeCluster ? structureSelectField(‘Équipe Cluster’, ‘equipe’, getStructuresForForm(‘equipe’)) : ‘’) +
+        (opp.teamWriteCol
+          ? field(opp.teamWriteLabel || ‘Équipe de recherche’,
+              ‘<select name="team"><option value="">—</option>’ + teamOptions() + ‘</select>’)
+          : ‘’) +
+        field(‘Montant (€)’, ‘<input type="number" name="montant" value="’ + (project.montant || ‘’) + ‘" min="0" step="1000">’) +
+        field(‘Date de début’, ‘<input type="date" name="debut" value="’ + (project.stageSince ? gristDateToInputValue(project.stageSince) : ‘’) + ‘">’) +
+        field(‘Échéance / date de dépôt’, ‘<input type="date" name="echeance" value="’ + (project.depotDue ? gristDateToInputValue(project.depotDue) : ‘’) + ‘">’),
+      onSubmit: async (form) => {
+        const sujet = form.sujet.value.trim();
+        if (!sujet) return ‘Un sujet est nécessaire.’;
+        const fields = {};
+        if (opp.cols.Sujet && sujet !== project.title) fields[opp.cols.Sujet] = sujet;
+        if (opp.cols.Type) {
+          const types = Array.from(form.querySelectorAll(‘input[name="type"]:checked’)).map(x => x.value);
+          if (types.length) fields[opp.cols.Type] = types;
+        }
+        if (opp.cols.Statut && form.statut.value !== project.stage) fields[opp.cols.Statut] = form.statut.value;
+        if (opp.cols.Montant && form.montant.value) fields[opp.cols.Montant] = Number(form.montant.value);
+        if (opp.cols.DateDebut && form.debut.value) fields[opp.cols.DateDebut] = inputValueToGristDate(form.debut.value);
+        if (opp.cols.Echeance && form.echeance.value) fields[opp.cols.Echeance] = inputValueToGristDate(form.echeance.value);
+        if (opp.cols.Partenaires && form.partner.value) {
+          const partner = model.partners.find(x => x.name === form.partner.value);
+          if (partner) fields[opp.cols.Partenaires] = [‘L’, partner.id];
+        }
+        if (opp.cols.Etablissement) {
+          const evals = Array.from(form.querySelectorAll(‘input[name="etablissement"]:checked’)).map(x => Number(x.value));
+          if (evals.length) fields[opp.cols.Etablissement] = [‘L’, ...evals];
+        }
+        if (opp.cols.Laboratoire) {
+          const labs = Array.from(form.querySelectorAll(‘input[name="laboratoire"]:checked’)).map(x => Number(x.value));
+          if (labs.length) fields[opp.cols.Laboratoire] = [‘L’, ...labs];
+        }
+        if (opp.cols.EquipeCluster) {
+          const equipes = Array.from(form.querySelectorAll(‘input[name="equipe"]:checked’)).map(x => Number(x.value));
+          if (equipes.length) fields[opp.cols.EquipeCluster] = [‘L’, ...equipes];
+        }
+        if (opp.teamWriteCol && form.team && form.team.value) {
+          fields[opp.teamWriteCol] = [‘L’, Number(form.team.value)];
+        }
+        try {
+          if (Object.keys(fields).length > 0) {
+            await updateRecord(opp.tableId, projectId, fields);
+          }
+          await refresh();
+          setStatus(‘Opportunité enregistrée ✓’);
+        } catch (err) { console.error(err); return ‘Erreur d’enregistrement.’; }
+      }
+    });
+  }
+
+  // Création d’une opportunité depuis le Kanban. `stage` pré-sélectionne
+  // l’étape quand on part du bouton d’une colonne.
+  function openOpportuniteModal(stage) {
+    const opp = related.opportunites;
+    if (!opp.tableId) { setStatus(‘Table Opportunités introuvable’); return; }
+    const dispositifs = typeChoices.length ? typeChoices : PILOTAGE_DISPOSITIFS.map(d => d.label);
+    const stages = model.stages;
+    openModal({
+      title: ‘Nouvelle opportunité’,
+      submit: ‘Créer l’opportunité’,
+      fields:
+        field(‘Sujet’, ‘<input name="sujet" required>’) +
+        multiSelectField(‘Type’, ‘type’, dispositifs) +
+        selectField(‘Étape’, ‘statut’, stages, stage || stages[0]) +
+        selectField(‘Partenaire’, ‘partner’, model.partners.slice()
+          .sort((a, b) => a.name.localeCompare(b.name, ‘fr’)).map(p => p.name), ‘’,
+          ‘<option value="">— Projet interne (sans partenaire) —</option>’) +
+        (opp.cols.Etablissement ? structureSelectField(‘Établissement’, ‘etablissement’, getStructuresForForm(‘etablissement’)) : ‘’) +
+        (opp.cols.Laboratoire ? structureSelectField(‘Laboratoire’, ‘laboratoire’, getStructuresForForm(‘laboratoire’)) : ‘’) +
+        (opp.cols.EquipeCluster ? structureSelectField(‘Équipe Cluster’, ‘equipe’, getStructuresForForm(‘equipe’)) : ‘’) +
+        (opp.teamWriteCol
+          ? field(opp.teamWriteLabel || ‘Équipe de recherche’,
+              ‘<select name="team"><option value="">—</option>’ + teamOptions() + ‘</select>’)
+          : ‘’) +
+        field(‘Montant (€)’, ‘<input type="number" name="montant" min="0" step="1000">’) +
+        field(‘Date de début’, ‘<input type="date" name="debut">’) +
+        field(‘Échéance / date de dépôt’, ‘<input type="date" name="echeance">’),
+      onSubmit: async (form) => {
+        const sujet = form.sujet.value.trim();
+        if (!sujet) return ‘Un sujet est nécessaire.’;
+        const fields = {};
+        if (opp.cols.Sujet) fields[opp.cols.Sujet] = sujet;
+        if (opp.cols.Type) {
+          const types = Array.from(form.querySelectorAll(‘input[name="type"]:checked’)).map(x => x.value);
+          if (types.length) fields[opp.cols.Type] = types;
+        }
+        if (opp.cols.Statut) fields[opp.cols.Statut] = form.statut.value;
+        if (opp.cols.Montant && form.montant.value) fields[opp.cols.Montant] = Number(form.montant.value);
+        if (opp.cols.DateDebut && form.debut.value) fields[opp.cols.DateDebut] = inputValueToGristDate(form.debut.value);
+        if (opp.cols.Echeance && form.echeance.value) fields[opp.cols.Echeance] = inputValueToGristDate(form.echeance.value);
+        if (opp.cols.Partenaires && form.partner.value) {
+          const partner = model.partners.find(x => x.name === form.partner.value);
+          if (partner) fields[opp.cols.Partenaires] = [‘L’, partner.id];
+        }
+        if (opp.cols.Etablissement) {
+          const evals = Array.from(form.querySelectorAll(‘input[name="etablissement"]:checked’)).map(x => Number(x.value));
+          if (evals.length) fields[opp.cols.Etablissement] = [‘L’, ...evals];
+        }
+        if (opp.cols.Laboratoire) {
+          const labs = Array.from(form.querySelectorAll(‘input[name="laboratoire"]:checked’)).map(x => Number(x.value));
+          if (labs.length) fields[opp.cols.Laboratoire] = [‘L’, ...labs];
+        }
+        if (opp.cols.EquipeCluster) {
+          const equipes = Array.from(form.querySelectorAll(‘input[name="equipe"]:checked’)).map(x => Number(x.value));
+          if (equipes.length) fields[opp.cols.EquipeCluster] = [‘L’, ...equipes];
+        }
+        if (opp.teamWriteCol && form.team && form.team.value) {
+          fields[opp.teamWriteCol] = [‘L’, Number(form.team.value)];
+        }
+        try {
+          await addRecord(opp.tableId, fields);
+          await refresh();
+          setStatus(‘Opportunité créée ✓’);
+        } catch (err) { console.error(err); return ‘Erreur d’enregistrement.’; }
+      }
+    });
+  }
+
+  // ---------------------------------------------------------------------
+  // Événements
+  // ---------------------------------------------------------------------
+  initFilters();
+
+  document.querySelectorAll('.pil-nav-item[data-view]').forEach(b =>
+    b.addEventListener('click', () => goto(b.dataset.view)));
+
+  el('search').addEventListener('input', debounce((e) => {
+    query = e.target.value.trim().toLowerCase();
+    render();
+  }, 180));
+
+  el('btn-action').addEventListener('click', openActionModal);
+  el('btn-note').addEventListener('click', openNoteModal);
+
+  document.querySelector('.pil-scroll').addEventListener('click', (e) => {
+    const goBtn = e.target.closest('[data-goto]');
+    if (goBtn) return goto(goBtn.dataset.goto);
+    const sugg = e.target.closest('[data-suggest]');
+    if (sugg) return acceptSuggestion(sugg.dataset.suggest);
+    // Les boutons de création vivent dans les vues, donc re-rendus : ils
+    // passent par la délégation plutôt que par un écouteur direct.
+    if (e.target.closest('#btn-opportunite')) return openOpportuniteModal(null);
+    if (e.target.closest('#btn-action-vue')) return openActionModal();
+    const add = e.target.closest('[data-add-stage]');
+    if (add) return openOpportuniteModal(add.dataset.addStage);
+    const unfilter = e.target.closest('[data-unfilter]');
+    if (unfilter) {
+      const key = unfilter.dataset.unfilter;
+      const next = projectFilters[key].filter(v => v !== unfilter.dataset.value);
+      projectFilters[key] = next;
+      filterWidgets[key].setSelected(next);
+      return renderProjets();
+    }
+    if (e.target.closest('#filter-reset')) {
+      Object.keys(projectFilters).forEach(key => {
+        projectFilters[key] = [];
+        if (filterWidgets[key]) filterWidgets[key].setSelected([]);
+      });
+      return renderProjets();
+    }
+  });
+
+  document.querySelector('.pil-scroll').addEventListener('change', (e) => {
+    const check = e.target.closest('.pil-check');
+    if (check) return toggleAction(check.dataset.action, check.checked);
+    const move = e.target.closest('.pil-move');
+    if (move && move.value) return moveProject(Number(move.dataset.id), move.value);
+  });
+
+  // Glisser-déposer natif (pas de dépendance) ; l'alternative clavier est
+  // le menu « Déplacer vers… » de chaque carte.
+  let dragId = null;
+  const scroll = document.querySelector('.pil-scroll');
+  scroll.addEventListener('click', (e) => {
+    const card = e.target.closest('.pil-cardlet');
+    if (!card || e.target.classList.contains('pil-move')) return;
+    const projectId = Number(card.dataset.id);
+    editOpportuniteModal(projectId);
+  });
+  scroll.addEventListener('keydown', (e) => {
+    if (e.key === 'Delete' && document.activeElement.classList.contains('pil-cardlet')) {
+      e.preventDefault();
+      const projectId = Number(document.activeElement.dataset.id);
+      if (!confirm('Supprimer cette opportunité?')) return;
+      const opp = related.opportunites;
+      if (opp.tableId) {
+        removeRecord(opp.tableId, projectId).then(() => {
+          refresh();
+          setStatus('Opportunité supprimée ✓');
+        }).catch(err => {
+          console.error(err);
+          setStatus('Erreur de suppression');
+        });
+      }
+    }
+  });
+  scroll.addEventListener('dragstart', (e) => {
+    const card = e.target.closest('.pil-cardlet');
+    if (!card) return;
+    dragId = Number(card.dataset.id);
+    card.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', card.dataset.id);
+  });
+  scroll.addEventListener('dragend', (e) => {
+    const card = e.target.closest('.pil-cardlet');
+    if (card) card.classList.remove('dragging');
+    document.querySelectorAll('.pil-col-cards.dragover').forEach(c => c.classList.remove('dragover'));
+  });
+  scroll.addEventListener('dragover', (e) => {
+    const zone = e.target.closest('.pil-col-cards');
+    if (!zone || dragId === null) return;
+    e.preventDefault();
+    zone.classList.add('dragover');
+  });
+  scroll.addEventListener('dragleave', (e) => {
+    const zone = e.target.closest('.pil-col-cards');
+    if (zone && !zone.contains(e.relatedTarget)) zone.classList.remove('dragover');
+  });
+  scroll.addEventListener('drop', (e) => {
+    const zone = e.target.closest('.pil-col-cards');
+    if (!zone || dragId === null) return;
+    e.preventDefault();
+    zone.classList.remove('dragover');
+    const id = dragId;
+    dragId = null;
+    moveProject(id, zone.dataset.stage);
+  });
+
+  // ---------------------------------------------------------------------
+  // Démarrage
+  // ---------------------------------------------------------------------
+  grist.onRecords(async function (records, maps) {
+    mappings = maps || {};
+    if (structTableId === null) {
+      try { structTableId = await grist.getTable().getTableId(); } catch (err) { console.error(err); }
+    }
+    if (!related.interactions) {
+      await loadOptions();
+      await loadRelated();
+    }
+    await loadStructures();
+    model = buildModel();
+    render();
+  });
+
+  if (typeof grist.onOptions === 'function') grist.onOptions(async function () {
+    await loadOptions();
+    if (model) { model = buildModel(); render(); }
+  });
+})();
+</script>
+</body>
+</html>
