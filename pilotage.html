@@ -542,8 +542,12 @@ body { overflow: hidden; }
         const teamCols = discovered.filter(c => c !== primary);
         // Grist refuse d'écrire dans une colonne formule : le formulaire de
         // création ne propose l'équipe que s'il existe une colonne
-        // inscriptible, et il annonce laquelle par son vrai libellé.
-        const writable = teamCols.find(c => !meta.some(m => m.id === c && m.isFormula)) || null;
+        // inscriptible, et il annonce laquelle par son vrai libellé. Les trois
+        // colonnes que le formulaire porte déjà en propre sont exclues, sinon
+        // elles apparaîtraient deux fois et le doublon écraserait la liste.
+        const own = [cols.Etablissement, cols.Laboratoire, cols.EquipeCluster].filter(Boolean);
+        const writable = teamCols.find(c =>
+          !own.includes(c) && !meta.some(m => m.id === c && m.isFormula)) || null;
         const label = (meta.find(m => m.id === writable) || {}).label || writable;
         return {
           tableId, cols,
@@ -1388,7 +1392,8 @@ body { overflow: hidden; }
     Object.keys(conf.selects || {}).forEach(name => {
       const spec = conf.selects[name];
       selects[name] = createMultiSelect(form.querySelector('#ms-' + name), {
-        values: spec.values, selected: spec.selected || [], labelAll: 'Aucune sélection'
+        values: spec.values, selected: spec.selected || [],
+        labelAll: spec.labelAll || 'Aucune sélection'
       });
     });
     form.addEventListener('submit', async (e) => {
@@ -1462,10 +1467,10 @@ body { overflow: hidden; }
     });
   }
 
-  function teamOptions() {
-    return model.teams.slice()
-      .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
-      .map(t => '<option value="' + t.id + '">' + H(t.name + (t.labo ? ' — ' + t.labo : '')) + '</option>').join('');
+  // Les partenaires que proposent les formulaires d'opportunité. Les prospects
+  // en font partie : c'est souvent à eux que se rattache une idée.
+  function sortedPartners() {
+    return model.partners.slice().sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   }
 
   function selectField(label, name, values, current, extra) {
@@ -1532,30 +1537,36 @@ body { overflow: hidden; }
     const typesActuels = Array.isArray(rawType)
       ? rawType.slice(1).filter(v => typeof v === 'string')
       : (project.dispositif ? [project.dispositif] : []);
+    const partenaires = sortedPartners();
+    const equipesLibres = model.teams.slice().sort((a, b) => a.name.localeCompare(b.name, 'fr'));
 
     openModal({
       title: 'Éditer : ' + project.title,
       submit: 'Enregistrer',
       selects: {
         type: { values: dispositifs, selected: typesActuels },
+        partner: {
+          values: partenaires.map(p => p.name),
+          selected: partenaires.filter(p => project.partnerIds.includes(p.id)).map(p => p.name),
+          labelAll: 'Projet interne (aucun partenaire)'
+        },
         etablissement: { values: etabs.map(s => s.name), selected: structureNames(etabs, refIdsFromValue(row[opp.cols.Etablissement])) },
         laboratoire: { values: labos.map(s => s.name), selected: structureNames(labos, refIdsFromValue(row[opp.cols.Laboratoire])) },
-        equipe: { values: equipes.map(s => s.name), selected: structureNames(equipes, refIdsFromValue(row[opp.cols.EquipeCluster])) }
+        equipe: { values: equipes.map(s => s.name), selected: structureNames(equipes, refIdsFromValue(row[opp.cols.EquipeCluster])) },
+        team: {
+          values: equipesLibres.map(t => t.name),
+          selected: structureNames(equipesLibres, refIdsFromValue(row[opp.teamWriteCol]))
+        }
       },
       fields:
         field('Sujet', '<input name="sujet" value="' + H(project.title) + '" required>') +
         msField('Type', 'type') +
         selectField('Étape', 'statut', stages, project.stage) +
-        selectField('Partenaire', 'partner', model.partners.slice()
-          .sort((a, b) => a.name.localeCompare(b.name, 'fr')).map(p => p.name), project.partnerName,
-          '<option value="">— Projet interne (sans partenaire) —</option>') +
+        msField('Partenaire', 'partner') +
         (opp.cols.Etablissement ? msField('Établissement', 'etablissement') : '') +
         (opp.cols.Laboratoire ? msField('Laboratoire', 'laboratoire') : '') +
         (opp.cols.EquipeCluster ? msField('Équipe Cluster', 'equipe') : '') +
-        (opp.teamWriteCol
-          ? field(opp.teamWriteLabel || 'Équipe de recherche',
-              '<select name="team"><option value="">—</option>' + teamOptions() + '</select>')
-          : '') +
+        (opp.teamWriteCol ? msField(opp.teamWriteLabel || 'Équipe de recherche', 'team') : '') +
         field('Montant (€)', '<input type="number" name="montant" value="' + (project.montant || '') + '" min="0" step="1000">') +
         field('Date de début', '<input type="date" name="debut" value="' + (project.stageSince ? gristDateToInputValue(project.stageSince) : '') + '">') +
         field('Échéance / date de dépôt', '<input type="date" name="echeance" value="' + (project.depotDue ? gristDateToInputValue(project.depotDue) : '') + '">'),
@@ -1574,19 +1585,13 @@ body { overflow: hidden; }
         if (opp.cols.Montant && form.montant.value) fields[opp.cols.Montant] = Number(form.montant.value);
         if (opp.cols.DateDebut && form.debut.value) fields[opp.cols.DateDebut] = inputValueToGristDate(form.debut.value);
         if (opp.cols.Echeance && form.echeance.value) fields[opp.cols.Echeance] = inputValueToGristDate(form.echeance.value);
-        if (opp.cols.Partenaires && form.partner.value) {
-          const partner = model.partners.find(x => x.name === form.partner.value);
-          if (partner) fields[opp.cols.Partenaires] = ['L', partner.id];
-        }
-        [['Etablissement', 'etablissement', etabs], ['Laboratoire', 'laboratoire', labos],
-         ['EquipeCluster', 'equipe', equipes]].forEach(([col, name, list]) => {
-          if (!opp.cols[col]) return;
+        [[opp.cols.Partenaires, 'partner', partenaires], [opp.cols.Etablissement, 'etablissement', etabs],
+         [opp.cols.Laboratoire, 'laboratoire', labos], [opp.cols.EquipeCluster, 'equipe', equipes],
+         [opp.teamWriteCol, 'team', equipesLibres]].forEach(([col, name, list]) => {
+          if (!col) return;
           const ids = structureIds(list, selects[name].getSelected());
-          if (ids.length) fields[opp.cols[col]] = ['L', ...ids];
+          if (ids.length) fields[col] = ['L', ...ids];
         });
-        if (opp.teamWriteCol && form.team && form.team.value) {
-          fields[opp.teamWriteCol] = ['L', Number(form.team.value)];
-        }
         try {
           if (Object.keys(fields).length > 0) {
             await updateRecord(opp.tableId, projectId, fields);
@@ -1608,29 +1613,28 @@ body { overflow: hidden; }
     const etabs = getStructuresForForm('etablissement');
     const labos = getStructuresForForm('laboratoire');
     const equipes = getStructuresForForm('equipe');
+    const partenaires = sortedPartners();
+    const equipesLibres = model.teams.slice().sort((a, b) => a.name.localeCompare(b.name, 'fr'));
     openModal({
       title: 'Nouvelle opportunité',
       submit: 'Créer l’opportunité',
       selects: {
         type: { values: dispositifs },
+        partner: { values: partenaires.map(p => p.name), labelAll: 'Projet interne (aucun partenaire)' },
         etablissement: { values: etabs.map(s => s.name) },
         laboratoire: { values: labos.map(s => s.name) },
-        equipe: { values: equipes.map(s => s.name) }
+        equipe: { values: equipes.map(s => s.name) },
+        team: { values: equipesLibres.map(t => t.name) }
       },
       fields:
         field('Sujet', '<input name="sujet" required>') +
         msField('Type', 'type') +
         selectField('Étape', 'statut', stages, stage || stages[0]) +
-        selectField('Partenaire', 'partner', model.partners.slice()
-          .sort((a, b) => a.name.localeCompare(b.name, 'fr')).map(p => p.name), '',
-          '<option value="">— Projet interne (sans partenaire) —</option>') +
+        msField('Partenaire', 'partner') +
         (opp.cols.Etablissement ? msField('Établissement', 'etablissement') : '') +
         (opp.cols.Laboratoire ? msField('Laboratoire', 'laboratoire') : '') +
         (opp.cols.EquipeCluster ? msField('Équipe Cluster', 'equipe') : '') +
-        (opp.teamWriteCol
-          ? field(opp.teamWriteLabel || 'Équipe de recherche',
-              '<select name="team"><option value="">—</option>' + teamOptions() + '</select>')
-          : '') +
+        (opp.teamWriteCol ? msField(opp.teamWriteLabel || 'Équipe de recherche', 'team') : '') +
         field('Montant (€)', '<input type="number" name="montant" min="0" step="1000">') +
         field('Date de début', '<input type="date" name="debut">') +
         field('Échéance / date de dépôt', '<input type="date" name="echeance">'),
@@ -1647,19 +1651,13 @@ body { overflow: hidden; }
         if (opp.cols.Montant && form.montant.value) fields[opp.cols.Montant] = Number(form.montant.value);
         if (opp.cols.DateDebut && form.debut.value) fields[opp.cols.DateDebut] = inputValueToGristDate(form.debut.value);
         if (opp.cols.Echeance && form.echeance.value) fields[opp.cols.Echeance] = inputValueToGristDate(form.echeance.value);
-        if (opp.cols.Partenaires && form.partner.value) {
-          const partner = model.partners.find(x => x.name === form.partner.value);
-          if (partner) fields[opp.cols.Partenaires] = ['L', partner.id];
-        }
-        [['Etablissement', 'etablissement', etabs], ['Laboratoire', 'laboratoire', labos],
-         ['EquipeCluster', 'equipe', equipes]].forEach(([col, name, list]) => {
-          if (!opp.cols[col]) return;
+        [[opp.cols.Partenaires, 'partner', partenaires], [opp.cols.Etablissement, 'etablissement', etabs],
+         [opp.cols.Laboratoire, 'laboratoire', labos], [opp.cols.EquipeCluster, 'equipe', equipes],
+         [opp.teamWriteCol, 'team', equipesLibres]].forEach(([col, name, list]) => {
+          if (!col) return;
           const ids = structureIds(list, selects[name].getSelected());
-          if (ids.length) fields[opp.cols[col]] = ['L', ...ids];
+          if (ids.length) fields[col] = ['L', ...ids];
         });
-        if (opp.teamWriteCol && form.team && form.team.value) {
-          fields[opp.teamWriteCol] = ['L', Number(form.team.value)];
-        }
         try {
           await addRecord(opp.tableId, fields);
           await refresh();
