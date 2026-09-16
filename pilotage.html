@@ -475,6 +475,9 @@ body { overflow: hidden; }
         Partenaires: ['Partenaires', 'Partenaire', 'Structures', 'Structure'],
         DateDebut: ['DateDebut', 'Date_Debut', 'Date de début'],
         Echeance: ['Echeance', 'Echéance', 'Date_fin', 'Date de dépôt'],
+        Etablissement: ['Etablissement(s) Cluster', 'Etablissement_Cluster', 'Etablissement Cluster'],
+        Laboratoire: ['Laboratoire(s) Cluster', 'Laboratoire_Cluster', 'Laboratoire Cluster'],
+        EquipeCluster: ['Equipe(s) Cluster', 'EquipeCluster', 'Équipe_Cluster', 'Équipe Cluster'],
         // Optionnelles : le jour où ces colonnes existent, la règle de
         // suggestion "pièce manquante" s'allume d'elle-même.
         PiecesAttendues: ['PiecesAttendues', 'Lettres attendues', 'Pièces attendues'],
@@ -756,7 +759,10 @@ body { overflow: hidden; }
       });
 
     return {
-      projects, partners, teams, interactions, actions,
+      projects, partners, teams, interactions, actions, structures: structures.map(s => ({
+        id: s.id,
+        name: txt(formatValue(sField(s, 'Nom'))) || ('#' + s.id)
+      })),
       contacts: cont.records.length,
       stages: stageChoices.length ? stageChoices : orderStages(projects.map(p => p.stage))
     };
@@ -1450,53 +1456,85 @@ body { overflow: hidden; }
     return field(label, '<select name="' + name + '">' + options + '</select>');
   }
 
-  // Création d'une opportunité depuis le Kanban. `stage` pré-sélectionne
-  // l'étape quand on part du bouton d'une colonne.
+  function multiSelectField(label, name, values) {
+    const checkboxes = values.map(v =>
+      '<label style="display:flex;gap:8px;align-items:center;margin:4px 0"><input type="checkbox" name="' + name + '" value="' + H(v) + '"> ' + H(v) + '</label>'
+    ).join('');
+    return field(label, '<div style="padding:6px">' + checkboxes + '</div>');
+  }
+
+  function structureSelectField(label, name, structures) {
+    const options = structures.map(s =>
+      '<label style="display:flex;gap:8px;align-items:center;margin:4px 0"><input type="checkbox" name="' + name + '" value="' + s.id + '" data-name="' + H(s.name) + '"> ' + H(s.name) + '</label>'
+    ).join('');
+    return field(label, '<div style="padding:6px;max-height:150px;overflow-y:auto">' + options + '</div>');
+  }
+
+  // Création d’une opportunité depuis le Kanban. `stage` pré-sélectionne
+  // l’étape quand on part du bouton d’une colonne.
   function openOpportuniteModal(stage) {
     const opp = related.opportunites;
-    if (!opp.tableId) { setStatus('Table Opportunités introuvable'); return; }
+    if (!opp.tableId) { setStatus(‘Table Opportunités introuvable’); return; }
     const dispositifs = typeChoices.length ? typeChoices : PILOTAGE_DISPOSITIFS.map(d => d.label);
     const stages = model.stages;
+    const structures = model.structures || [];
     openModal({
-      title: 'Nouvelle opportunité',
-      submit: 'Créer l’opportunité',
+      title: ‘Nouvelle opportunité’,
+      submit: ‘Créer l’opportunité’,
       fields:
-        field('Sujet', '<input name="sujet" required>') +
-        selectField('Dispositif', 'type', dispositifs, dispositifs[0]) +
-        selectField('Étape', 'statut', stages, stage || stages[0]) +
-        // Sans partenaire, c'est un projet interne : le champ n'est pas requis.
-        selectField('Partenaire', 'partner', model.partners.slice()
-          .sort((a, b) => a.name.localeCompare(b.name, 'fr')).map(p => p.name), '',
-          '<option value="">— Projet interne (sans partenaire) —</option>') +
+        field(‘Sujet’, ‘<input name="sujet" required>’) +
+        multiSelectField(‘Type’, ‘type’, dispositifs) +
+        selectField(‘Étape’, ‘statut’, stages, stage || stages[0]) +
+        selectField(‘Partenaire’, ‘partner’, model.partners.slice()
+          .sort((a, b) => a.name.localeCompare(b.name, ‘fr’)).map(p => p.name), ‘’,
+          ‘<option value="">— Projet interne (sans partenaire) —</option>’) +
+        (opp.cols.Etablissement ? structureSelectField(‘Établissement’, ‘etablissement’, structures) : ‘’) +
+        (opp.cols.Laboratoire ? structureSelectField(‘Laboratoire’, ‘laboratoire’, structures) : ‘’) +
+        (opp.cols.EquipeCluster ? structureSelectField(‘Équipe Cluster’, ‘equipe’, structures) : ‘’) +
         (opp.teamWriteCol
-          ? field(opp.teamWriteLabel || 'Équipe de recherche',
-              '<select name="team"><option value="">—</option>' + teamOptions() + '</select>')
-          : '') +
-        field('Montant (€)', '<input type="number" name="montant" min="0" step="1000">') +
-        field('Date de début', '<input type="date" name="debut">') +
-        field('Échéance / date de dépôt', '<input type="date" name="echeance">'),
+          ? field(opp.teamWriteLabel || ‘Équipe de recherche’,
+              ‘<select name="team"><option value="">—</option>’ + teamOptions() + ‘</select>’)
+          : ‘’) +
+        field(‘Montant (€)’, ‘<input type="number" name="montant" min="0" step="1000">’) +
+        field(‘Date de début’, ‘<input type="date" name="debut">’) +
+        field(‘Échéance / date de dépôt’, ‘<input type="date" name="echeance">’),
       onSubmit: async (form) => {
         const sujet = form.sujet.value.trim();
-        if (!sujet) return 'Un sujet est nécessaire.';
+        if (!sujet) return ‘Un sujet est nécessaire.’;
         const fields = {};
         if (opp.cols.Sujet) fields[opp.cols.Sujet] = sujet;
-        if (opp.cols.Type) fields[opp.cols.Type] = form.type.value;
+        if (opp.cols.Type) {
+          const types = Array.from(form.querySelectorAll(‘input[name="type"]:checked’)).map(x => x.value);
+          if (types.length) fields[opp.cols.Type] = types;
+        }
         if (opp.cols.Statut) fields[opp.cols.Statut] = form.statut.value;
         if (opp.cols.Montant && form.montant.value) fields[opp.cols.Montant] = Number(form.montant.value);
         if (opp.cols.DateDebut && form.debut.value) fields[opp.cols.DateDebut] = inputValueToGristDate(form.debut.value);
         if (opp.cols.Echeance && form.echeance.value) fields[opp.cols.Echeance] = inputValueToGristDate(form.echeance.value);
         if (opp.cols.Partenaires && form.partner.value) {
           const partner = model.partners.find(x => x.name === form.partner.value);
-          if (partner) fields[opp.cols.Partenaires] = ['L', partner.id];
+          if (partner) fields[opp.cols.Partenaires] = [‘L’, partner.id];
+        }
+        if (opp.cols.Etablissement) {
+          const evals = Array.from(form.querySelectorAll(‘input[name="etablissement"]:checked’)).map(x => Number(x.value));
+          if (evals.length) fields[opp.cols.Etablissement] = [‘L’, ...evals];
+        }
+        if (opp.cols.Laboratoire) {
+          const labs = Array.from(form.querySelectorAll(‘input[name="laboratoire"]:checked’)).map(x => Number(x.value));
+          if (labs.length) fields[opp.cols.Laboratoire] = [‘L’, ...labs];
+        }
+        if (opp.cols.EquipeCluster) {
+          const equipes = Array.from(form.querySelectorAll(‘input[name="equipe"]:checked’)).map(x => Number(x.value));
+          if (equipes.length) fields[opp.cols.EquipeCluster] = [‘L’, ...equipes];
         }
         if (opp.teamWriteCol && form.team && form.team.value) {
-          fields[opp.teamWriteCol] = ['L', Number(form.team.value)];
+          fields[opp.teamWriteCol] = [‘L’, Number(form.team.value)];
         }
         try {
           await addRecord(opp.tableId, fields);
           await refresh();
-          setStatus('Opportunité créée ✓');
-        } catch (err) { console.error(err); return 'Erreur d’enregistrement.'; }
+          setStatus(‘Opportunité créée ✓’);
+        } catch (err) { console.error(err); return ‘Erreur d’enregistrement.’; }
       }
     });
   }
