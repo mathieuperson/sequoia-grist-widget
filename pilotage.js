@@ -32,8 +32,8 @@ const PILOTAGE_STAGES = [
   { label: 'Montage',             families: ['pondere'] },
   { label: 'Contractualisation',  families: ['pondere'] },
   { label: 'Projet lancé',        families: ['lance'] },
-  { label: 'Concrétisé',          families: ['lance'] },
-  { label: 'Terminé / abandonné', families: ['clos'] },
+  { label: 'Concrétisé / En cours', families: ['lance'] },
+  { label: 'Terminé',             families: ['clos'] },
   { label: 'Abandonné',           families: ['clos'] }
 // La clé de comparaison est dérivée du libellé, pas saisie à côté : deux
 // sources de vérité pour la même chose finiraient par diverger.
