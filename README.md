@@ -90,6 +90,12 @@ Le report écrit l'échéance de l'action, ou celle de l'interaction quand la li
 curseur, `1`–`3` la reportent, `/` va à la recherche. Les raccourcis ne s'appliquent qu'en vue « Mes actions »,
 jamais pendant une saisie ni un formulaire ouvert.
 
+**Éditer.** Cliquer une ligne ouvre son formulaire — la case à cocher et les boutons de report gardent leur
+geste propre. `e` (ou `Entrée`) l'ouvre sur la ligne au curseur. Une action de la table s'édite en entier et
+peut être supprimée (en deux clics, le bouton se réarmant en « Confirmer ») ; une action déduite d'un échange
+n'expose que ce que l'interaction porte — son intitulé et son échéance — et n'est pas supprimable, effacer
+l'interaction emporterait son compte rendu.
+
 **Charge du jour.** Le sous-titre annonce la somme des efforts estimés des actions en retard et du jour
 (« 2 h 45 à traiter aujourd'hui ») : de quoi voir qu'on a prévu six heures dans une journée qui n'en compte
 pas tant. Le filtre **Moins de 15 min** ne garde que ce qui se case entre deux réunions.
@@ -319,6 +325,6 @@ groupes « En retard / Aujourd'hui / Cette semaine » ne se vident pas avec le t
 
 - `common.css` / `common.js` sont partagés par tous les widgets (design, helpers de formatage, couleurs de statut lues dans le document, upload/téléchargement de pièces jointes via l'API REST Grist).
 - `pilotage.js` porte la logique métier du widget de pilotage en fonctions pures (aucun accès à `grist` ni au DOM), pour qu'elle soit testable sans navigateur ; `pilotage.html` ne fait que lire les tables, rendre et écrire.
-- Le filtre à choix multiple (bouton + panneau à cases à cocher, recherche, tout cocher/décocher) est partagé : `msFilterMarkup()` / `createMultiSelect()` dans `common.js`, styles `.ms-*` dans `common.css`. Utilisé par `pilotage.html` et `cifre-financement.html`.
+- Le filtre à choix multiple (bouton + panneau à cases à cocher, recherche, tout cocher/décocher) est partagé : `msFilterMarkup()` / `createMultiSelect()` dans `common.js`, styles `.ms-*` dans `common.css`. Utilisé par `pilotage.html` et `cifre-financement.html`, y compris comme champ de formulaire (le libellé est alors porté par le champ et masqué dans le bouton). **Les valeurs retenues remontent en tête du panneau**, séparées du reste par un filet : sur deux cents structures, ce qui est déjà coché est introuvable au milieu de l'ordre alphabétique. L'ordre n'est recalculé qu'à l'ouverture du panneau, pas à chaque clic — une case qui sauterait sous le curseur ferait décocher de travers.
 - `crm.html` écrit dans plusieurs tables via `grist.docApi.applyUserActions()` (helpers `addRecord` / `updateRecord` / `removeRecord` de `common.js`) et résout leurs colonnes avec `resolveColumns()`.
 - Le compte-rendu (CR) accepte le markdown ; coller une image l'upload automatiquement en pièce jointe Grist et l'insère dans le texte.

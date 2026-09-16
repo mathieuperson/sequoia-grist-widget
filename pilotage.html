@@ -328,6 +328,14 @@ body { overflow: hidden; }
 /* La ligne au curseur clavier, pour savoir sur quoi porteront x et 1-3. */
 .pil-action.cursor { background: var(--sequoia-green-light); }
 
+/* La ligne entière est cliquable pour l'éditer ; la case et les boutons de
+   report gardent leur propre geste. */
+.pil-action { cursor: pointer; }
+.pil-action .pil-check-wrap, .pil-action .pil-snooze { cursor: default; }
+.pil-modal-note { font-size: 12px; color: var(--text-muted); margin: 0; }
+.pil-btn.danger { border-color: var(--danger); color: var(--danger); }
+.pil-btn.danger:hover { background: var(--danger); color: #fff; }
+
 /* Priorité : un signe devant l'intitulé plutôt qu'une étiquette de plus, la
    ligne en porte déjà assez. Le rouge est celui des retards. */
 .pil-prio { font-family: var(--pil-mono); font-weight: 700; font-size: 12px; margin-right: 5px; }
@@ -1307,7 +1315,7 @@ body { overflow: hidden; }
           ' aria-pressed="' + (actionsCourtes ? 'true' : 'false') + '">Moins de 15 min</button>' +
         '<span class="pil-kbd-help">' +
           '<kbd>n</kbd> nouvelle · <kbd>j</kbd>/<kbd>k</kbd> parcourir · <kbd>x</kbd> cocher · ' +
-          '<kbd>1</kbd>-<kbd>3</kbd> reporter · <kbd>/</kbd> rechercher' +
+          '<kbd>e</kbd> éditer · <kbd>1</kbd>-<kbd>3</kbd> reporter · <kbd>/</kbd> rechercher' +
         '</span>' +
       '</div>' +
       suggestBlock +
@@ -1515,6 +1523,100 @@ body { overflow: hidden; }
     }
   }
 
+  // Édition d'une action. Celles qui viennent de la table s'éditent en
+  // entier ; une action déduite d'un échange n'a que ce que l'interaction
+  // porte — son intitulé (les « suites ») et son échéance.
+  function editActionModal(key) {
+    const a = model.actions.find(x => x.id === key);
+    if (!a) return;
+    const deTable = a.source === 'table';
+    const act = related.actions || { cols: {} };
+    const rel = deTable ? act : related.interactions;
+    if (!rel.tableId) { setStatus('Table introuvable'); return; }
+
+    const partenaires = sortedPartners();
+    const projets = model.projects.slice().sort((a2, b2) => a2.title.localeCompare(b2.title, 'fr'));
+    const selects = deTable ? {
+      partner: {
+        values: partenaires.map(p => p.name),
+        selected: partenaires.filter(p => p.id === a.partnerId).map(p => p.name),
+        labelAll: 'Aucun partenaire'
+      },
+      projet: {
+        values: projets.map(p => p.title),
+        selected: projets.filter(p => p.id === a.projectId).map(p => p.title),
+        labelAll: 'Aucune opportunité'
+      }
+    } : {};
+
+    openModal({
+      title: 'Éditer : ' + a.label,
+      submit: 'Enregistrer',
+      selects,
+      fields:
+        field('Intitulé', '<input name="label" value="' + H(a.label) + '" required>') +
+        field('Échéance', '<input type="date" name="due" value="' +
+          (a.due ? gristDateToInputValue(a.due) : '') + '">') +
+        (deTable && act.cols.Partenaires ? msField('Partenaire', 'partner') : '') +
+        (deTable && act.cols.Opportunite ? msField('Opportunité', 'projet') : '') +
+        (deTable && act.cols.Priorite ? selectField('Priorité', 'priorite',
+          PILOTAGE_PRIORITES.map(x => x.label), (prioriteOf(a.priorite) || {}).label || 'Normale') : '') +
+        (deTable && act.cols.Duree ? field('Durée estimée (min)',
+          '<input type="number" name="duree" min="0" step="15" value="' + (a.duree || '') + '">') : '') +
+        (deTable && act.cols.Debut ? field('À faire à partir du',
+          '<input type="date" name="debut" value="' + (a.start ? gristDateToInputValue(a.start) : '') + '">') : '') +
+        (deTable && act.cols.Recurrence ? field('Répétition',
+          '<input name="recurrence" value="' + H(a.recurrence) + '" placeholder="chaque lundi…">') : '') +
+        (deTable && act.cols.Notes ? field('Notes',
+          '<textarea name="notes">' + H(a.notes) + '</textarea>') : '') +
+        (deTable ? '' : '<p class="pil-modal-note">Cette action vient d’une interaction : ' +
+          'seuls son intitulé et son échéance s’éditent ici. Le compte rendu de l’échange se modifie ' +
+          'dans la fiche du partenaire.</p>'),
+      // La suppression ne porte que sur une action de la table : effacer
+      // l'interaction dont une action est déduite emporterait son compte rendu.
+      remove: deTable ? async () => {
+        await removeRecord(act.tableId, a.rowId);
+        await refresh();
+        setStatus('Action supprimée');
+      } : null,
+      onSubmit: async (form, sel) => {
+        const label = form.label.value.trim();
+        if (!label) return 'Un intitulé est nécessaire.';
+        const fields = {};
+        const due = form.due.value ? inputValueToGristDate(form.due.value) : null;
+        if (deTable) {
+          if (act.cols.Intitule) fields[act.cols.Intitule] = label;
+          if (act.cols.Echeance) fields[act.cols.Echeance] = due;
+          if (act.cols.Priorite && form.priorite) fields[act.cols.Priorite] = form.priorite.value;
+          if (act.cols.Duree && form.duree) fields[act.cols.Duree] = Number(form.duree.value) || null;
+          if (act.cols.Debut && form.debut) {
+            fields[act.cols.Debut] = form.debut.value ? inputValueToGristDate(form.debut.value) : null;
+          }
+          if (act.cols.Recurrence && form.recurrence) fields[act.cols.Recurrence] = form.recurrence.value.trim();
+          if (act.cols.Notes && form.notes) fields[act.cols.Notes] = form.notes.value.trim();
+          if (act.cols.Partenaires) {
+            const ids = structureIds(partenaires, sel.partner.getSelected());
+            fields[act.cols.Partenaires] = ids.length ? refValue(act, act.cols.Partenaires, ids) : null;
+          }
+          if (act.cols.Opportunite) {
+            const ids = sel.projet.getSelected()
+              .map(t => (projets.find(p => p.title === t) || {}).id).filter(Boolean);
+            fields[act.cols.Opportunite] = ids.length ? refValue(act, act.cols.Opportunite, ids) : null;
+          }
+        } else {
+          const inter = related.interactions;
+          if (inter.cols.Suites) fields[inter.cols.Suites] = label;
+          if (inter.cols.ProchaineEcheance) fields[inter.cols.ProchaineEcheance] = due;
+        }
+        try {
+          await updateRecord(rel.tableId, a.rowId, fields);
+          await refresh();
+          setStatus('Action enregistrée ✓');
+        } catch (err) { console.error(err); return 'Erreur d’enregistrement.'; }
+      }
+    });
+  }
+
   // L'occurrence suivante reprend tout de l'action soldée sauf son état :
   // même intitulé, mêmes rattachements, même règle de répétition.
   function nextRecurrenceFields(act, a, due) {
@@ -1677,12 +1779,25 @@ body { overflow: hidden; }
       '<form class="pil-modal"><h2>' + H(conf.title) + '</h2>' +
       '<div class="pil-modal-body">' + conf.fields + '</div>' +
       '<div class="pil-modal-foot"><span class="pil-modal-msg" id="modal-msg"></span>' +
+        (conf.remove ? '<button type="button" class="pil-btn danger" data-remove>Supprimer</button>' : '') +
         '<button type="button" class="pil-btn" data-close>Annuler</button>' +
         '<button type="submit" class="pil-btn primary">' + H(conf.submit) + '</button>' +
       '</div></form></div>';
     const form = host.querySelector('form');
     const close = () => { host.innerHTML = ''; };
     host.querySelector('[data-close]').addEventListener('click', close);
+    // Supprimer demande confirmation : c'est le seul geste du formulaire qui
+    // ne se rattrape pas.
+    const btnRemove = host.querySelector('[data-remove]');
+    if (btnRemove) btnRemove.addEventListener('click', async () => {
+      if (!btnRemove.dataset.armed) {
+        btnRemove.dataset.armed = '1';
+        btnRemove.textContent = 'Confirmer la suppression';
+        return;
+      }
+      try { await conf.remove(); close(); }
+      catch (err) { console.error(err); el('modal-msg').textContent = 'Suppression impossible.'; }
+    });
     host.querySelector('.pil-modal-backdrop').addEventListener('click', (e) => {
       if (e.target === e.currentTarget) close();
     });
@@ -1865,23 +1980,26 @@ body { overflow: hidden; }
   // qu'il est saisi ("Établissement", "Établissement d'enseignement supérieur").
   function getStructuresForForm(role) {
     const roleOf = (s) => normalizeKey(formatValue(sField(s, 'RechercheStructure')));
+    const typeOf = (s) => normalizeKey(formatValue(sField(s, 'TypeActeur')));
     const matches = {
-      etablissement: (s) => roleOf(s).includes('etablissement'),
+      // Un établissement du Cluster est un acteur académique, ou un acteur de
+      // recherche dont la structure est un institut. Une liste vide dit alors
+      // qu'aucune structure n'est typée ainsi — c'est une information, pas un
+      // champ à remplir de tout le reste.
+      etablissement: (s) => typeOf(s).includes('academique') ||
+        (typeOf(s).includes('recherche') && roleOf(s) === 'institut'),
       laboratoire: (s) => roleOf(s).includes('laboratoire'),
       // Une équipe se reconnaît aussi à son activité, comme dans isTeam().
       equipe: (s) => roleOf(s).includes('equipe') || isTeam(s)
     }[role];
-    const fiche = (s) => ({
-      id: s.id,
-      name: txt(formatValue(sField(s, 'Nom'))) || ('#' + s.id),
-      labo: txt(formatValue(sField(s, 'RechercheEquipeLabo')))
-    });
-    const parRole = structures.filter(s => !matches || matches(s));
-    // Aucune structure ne porte ce rôle : plutôt qu'un champ vide, qui empêche
-    // de saisir, on propose tout ce qui n'est pas une équipe de recherche —
-    // celles-ci ont déjà leur propre champ.
-    const liste = parRole.length ? parRole : structures.filter(s => !isTeam(s));
-    return liste.map(fiche).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+    return structures
+      .filter(s => !matches || matches(s))
+      .map(s => ({
+        id: s.id,
+        name: txt(formatValue(sField(s, 'Nom'))) || ('#' + s.id),
+        labo: txt(formatValue(sField(s, 'RechercheEquipeLabo')))
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   }
 
   // Les équipes rattachées aux laboratoires choisis. Une équipe porte le nom de
@@ -2080,6 +2198,13 @@ body { overflow: hidden; }
     if (sugg) return acceptSuggestion(sugg.dataset.suggest);
     const snooze = e.target.closest('[data-snooze]');
     if (snooze) return snoozeAction(snooze.dataset.snooze, Number(snooze.dataset.due));
+    // Cliquer la ligne l'édite — sauf sur la case à cocher et les boutons de
+    // report, qui ont déjà leur geste.
+    const ligne = e.target.closest('.pil-action');
+    if (ligne && !e.target.closest('.pil-check-wrap') && !e.target.closest('[data-snooze]')) {
+      const box = ligne.querySelector('.pil-check');
+      if (box) return editActionModal(box.dataset.action);
+    }
     if (e.target.closest('#quick-add')) return submitQuickAction();
     if (e.target.closest('#flt-courtes')) {
       actionsCourtes = !actionsCourtes;
@@ -2150,6 +2275,12 @@ body { overflow: hidden; }
       e.preventDefault();
       const box = courante.querySelector('.pil-check');
       if (box) toggleAction(box.dataset.action, !box.checked);
+      return;
+    }
+    if (e.key === 'Enter' || e.key === 'e') {
+      e.preventDefault();
+      const box = courante.querySelector('.pil-check');
+      if (box) editActionModal(box.dataset.action);
       return;
     }
     if (['1', '2', '3'].includes(e.key)) {

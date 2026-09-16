@@ -799,10 +799,24 @@ function createMultiSelect(root, conf) {
     btn.classList.toggle('active', n > 0);
   }
 
+  // Les valeurs retenues passent devant : sur une liste de deux cents
+  // structures, ce qu'on a déjà coché est introuvable au milieu de l'ordre
+  // alphabétique. L'ordre n'est recalculé qu'à l'ouverture du panneau, pas à
+  // chaque clic — une case qui sauterait sous le curseur ferait décocher de
+  // travers. Chaque groupe garde l'ordre reçu.
+  function orderedValues() {
+    const retenues = values.filter(v => selected.includes(v));
+    const reste = values.filter(v => !selected.includes(v));
+    return retenues.concat(reste);
+  }
+
   function renderOptions() {
+    const ordre = orderedValues();
+    const coupure = selected.filter(v => values.includes(v)).length;
     optionsEl.innerHTML = values.length
-      ? values.map(v =>
-          '<label class="ms-option"><input type="checkbox" value="' + escapeHtml(v) + '"' +
+      ? ordre.map((v, i) =>
+          '<label class="ms-option' + (i === coupure && coupure ? ' ms-first-unselected' : '') +
+          '"><input type="checkbox" value="' + escapeHtml(v) + '"' +
           (selected.includes(v) ? ' checked' : '') + '> ' + escapeHtml(v) + '</label>').join('')
       : '<div class="ms-empty">Aucune valeur</div>';
     optionsEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
@@ -828,7 +842,8 @@ function createMultiSelect(root, conf) {
     // Un seul panneau ouvert à la fois, y compris entre filtres voisins.
     document.querySelectorAll('.ms-filter-panel').forEach(p => { p.hidden = true; });
     panel.hidden = !willOpen;
-    if (willOpen) { search.value = ''; filterOptionRows(''); search.focus(); }
+    // À l'ouverture : remonter ce qui est retenu, et repartir sans filtre.
+    if (willOpen) { renderOptions(); search.value = ''; filterOptionRows(''); search.focus(); }
   });
   panel.addEventListener('click', (e) => e.stopPropagation());
   search.addEventListener('input', () => filterOptionRows(search.value.trim().toLowerCase()));
