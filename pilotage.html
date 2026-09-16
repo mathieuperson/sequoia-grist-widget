@@ -1363,12 +1363,6 @@ body { overflow: hidden; }
   // ---------------------------------------------------------------------
   // Popups (création d'une action, d'une note, d'un partenaire)
   // ---------------------------------------------------------------------
-  function partnerOptions() {
-    return model.partners.slice()
-      .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
-      .map(p => '<option value="' + p.id + '">' + H(p.name) + '</option>').join('');
-  }
-
   function openModal(conf) {
     const host = el('modal-host');
     host.innerHTML = '<div class="pil-modal-backdrop" role="dialog" aria-modal="true" aria-label="' + H(conf.title) + '">' +
@@ -1388,12 +1382,15 @@ body { overflow: hidden; }
     // Les sélecteurs multiples ne s'animent qu'une fois le markup dans le DOM.
     // `conf.selects` les déclare par nom ; onSubmit les reçoit pour lire la
     // sélection, un <form> ne portant pas ces champs.
+    // `spec.onChange` reçoit les autres composants : c'est ce qui permet à un
+    // champ de restreindre les valeurs d'un autre (les équipes d'un labo).
     const selects = {};
     Object.keys(conf.selects || {}).forEach(name => {
       const spec = conf.selects[name];
       selects[name] = createMultiSelect(form.querySelector('#ms-' + name), {
         values: spec.values, selected: spec.selected || [],
-        labelAll: spec.labelAll || 'Aucune sélection'
+        labelAll: spec.labelAll || 'Aucune sélection',
+        onChange: spec.onChange ? (selection) => spec.onChange(selection, selects) : null
       });
     });
     form.addEventListener('submit', async (e) => {
@@ -1411,14 +1408,16 @@ body { overflow: hidden; }
   }
 
   function openActionModal() {
+    const partenaires = sortedPartners();
     openModal({
       title: 'Créer une action',
       submit: 'Créer l’action',
+      selects: { partner: { values: partenaires.map(p => p.name) } },
       fields:
         field('Intitulé', '<input name="label" required>') +
-        field('Partenaire', '<select name="partner"><option value="">—</option>' + partnerOptions() + '</select>') +
+        msField('Partenaire', 'partner') +
         field('Échéance', '<input type="date" name="due" value="' + todayKey() + '">'),
-      onSubmit: async (form) => {
+      onSubmit: async (form, selects) => {
         const inter = related.interactions;
         if (!inter.tableId) return 'Table Interactions introuvable.';
         const label = form.label.value.trim();
@@ -1427,7 +1426,10 @@ body { overflow: hidden; }
         if (inter.cols.Suites) fields[inter.cols.Suites] = label;
         if (inter.cols.Objet) fields[inter.cols.Objet] = label;
         if (inter.cols.ProchaineEcheance) fields[inter.cols.ProchaineEcheance] = inputValueToGristDate(form.due.value);
-        if (inter.cols.Partenaires && form.partner.value) fields[inter.cols.Partenaires] = ['L', Number(form.partner.value)];
+        if (inter.cols.Partenaires) {
+          const ids = structureIds(partenaires, selects.partner.getSelected());
+          if (ids.length) fields[inter.cols.Partenaires] = ['L', ...ids];
+        }
         try {
           await addRecord(inter.tableId, fields);
           await refresh();
@@ -1438,26 +1440,32 @@ body { overflow: hidden; }
   }
 
   function openNoteModal() {
+    const partenaires = sortedPartners();
     openModal({
       title: 'Ajouter une note',
       submit: 'Enregistrer la note',
+      selects: { partner: { values: partenaires.map(p => p.name) } },
       fields:
-        field('Partenaire', '<select name="partner" required>' + partnerOptions() + '</select>') +
+        msField('Partenaire', 'partner') +
         field('Objet', '<input name="objet" required>') +
         field('Type', '<input name="type" value="Réunion">') +
         field('Compte rendu', '<textarea name="cr"></textarea>') +
         field('Date', '<input type="date" name="date" value="' + todayKey() + '">'),
-      onSubmit: async (form) => {
+      onSubmit: async (form, selects) => {
         const inter = related.interactions;
         if (!inter.tableId) return 'Table Interactions introuvable.';
         const objet = form.objet.value.trim();
         if (!objet) return 'Un objet est nécessaire.';
+        // Une note sans partenaire ne se rattache à rien : le choix multiple
+        // n'a pas d'équivalent du `required` d'un <select>.
+        const partenaireIds = structureIds(partenaires, selects.partner.getSelected());
+        if (!partenaireIds.length) return 'Un partenaire au moins est nécessaire.';
         const fields = {};
         if (inter.cols.Objet) fields[inter.cols.Objet] = objet;
         if (inter.cols.Date) fields[inter.cols.Date] = inputValueToGristDate(form.date.value);
         if (inter.cols.Type) fields[inter.cols.Type] = form.type.value.trim();
         if (inter.cols.CR && form.cr.value.trim()) fields[inter.cols.CR] = '<p>' + escapeHtml(form.cr.value.trim()) + '</p>';
-        if (inter.cols.Partenaires && form.partner.value) fields[inter.cols.Partenaires] = ['L', Number(form.partner.value)];
+        if (inter.cols.Partenaires) fields[inter.cols.Partenaires] = ['L', ...partenaireIds];
         try {
           await addRecord(inter.tableId, fields);
           await refresh();
@@ -1510,10 +1518,27 @@ body { overflow: hidden; }
       // Une équipe se reconnaît aussi à son activité, comme dans isTeam().
       equipe: (s) => roleOf(s).includes('equipe') || isTeam(s)
     }[role];
-    return structures
-      .filter(s => !matches || matches(s))
-      .map(s => ({ id: s.id, name: txt(formatValue(sField(s, 'Nom'))) || ('#' + s.id) }))
-      .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+    const fiche = (s) => ({
+      id: s.id,
+      name: txt(formatValue(sField(s, 'Nom'))) || ('#' + s.id),
+      labo: txt(formatValue(sField(s, 'RechercheEquipeLabo')))
+    });
+    const parRole = structures.filter(s => !matches || matches(s));
+    // Aucune structure ne porte ce rôle : plutôt qu'un champ vide, qui empêche
+    // de saisir, on propose tout ce qui n'est pas une équipe de recherche —
+    // celles-ci ont déjà leur propre champ.
+    const liste = parRole.length ? parRole : structures.filter(s => !isTeam(s));
+    return liste.map(fiche).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  }
+
+  // Les équipes rattachées aux laboratoires choisis. Une équipe porte le nom de
+  // son laboratoire dans « Laboratoire » ; si ce rattachement manque, on rend
+  // la liste entière plutôt que rien.
+  function equipesDesLabos(equipes, labos) {
+    if (!labos.length) return equipes;
+    const clefs = labos.map(normalizeKey);
+    const filtrees = equipes.filter(e => clefs.includes(normalizeKey(e.labo)));
+    return filtrees.length ? filtrees : equipes;
   }
 
   // Édition d’une opportunité existante
@@ -1539,6 +1564,8 @@ body { overflow: hidden; }
       : (project.dispositif ? [project.dispositif] : []);
     const partenaires = sortedPartners();
     const equipesLibres = model.teams.slice().sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+    // Les équipes proposées suivent les laboratoires retenus, dès l'ouverture.
+    const labosActuels = structureNames(labos, refIdsFromValue(row[opp.cols.Laboratoire]));
 
     openModal({
       title: 'Éditer : ' + project.title,
@@ -1551,8 +1578,15 @@ body { overflow: hidden; }
           labelAll: 'Projet interne (aucun partenaire)'
         },
         etablissement: { values: etabs.map(s => s.name), selected: structureNames(etabs, refIdsFromValue(row[opp.cols.Etablissement])) },
-        laboratoire: { values: labos.map(s => s.name), selected: structureNames(labos, refIdsFromValue(row[opp.cols.Laboratoire])) },
-        equipe: { values: equipes.map(s => s.name), selected: structureNames(equipes, refIdsFromValue(row[opp.cols.EquipeCluster])) },
+        laboratoire: {
+          values: labos.map(s => s.name),
+          selected: labosActuels,
+          onChange: (choisis, all) => all.equipe.setOptions(equipesDesLabos(equipes, choisis).map(e => e.name))
+        },
+        equipe: {
+          values: equipesDesLabos(equipes, labosActuels).map(e => e.name),
+          selected: structureNames(equipes, refIdsFromValue(row[opp.cols.EquipeCluster]))
+        },
         team: {
           values: equipesLibres.map(t => t.name),
           selected: structureNames(equipesLibres, refIdsFromValue(row[opp.teamWriteCol]))
@@ -1622,7 +1656,10 @@ body { overflow: hidden; }
         type: { values: dispositifs },
         partner: { values: partenaires.map(p => p.name), labelAll: 'Projet interne (aucun partenaire)' },
         etablissement: { values: etabs.map(s => s.name) },
-        laboratoire: { values: labos.map(s => s.name) },
+        laboratoire: {
+          values: labos.map(s => s.name),
+          onChange: (choisis, all) => all.equipe.setOptions(equipesDesLabos(equipes, choisis).map(e => e.name))
+        },
         equipe: { values: equipes.map(s => s.name) },
         team: { values: equipesLibres.map(t => t.name) }
       },
