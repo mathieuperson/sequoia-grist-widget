@@ -316,6 +316,39 @@ body { overflow: hidden; }
 .pil-action.done .pil-action-title { text-decoration: line-through; }
 .pil-action.done { opacity: 0.55; }
 
+/* Reporter : discret au repos, sinon trois boutons par ligne saturent la
+   liste ; révélé au survol de la ligne et au clavier. */
+.pil-snooze { display: flex; gap: 4px; justify-content: flex-end; margin-top: 5px; opacity: 0; transition: opacity .12s; }
+.pil-action:hover .pil-snooze, .pil-action:focus-within .pil-snooze, .pil-action.cursor .pil-snooze { opacity: 1; }
+.pil-snooze-btn {
+  font: inherit; font-size: 10.5px; padding: 2px 6px; border-radius: 5px;
+  border: 1px solid var(--border); background: var(--card-bg); color: var(--text-muted); cursor: pointer;
+}
+.pil-snooze-btn:hover { border-color: var(--sequoia-green); color: var(--sequoia-green-dark); }
+/* La ligne au curseur clavier, pour savoir sur quoi porteront x et 1-3. */
+.pil-action.cursor { background: var(--sequoia-green-light); }
+
+/* ---------- Saisie rapide ---------- */
+.pil-quick { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+.pil-quick-input {
+  flex: 1; min-width: 260px; min-height: 38px; padding: 8px 12px;
+  border: 1px solid var(--border); border-radius: 8px; font: inherit; font-size: 13.5px;
+  background: var(--card-bg); color: var(--text);
+}
+.pil-quick-input:focus-visible { outline: 2px solid var(--sequoia-green); outline-offset: -1px; }
+.pil-quick-hint { flex-basis: 100%; font-family: var(--pil-mono); font-size: 10.5px; color: var(--text-muted); min-height: 14px; }
+.pil-act-filters { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.pil-chip-btn {
+  font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 20px;
+  border: 1px solid var(--border); background: var(--card-bg); color: var(--text); cursor: pointer;
+}
+.pil-chip-btn.on { border-color: var(--sequoia-green); background: var(--sequoia-green-light); color: var(--sequoia-green-dark); font-weight: 600; }
+.pil-kbd-help { margin-left: auto; font-size: 10.5px; color: var(--text-muted); }
+.pil-kbd-help kbd {
+  font-family: var(--pil-mono); font-size: 10px; padding: 1px 4px;
+  border: 1px solid var(--border); border-radius: 4px; background: var(--pil-surface-2);
+}
+
 /* ---------- Popup ---------- */
 .pil-modal-backdrop {
   position: fixed; inset: 0; background: rgba(28, 35, 33, 0.38);
@@ -531,6 +564,10 @@ body { overflow: hidden; }
   let view = new URLSearchParams(location.search).get('vue') || 'dashboard';
   let query = '';
   let statusMsg = '';
+  // Vue « Mes actions » : filtre « moins de 15 min » (caser une tâche entre
+  // deux réunions) et ligne au curseur clavier.
+  let actionsCourtes = false;
+  let actionCursor = null;
   // Filtres du Kanban, chacun un choix multiple. Vides = tout passe.
   const projectFilters = { dispositif: [], partenaire: [], equipe: [] };
   const FILTER_LABELS = { dispositif: 'Dispositif', partenaire: 'Partenaire', equipe: 'Équipe / laboratoire' };
@@ -1188,11 +1225,16 @@ body { overflow: hidden; }
   // ---------------------------------------------------------------------
   function renderActions() {
     const now = today();
-    const visible = model.actions.filter(a =>
-      matchesQuery([a.label, a.partnerName, a.projectTitle]));
+    const visible = model.actions
+      .filter(a => matchesQuery([a.label, a.partnerName, a.projectTitle]))
+      .filter(a => !actionsCourtes || a.done || estimatedEffortMinutes(a) <= 15);
     const open = visible.filter(a => !a.done);
     const doneToday = visible.filter(a => a.done && a.doneOn === todayKey());
     const retard = open.filter(a => urgenceOf(a.due, now) === 'retard').length;
+    // La charge du jour : voir qu'on a prévu six heures dans une journée qui
+    // n'en compte pas tant, avant de s'en apercevoir à 18 h.
+    const duJour = open.filter(a => ['retard', 'aujourdhui'].includes(urgenceOf(a.due, now)));
+    const charge = formatEffort(chargeOf(duJour));
 
     const suggestions = runSuggestionRules(model, { now, dismissed: options.dismissed });
     const suggestBlock = suggestions.length ? '<section class="pil-suggest">' +
@@ -1226,12 +1268,30 @@ body { overflow: hidden; }
         '<h1 class="pil-h1" id="act-title">Mes actions</h1>' +
         '<p class="pil-sub">' + (statusMsg ? '<span class="pil-status">' + H(statusMsg) + '</span>' : '') +
           open.length + ' action' + (open.length > 1 ? 's' : '') + ' ouverte' + (open.length > 1 ? 's' : '') +
-          ' · ' + retard + ' en retard · triées par urgence et par enjeu</p>' +
+          ' · ' + retard + ' en retard' +
+          (duJour.length ? ' · ' + H(charge) + ' à traiter aujourd’hui' : '') +
+          ' · triées par urgence et par enjeu</p>' +
       '</div>' +
       '<button type="button" class="pil-btn primary" id="btn-action-vue">+ Nouvelle action</button>' +
       '</div>' +
+      // La capture en une ligne : l'échéance et les rattachements se lisent
+      // dans la phrase, sans ouvrir de formulaire.
+      '<div class="pil-quick">' +
+        '<input class="pil-quick-input" id="quick-action" placeholder="Nouvelle action : « Relancer @Thales sur #TrustAI lundi »"' +
+          ' aria-label="Ajouter une action en une ligne" autocomplete="off">' +
+        '<button type="button" class="pil-btn primary" id="quick-add">Ajouter</button>' +
+        '<div class="pil-quick-hint" id="quick-hint"></div>' +
+      '</div>' +
+      '<div class="pil-act-filters">' +
+        '<button type="button" class="pil-chip-btn' + (actionsCourtes ? ' on' : '') + '" id="flt-courtes"' +
+          ' aria-pressed="' + (actionsCourtes ? 'true' : 'false') + '">Moins de 15 min</button>' +
+        '<span class="pil-kbd-help">' +
+          '<kbd>n</kbd> nouvelle · <kbd>j</kbd>/<kbd>k</kbd> parcourir · <kbd>x</kbd> cocher · ' +
+          '<kbd>1</kbd>-<kbd>3</kbd> reporter · <kbd>/</kbd> rechercher' +
+        '</span>' +
+      '</div>' +
       suggestBlock +
-      (groups || '<p class="pil-empty">Aucune action ouverte. Les échéances viennent de la colonne « Prochaine échéance » des interactions.</p>') +
+      (groups || '<p class="pil-empty">Aucune action ouverte. Écrivez la première ci-dessus.</p>') +
       doneBlock;
   }
 
@@ -1262,6 +1322,12 @@ body { overflow: hidden; }
       '<div class="pil-action-side">' +
         '<div class="pil-action-due' + (d !== null && d > 0 ? ' danger' : '') + '">' + H(dueLabel(a.due, now)) + '</div>' +
         (effort ? '<div class="pil-action-effort">' + H(effort) + '</div>' : '') +
+        // Reporter en un clic : sur une liste, replanifier est le geste le
+        // plus fréquent, et ouvrir un formulaire pour ça coûte trop cher.
+        (a.done ? '' : '<div class="pil-snooze">' + snoozeTargets(now).map(t =>
+          '<button type="button" class="pil-snooze-btn" data-snooze="' + H(a.id) + '"' +
+          ' data-due="' + t.due + '" title="Reporter à ' + H(t.label.toLowerCase()) + '">' +
+          H(t.label) + '</button>').join('') + '</div>') +
       '</div>' +
       '</div>';
   }
@@ -1407,6 +1473,92 @@ body { overflow: hidden; }
       await saveOptions();
       await refresh();
       setStatus('Enregistré ✓');
+    } catch (err) {
+      console.error(err);
+      setStatus('Erreur d’enregistrement');
+    }
+  }
+
+  // Reporter une action : sur la table, c'est son échéance ; sur une action
+  // déduite, celle de l'interaction qui la porte.
+  async function snoozeAction(key, due) {
+    const a = model.actions.find(x => x.id === key);
+    if (!a) return;
+    const rel = a.source === 'table' ? related.actions : related.interactions;
+    const col = a.source === 'table' ? rel.cols.Echeance : rel.cols.ProchaineEcheance;
+    if (!rel.tableId || !col) { setStatus('Aucune colonne d’échéance'); return; }
+    try {
+      setStatus('Enregistrement…');
+      await updateRecord(rel.tableId, a.rowId, { [col]: due });
+      await refresh();
+      setStatus('Reporté au ' + formatDate(due));
+    } catch (err) {
+      console.error(err);
+      setStatus('Erreur d’enregistrement');
+    }
+  }
+
+  // Ce que la ligne de saisie rapide donnera, affiché pendant la frappe : on
+  // voit que « lundi » a été compris avant de valider.
+  function quickPreview() {
+    const input = el('quick-action');
+    const hint = el('quick-hint');
+    if (!input || !hint) return;
+    const brut = input.value.trim();
+    if (!brut) { hint.textContent = ''; return; }
+    const p = parseQuickAction(brut, today());
+    const bouts = [];
+    if (p.due !== null) bouts.push('échéance ' + formatDate(p.due));
+    const partner = quickMatch(model.partners, p.partnerHint, 'name');
+    const projet = quickMatch(model.projects, p.projectHint, 'title');
+    if (p.partnerHint) bouts.push(partner ? 'partenaire ' + partner.name : 'partenaire « ' + p.partnerHint + ' » inconnu');
+    if (p.projectHint) bouts.push(projet ? 'opportunité ' + projet.title : 'opportunité « ' + p.projectHint + ' » inconnue');
+    hint.textContent = (p.label || '(intitulé vide)') + (bouts.length ? ' — ' + bouts.join(', ') : '');
+  }
+
+  // Un indice de saisie vise une ligne par son nom, sans exiger l'exactitude :
+  // « @thales » doit trouver « Thales SIX GTS France ».
+  function quickMatch(liste, hint, champ) {
+    if (!hint) return null;
+    const k = normalizeKey(hint);
+    if (!k) return null;
+    return liste.find(x => normalizeKey(x[champ]) === k) ||
+      liste.find(x => normalizeKey(x[champ]).includes(k)) ||
+      liste.find(x => k.includes(normalizeKey(x[champ]))) || null;
+  }
+
+  async function submitQuickAction() {
+    const input = el('quick-action');
+    if (!input) return;
+    const p = parseQuickAction(input.value, today());
+    if (!p.label) { setStatus('Un intitulé est nécessaire'); return; }
+    const partner = quickMatch(model.partners, p.partnerHint, 'name');
+    const projet = quickMatch(model.projects, p.projectHint, 'title');
+    const act = related.actions;
+    try {
+      setStatus('Enregistrement…');
+      if (act && act.tableId) {
+        const fields = {};
+        if (act.cols.Intitule) fields[act.cols.Intitule] = p.label;
+        if (act.cols.Echeance && p.due !== null) fields[act.cols.Echeance] = p.due;
+        if (act.cols.Partenaires && partner) fields[act.cols.Partenaires] = refValue(act, act.cols.Partenaires, [partner.id]);
+        if (act.cols.Opportunite && projet) fields[act.cols.Opportunite] = refValue(act, act.cols.Opportunite, [projet.id]);
+        await addRecord(act.tableId, fields);
+      } else {
+        const inter = related.interactions;
+        if (!inter.tableId) { setStatus('Table Interactions introuvable'); return; }
+        const fields = {};
+        if (inter.cols.Suites) fields[inter.cols.Suites] = p.label;
+        if (inter.cols.Objet) fields[inter.cols.Objet] = p.label;
+        if (inter.cols.ProchaineEcheance && p.due !== null) fields[inter.cols.ProchaineEcheance] = p.due;
+        if (inter.cols.Partenaires && partner) fields[inter.cols.Partenaires] = ['L', partner.id];
+        await addRecord(inter.tableId, fields);
+      }
+      input.value = '';
+      await refresh();
+      setStatus('Action ajoutée ✓');
+      const next = el('quick-action');
+      if (next) next.focus();
     } catch (err) {
       console.error(err);
       setStatus('Erreur d’enregistrement');
@@ -1852,6 +2004,13 @@ body { overflow: hidden; }
     if (goBtn) return goto(goBtn.dataset.goto);
     const sugg = e.target.closest('[data-suggest]');
     if (sugg) return acceptSuggestion(sugg.dataset.suggest);
+    const snooze = e.target.closest('[data-snooze]');
+    if (snooze) return snoozeAction(snooze.dataset.snooze, Number(snooze.dataset.due));
+    if (e.target.closest('#quick-add')) return submitQuickAction();
+    if (e.target.closest('#flt-courtes')) {
+      actionsCourtes = !actionsCourtes;
+      return render();
+    }
     // Les boutons de création vivent dans les vues, donc re-rendus : ils
     // passent par la délégation plutôt que par un écouteur direct.
     if (e.target.closest('#btn-opportunite')) return openOpportuniteModal(null);
@@ -1872,6 +2031,57 @@ body { overflow: hidden; }
         if (filterWidgets[key]) filterWidgets[key].setSelected([]);
       });
       return renderProjets();
+    }
+  });
+
+  // Saisie rapide : aperçu pendant la frappe, Entrée pour valider.
+  document.querySelector('.pil-scroll').addEventListener('input', (e) => {
+    if (e.target.id === 'quick-action') quickPreview();
+  });
+  document.querySelector('.pil-scroll').addEventListener('keydown', (e) => {
+    if (e.target.id !== 'quick-action') return;
+    if (e.key === 'Enter') { e.preventDefault(); submitQuickAction(); }
+    if (e.key === 'Escape') { e.target.value = ''; quickPreview(); e.target.blur(); }
+  });
+
+  // Raccourcis de la todo liste. Ils ne s'appliquent qu'en vue « Mes actions »
+  // et jamais pendant une saisie, sinon taper « n » dans un champ ouvrirait
+  // un formulaire.
+  document.addEventListener('keydown', (e) => {
+    if (view !== 'actions' || e.metaKey || e.ctrlKey || e.altKey) return;
+    const cible = e.target;
+    const saisie = cible && (cible.tagName === 'INPUT' || cible.tagName === 'TEXTAREA' ||
+      cible.tagName === 'SELECT' || cible.isContentEditable);
+    if (el('modal-host').firstChild) return;
+    if (e.key === '/' && !saisie) { e.preventDefault(); el('search').focus(); return; }
+    if (saisie) return;
+    const lignes = Array.from(document.querySelectorAll('#view-actions .pil-action'));
+    if (e.key === 'n') {
+      e.preventDefault();
+      const q = el('quick-action');
+      if (q) q.focus(); else openActionModal();
+      return;
+    }
+    if (!lignes.length) return;
+    const place = (i) => {
+      actionCursor = Math.max(0, Math.min(lignes.length - 1, i));
+      lignes.forEach((l, j) => l.classList.toggle('cursor', j === actionCursor));
+      lignes[actionCursor].scrollIntoView({ block: 'nearest' });
+    };
+    if (e.key === 'j') { e.preventDefault(); return place(actionCursor === null ? 0 : actionCursor + 1); }
+    if (e.key === 'k') { e.preventDefault(); return place(actionCursor === null ? 0 : actionCursor - 1); }
+    if (actionCursor === null || !lignes[actionCursor]) return;
+    const courante = lignes[actionCursor];
+    if (e.key === 'x') {
+      e.preventDefault();
+      const box = courante.querySelector('.pil-check');
+      if (box) toggleAction(box.dataset.action, !box.checked);
+      return;
+    }
+    if (['1', '2', '3'].includes(e.key)) {
+      e.preventDefault();
+      const btn = courante.querySelectorAll('[data-snooze]')[Number(e.key) - 1];
+      if (btn) snoozeAction(btn.dataset.snooze, Number(btn.dataset.due));
     }
   });
 

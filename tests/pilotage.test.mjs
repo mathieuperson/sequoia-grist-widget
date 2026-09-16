@@ -29,8 +29,13 @@ eq(p.stageRank('Idée') < p.stageRank('Qualification'), true, 'stageRank: Idée 
 eq(p.stageRank('Montage') < p.stageRank('Contractualisation'), true, 'stageRank: Montage avant Contractualisation');
 eq(p.stageRank('Statut inventé'), null, 'stageRank: valeur inconnue -> Infinity (sérialisé null)');
 eq(p.matchStage("recherche d'EQUIPE").key, 'recherchedequipe', 'matchStage: insensible à la casse, aux accents et aux séparateurs');
-eq(p.matchStage('Terminé / abandonné').key, 'termineabandonne', 'matchStage: "Terminé / abandonné" reste distinct...');
-eq(p.matchStage('Abandonné').key, 'abandonne', '...de "Abandonné" seul (exact avant sous-chaîne)');
+eq(p.matchStage('Terminé').key, 'termine', 'matchStage: "Terminé" reste distinct...');
+eq(p.matchStage('Abandonné').key, 'abandonne', '...de "Abandonné" (exact avant sous-chaîne)');
+// Le document distingue désormais une fin réussie d'un abandon : seul le
+// second est hors pipeline.
+eq(p.isStageIn('Terminé', 'termine'), true, 'familles: Terminé est une fin réussie');
+eq(p.isStageIn('Terminé', 'clos'), false, '...et n’est pas un abandon');
+eq(p.isStageIn('Abandonné', 'clos'), true, 'familles: Abandonné est clos');
 eq(p.matchStage(''), null, 'matchStage: vide -> null');
 
 eq(p.orderStages(['Montage', 'Idée', 'Contractualisation', 'Qualification']),
@@ -53,7 +58,11 @@ eq(p.isStageIn('Statut inventé', 'discussion'), false, 'familles: valeur inconn
 // ---- Couleur d'étape (palette de progression du pipeline) ----
 eq(p.stageColor('Montage'), 'var(--stage-montage)', 'stageColor: une variable CSS par étape');
 eq(p.stageColor("Recherche d'équipe"), 'var(--stage-recherchedequipe)', 'stageColor: clé dérivée du libellé');
-eq(p.stageColor('Concrétisé'), 'var(--stage-concretise)', 'stageColor: statut actuel du document');
+// « Concrétisé » a été renommé « Concrétisé / En cours » dans le document ;
+// l'ancien libellé doit continuer de retrouver son étape par sous-chaîne.
+eq(p.stageColor('Concrétisé / En cours'), 'var(--stage-concretiseencours)', 'stageColor: statut actuel du document');
+eq(p.stageColor('Concrétisé'), 'var(--stage-concretiseencours)', 'stageColor: l’ancien libellé retombe sur la même étape');
+eq(p.stageColor('Terminé'), 'var(--stage-termine)', 'stageColor: Terminé a sa propre couleur');
 eq(p.stageColor('Statut inventé'), 'var(--status-default)',
   'stageColor: étape inconnue -> repli sur statusColor de common.css');
 eq(p.stageColor('Abandonné'), 'var(--stage-abandonne)', 'stageColor: l\'abandon garde sa couleur à part');
@@ -295,6 +304,53 @@ void realError;
 eq(p.lastInteractionFor([{ partnerIds: [1], date: 100 }, { partnerIds: [1], date: 300 }, { partnerIds: [2], date: 900 }], 1),
   300, 'lastInteractionFor: dernière date du partenaire, pas des autres');
 eq(p.lastInteractionFor([], 1), null, 'lastInteractionFor: aucune interaction -> null');
+
+// --- Saisie rapide ---------------------------------------------------
+// NOW est un mardi 8 septembre 2026.
+const q = (t) => p.parseQuickAction(t, NOW);
+
+eq(q('Relancer Thales').due, null, 'saisie rapide: sans repère de date -> aucune échéance');
+eq(q('Relancer Thales').label, 'Relancer Thales', 'saisie rapide: intitulé intact');
+eq(q('Relancer Thales demain').due, D(2026, 9, 9), 'saisie rapide: demain');
+eq(q('Relancer Thales demain').label, 'Relancer Thales', 'saisie rapide: le repère quitte l’intitulé');
+eq(q("Boucler le dossier aujourd'hui").due, NOW, "saisie rapide: aujourd'hui");
+eq(q('Voir le CR après-demain').due, D(2026, 9, 10), 'saisie rapide: après-demain');
+eq(q('Point d’étape dans 3 jours').due, D(2026, 9, 11), 'saisie rapide: dans N jours');
+eq(q('Relire dans 2 semaines').due, D(2026, 9, 22), 'saisie rapide: dans N semaines');
+eq(q('Relancer +5j').due, D(2026, 9, 13), 'saisie rapide: +Nj');
+// Mardi 8 -> le vendredi qui vient est le 11, le lundi le 14.
+eq(q('Envoyer la note vendredi').due, D(2026, 9, 11), 'saisie rapide: jour de la semaine à venir');
+eq(q('Réunion lundi').due, D(2026, 9, 14), 'saisie rapide: lundi prochain');
+eq(q('Réunion mardi').due, D(2026, 9, 15), 'saisie rapide: le jour courant vise la semaine suivante');
+eq(q('Relancer la semaine prochaine').due, D(2026, 9, 14), 'saisie rapide: semaine prochaine -> lundi');
+eq(q('Dossier ANR le 15/10').due, D(2026, 10, 15), 'saisie rapide: date JJ/MM');
+eq(q('Dossier le 15/01').due, D(2027, 1, 15), 'saisie rapide: une date passée vise l’an prochain');
+eq(q('Dossier le 03/02/2027').due, D(2027, 2, 3), 'saisie rapide: date complète');
+eq(q('Relancer sans échéance').due, null, 'saisie rapide: « sans échéance » explicite');
+eq(q('Relancer sans échéance').label, 'Relancer', 'saisie rapide: « sans échéance » quitte l’intitulé');
+
+const attele = q('Relancer @Thales Group sur #TrustAI vendredi');
+eq(attele.due, D(2026, 9, 11), 'saisie rapide: date lue malgré les rattachements');
+eq(attele.partnerHint, 'Thales Group', 'saisie rapide: @partenaire');
+eq(attele.projectHint, 'TrustAI', 'saisie rapide: #opportunité');
+eq(attele.label, 'Relancer', 'saisie rapide: la préposition laissée par un rattachement est retirée');
+// Hors rattachement, la préposition finale est celle qu’on a voulu écrire.
+eq(q('Travailler sur').label, 'Travailler sur', 'saisie rapide: intitulé sans jeton laissé intact');
+eq(q('Relancer @Zenika').label, 'Relancer', 'saisie rapide: rattachement seul');
+eq(q('Relancer @Zenika').partnerHint, 'Zenika', 'saisie rapide: hint du rattachement seul');
+
+// Un intitulé qui parle de demain sans en faire une échéance reste entier :
+// le mot doit être un jeton isolé, pas une sous-chaîne.
+eq(q('Préparer le lendemain du séminaire').due, null, 'saisie rapide: pas de faux positif sur un mot voisin');
+eq(q('').label, '', 'saisie rapide: chaîne vide');
+eq(q(null).due, null, 'saisie rapide: entrée nulle');
+
+eq(p.snoozeTargets(NOW).map(t => t.due), [D(2026, 9, 9), D(2026, 9, 14), D(2026, 9, 15)],
+  'report: demain, lundi, +1 semaine');
+eq(p.chargeOf([{ due: NOW }, { due: NOW }, { done: true, due: NOW }]) > 0, true,
+  'charge: somme des efforts des actions ouvertes');
+eq(p.chargeOf([{ done: true }]), 0, 'charge: une action faite ne pèse plus');
+eq(p.chargeOf([]), 0, 'charge: liste vide');
 
 console.log(`\n${pass} passed, ${fail} failed (pilotage)`);
 process.exit(fail ? 1 : 0);

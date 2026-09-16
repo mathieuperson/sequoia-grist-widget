@@ -516,6 +516,133 @@ function lastInteractionFor(interactions, partnerId) {
   return dates.reduce((max, d) => (d > max ? d : max), dates[0]);
 }
 
+// ---------------------------------------------------------------------
+// Saisie rapide
+// ---------------------------------------------------------------------
+// Une action se capture en une ligne, l'échéance et les rattachements pris
+// dans la phrase : « Relancer @Thales sur #TrustAI lundi » vaut trois champs
+// remplis. C'est le geste qui coûte le moins entre deux réunions, et le
+// motif retenu par les gestionnaires de tâches qui soignent la capture.
+//
+// Ce qui est reconnu se retire de l'intitulé — sinon la date se retrouverait
+// écrite deux fois, dans le texte et dans la colonne.
+const PILOTAGE_JOURS = [
+  ['dimanche', 0], ['lundi', 1], ['mardi', 2], ['mercredi', 3],
+  ['jeudi', 4], ['vendredi', 5], ['samedi', 6]
+];
+
+const PILOTAGE_LIAISONS = ['sur', 'pour', 'de', 'du', 'des', 'avec', 'a', 'et',
+  'le', 'la', 'les', 'en', 'dans', 'chez', 'au', 'aux'];
+
+// Minuit UTC du jour de `now`, en secondes : le format des dates Grist.
+function dayStart(now) {
+  const d = now === undefined ? new Date() : (typeof now === 'number' ? new Date(now * 1000) : new Date(now));
+  return Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()) / 1000);
+}
+
+// Prochaine occurrence d'un jour de la semaine, aujourd'hui exclu : « lundi »
+// dit un lundi à venir, pas celui qui commence.
+function nextWeekday(now, target) {
+  const base = dayStart(now);
+  const jour = new Date(base * 1000).getUTCDay();
+  const ecart = ((target - jour) + 7) % 7 || 7;
+  return base + ecart * 86400;
+}
+
+function parseQuickAction(text, now) {
+  let reste = String(text === null || text === undefined ? '' : text);
+  let due;
+
+  // Un jeton n'est retenu qu'entouré de limites de mot, pour ne pas mutiler
+  // un intitulé qui contiendrait « demain » dans une autre tournure.
+  // La limite de gauche est non capturante : un groupe de plus décalerait les
+  // indices que les motifs datés lisent (m[1] = le nombre de jours).
+  const consomme = (motif, valeur) => {
+    if (due !== undefined) return;
+    const re = new RegExp('(?:^|\\s)' + motif + '(?=\\s|$|[.,;])', 'i');
+    const m = reste.match(re);
+    if (!m) return;
+    due = typeof valeur === 'function' ? valeur(m) : valeur;
+    reste = (reste.slice(0, m.index) + ' ' + reste.slice(m.index + m[0].length)).trim();
+  };
+
+  consomme('sans\\s+(?:date|echeance|échéance)', null);
+  consomme("aujourd'?hui|ce\\s+soir", dayStart(now));
+  consomme('apres[-\\s]demain|après[-\\s]demain', dayStart(now) + 2 * 86400);
+  consomme('demain', dayStart(now) + 86400);
+  consomme('(?:la\\s+)?semaine\\s+prochaine', () => nextWeekday(now, 1));
+  consomme('dans\\s+(\\d+)\\s*(?:j|jours?)', (m) => dayStart(now) + Number(m[1]) * 86400);
+  consomme('dans\\s+(\\d+)\\s*(?:s|semaines?)', (m) => dayStart(now) + Number(m[1]) * 7 * 86400);
+  consomme('dans\\s+(\\d+)\\s*mois', (m) => dayStart(now) + Number(m[1]) * 30 * 86400);
+  consomme('\\+(\\d+)j', (m) => dayStart(now) + Number(m[1]) * 86400);
+  consomme('\\+(\\d+)s', (m) => dayStart(now) + Number(m[1]) * 7 * 86400);
+  // JJ/MM, JJ/MM/AA ou JJ/MM/AAAA. Une date déjà passée vise l'an prochain :
+  // « le 15/01 » saisi en décembre parle de janvier qui vient.
+  consomme('(?:le\\s+)?(\\d{1,2})/(\\d{1,2})(?:/(\\d{2,4}))?', (m) => {
+    const jour = Number(m[1]);
+    const mois = Number(m[2]) - 1;
+    const base = new Date(dayStart(now) * 1000);
+    let an = m[3] ? Number(m[3]) : base.getUTCFullYear();
+    if (an < 100) an += 2000;
+    let ts = Math.floor(Date.UTC(an, mois, jour) / 1000);
+    if (!m[3] && ts < dayStart(now)) ts = Math.floor(Date.UTC(an + 1, mois, jour) / 1000);
+    return ts;
+  });
+  PILOTAGE_JOURS.forEach(([nom, idx]) => {
+    consomme('(?:' + nom + ')(?:\\s+prochain)?', () => nextWeekday(now, idx));
+  });
+
+  // @partenaire et #opportunité : le texte qui suit, jusqu'au jeton suivant.
+  // Les mots de liaison finaux appartiennent à la phrase et non au nom —
+  // « @Thales sur #TrustAI » nomme Thales, puis enchaîne — donc ils
+  // retournent dans l'intitulé.
+  const prendre = (marqueur) => {
+    const re = new RegExp('(?:^|\\s)' + marqueur + '([^@#]+)');
+    const m = reste.match(re);
+    if (!m) return '';
+    const mots = m[1].trim().replace(/[.,;]$/, '').split(/\s+/).filter(Boolean);
+    let rendu = '';
+    while (mots.length > 1 && PILOTAGE_LIAISONS.includes(normalizeKey(mots[mots.length - 1]))) {
+      rendu = mots.pop() + (rendu ? ' ' + rendu : '');
+    }
+    reste = (reste.slice(0, m.index) + ' ' + rendu + ' ' +
+      reste.slice(m.index + m[0].length)).replace(/\s{2,}/g, ' ').trim();
+    return mots.join(' ');
+  };
+  const partnerHint = prendre('@');
+  const projectHint = prendre('#');
+
+  // Retirer « @Zenika » de « Relancer @Zenika sur … » laisse un « sur » en
+  // suspens : on le retire à son tour, sinon l'intitulé enregistré ne se lit
+  // plus. Seulement après un rattachement — ailleurs, la préposition est
+  // celle que l'auteur a voulue.
+  let label = reste.replace(/\s{2,}/g, ' ').trim();
+  if (partnerHint || projectHint) {
+    const mots = label.split(/\s+/).filter(Boolean);
+    while (mots.length && PILOTAGE_LIAISONS.includes(normalizeKey(mots[mots.length - 1]))) mots.pop();
+    label = mots.join(' ');
+  }
+
+  return { label, due: due === undefined ? null : due, partnerHint, projectHint };
+}
+
+// Repères de report, pour solder une action en retard sans ouvrir de
+// formulaire — le geste de triage le plus fréquent.
+function snoozeTargets(now) {
+  return [
+    { key: 'demain', label: 'Demain', due: dayStart(now) + 86400 },
+    { key: 'lundi', label: 'Lundi', due: nextWeekday(now, 1) },
+    { key: 'semaine', label: '+1 semaine', due: dayStart(now) + 7 * 86400 }
+  ];
+}
+
+// Charge d'une journée : la somme des efforts estimés, pour voir qu'on a
+// prévu huit heures de travail dans une journée qui n'en compte pas tant.
+function chargeOf(actions) {
+  return (actions || []).filter(a => !a.done)
+    .reduce((total, a) => total + estimatedEffortMinutes(a), 0);
+}
+
 // Passe toutes les règles et retire ce qui est déjà couvert par une action
 // existante ou déjà écarté : une suggestion qu'on a déjà acceptée n'a plus
 // à être proposée.
@@ -547,6 +674,7 @@ if (typeof window !== 'undefined') {
     estimatedEffortMinutes, formatEffort, actionMotif,
     relanceTone, formatAnciennete, partnersToFollowUp,
     pipelineRows, kanbanColumns, computeKpis,
-    lastInteractionFor, runSuggestionRules
+    lastInteractionFor, runSuggestionRules,
+    parseQuickAction, snoozeTargets, chargeOf, dayStart, nextWeekday
   };
 }

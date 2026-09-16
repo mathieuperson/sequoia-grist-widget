@@ -68,6 +68,31 @@ Le bloc **Actions suggérées** applique un moteur de règles extensible (`PILOT
 échange depuis, partenaire silencieux depuis plus de 90 j alors qu'un projet est actif, pièce attendue
 manquante avant une date de dépôt. « Ajouter » crée l'action réelle.
 
+### Capture et triage
+
+La vue porte les deux gestes qui font qu'une todo liste sert vraiment : écrire vite, et replanifier vite.
+
+**Saisie en une ligne.** `parseQuickAction()` lit l'échéance et les rattachements dans la phrase :
+« Relancer @Thales sur #TrustAI lundi » vaut trois champs remplis. Sont reconnus `aujourd'hui`, `demain`,
+`après-demain`, les jours de la semaine (la prochaine occurrence, aujourd'hui exclu), `la semaine prochaine`,
+`dans N jours/semaines/mois`, `+Nj`, `+Ns`, `JJ/MM[/AAAA]` (une date passée vise l'an prochain) et
+`sans échéance`. `@` désigne un partenaire, `#` une opportunité, retrouvés par correspondance approchée —
+« @thales » suffit pour « Thales SIX GTS France ». Ce qui est reconnu quitte l'intitulé, préposition
+orpheline comprise, et un aperçu montre l'interprétation avant de valider. La fonction est pure et couverte
+par `tests/pilotage.test.mjs`.
+
+**Reporter.** Trois boutons par ligne (demain, lundi, +1 semaine), révélés au survol pour ne pas saturer la
+liste : replanifier est le geste le plus fréquent sur une todo, et ouvrir un formulaire pour ça coûte trop cher.
+Le report écrit l'échéance de l'action, ou celle de l'interaction quand la ligne en est déduite.
+
+**Clavier.** `n` met le curseur dans la saisie rapide, `j`/`k` parcourent les lignes, `x` coche celle au
+curseur, `1`–`3` la reportent, `/` va à la recherche. Les raccourcis ne s'appliquent qu'en vue « Mes actions »,
+jamais pendant une saisie ni un formulaire ouvert.
+
+**Charge du jour.** Le sous-titre annonce la somme des efforts estimés des actions en retard et du jour
+(« 2 h 45 à traiter aujourd'hui ») : de quoi voir qu'on a prévu six heures dans une journée qui n'en compte
+pas tant. Le filtre **Moins de 15 min** ne garde que ce qui se case entre deux réunions.
+
 ### La table Actions
 
 Une action est une **tâche**, distincte d'une interaction, qui est un échange : elle se rattache librement à
