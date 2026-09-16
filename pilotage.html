@@ -716,7 +716,7 @@ body { overflow: hidden; }
       categorie: txt(formatValue(sField(s, 'Categorie'))),
       activite: txt(formatValue(sField(s, 'Activite'))),
       prospect: isProspect(s),
-      lastContact: lastInteractionFor(interactions, s.id)
+      lastContact: pilotage.lastInteractionFor(interactions, s.id)
     }));
     const partnerById = {};
     partners.forEach(p => { partnerById[p.id] = p; });
@@ -765,7 +765,7 @@ body { overflow: hidden; }
         name: txt(formatValue(sField(s, 'Nom'))) || ('#' + s.id)
       })),
       contacts: cont.records.length,
-      stages: stageChoices.length ? stageChoices : orderStages(projects.map(p => p.stage))
+      stages: stageChoices.length ? stageChoices : pilotage.orderStages(projects.map(p => p.stage))
     };
   }
 
@@ -774,8 +774,8 @@ body { overflow: hidden; }
   function mostAdvancedProject(projects, partnerIds) {
     return projects
       .filter(p => p.partnerIds.some(id => partnerIds.includes(id)))
-      .filter(p => !isStageIn(p.stage, 'clos'))
-      .sort((a, b) => stageRank(b.stage) - stageRank(a.stage))[0] || null;
+      .filter(p => !pilotage.isStageIn(p.stage, 'clos'))
+      .sort((a, b) => pilotage.stageRank(b.stage) - pilotage.stageRank(a.stage))[0] || null;
   }
 
   // La recherche globale filtre la vue courante plutôt que d'ouvrir une
@@ -801,7 +801,7 @@ body { overflow: hidden; }
 
   function renderDashboard() {
     const now = today();
-    const k = computeKpis(model, now);
+    const k = pilotage.computeKpis(model, now);
     const dateLabel = now.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
     const kpis = [
@@ -815,11 +815,11 @@ body { overflow: hidden; }
         k.cifreLancees ? 'dont ' + k.cifreLancees + ' lancée' + (k.cifreLancees > 1 ? 's' : '') : 'hors étapes closes')
     ].join('');
 
-    const suggestions = runSuggestionRules(model, { now, dismissed: options.dismissed });
-    const rows = pipelineRows(model.projects, model.stages);
+    const suggestions = pilotage.runSuggestionRules(model, { now, dismissed: options.dismissed });
+    const rows = pilotage.pipelineRows(model.projects, model.stages);
     const pipeline = rows.length ? rows.map(r => {
       const pct = Math.round(r.ratio * 100);
-      const color = stageColor(r.stage);
+      const color = pilotage.stageColor(r.stage);
       return '<div class="pil-bar-row">' +
         '<div class="pil-bar-label">' +
           '<span class="pil-bar-dot" style="background:' + color + '"></span>' +
@@ -834,7 +834,7 @@ body { overflow: hidden; }
     // Recentré sur la gestion de projets : seuls les partenaires qui portent
     // un projet en cours. Relancer un acteur sans montage en cours n'est pas
     // le sujet de cet onglet.
-    const activeOf = (id) => model.projects.filter(pr => pr.partnerIds.includes(id) && !isStageIn(pr.stage, 'clos'));
+    const activeOf = (id) => model.projects.filter(pr => pr.partnerIds.includes(id) && !pilotage.isStageIn(pr.stage, 'clos'));
     const relances = partnersToFollowUp(
       model.partners.filter(p => !p.prospect && activeOf(p.id).length &&
         matchesQuery([p.name, p.type, p.activite])),
@@ -927,7 +927,7 @@ body { overflow: hidden; }
   // chaque projet. "Lettres de soutien émises" n'apparaît pas : aucune
   // colonne du document ne les porte aujourd'hui.
   function renderDispositifs() {
-    const actifs = model.projects.filter(p => !isStageIn(p.stage, 'clos'));
+    const actifs = model.projects.filter(p => !pilotage.isStageIn(p.stage, 'clos'));
     const groups = PILOTAGE_DISPOSITIFS.map(d => {
       const list = actifs.filter(p => dispositifOf(p.dispositif) === d);
       return { label: d.label, list };
@@ -1020,13 +1020,13 @@ body { overflow: hidden; }
     const visible = visibleProjects();
     const cols = kanbanColumns(visible, model.stages);
     const internes = visible.filter(p => !p.partnerIds.length).length;
-    const pondere = sumMontants(visible.filter(p => isStageIn(p.stage, 'pondere')));
+    const pondere = sumMontants(visible.filter(p => pilotage.isStageIn(p.stage, 'pondere')));
     const total = model.projects.length;
     const filtre = visible.length !== total;
     const moveOptions = cols.map(c => '<option value="' + H(c.stage) + '">' + H(c.stage) + '</option>').join('');
 
     const board = cols.length ? cols.map(c =>
-      '<div class="pil-col" data-stage="' + H(c.stage) + '" style="border-top-color:' + stageColor(c.stage) + '">' +
+      '<div class="pil-col" data-stage="' + H(c.stage) + '" style="border-top-color:' + pilotage.stageColor(c.stage) + '">' +
         '<div class="pil-col-head"><span class="pil-col-title">' + H(c.stage) + '</span>' +
           '<span class="pil-col-count">' + c.count + '</span></div>' +
         '<div class="pil-col-sum">' + H(formatMontantOrDash(c.montant)) + '</div>' +
@@ -1100,7 +1100,7 @@ body { overflow: hidden; }
       ? H(p.partnerName)
       : '<span class="pil-interne">Projet interne</span>';
     return '<article class="pil-cardlet" draggable="true" tabindex="0" data-id="' + p.id + '">' +
-      '<span class="pil-tag ' + dispositifClass(p.dispositif) + '">' + H(p.dispositif || 'Autre collaboration') + '</span>' +
+      '<span class="pil-tag ' + pilotage.dispositifClass(p.dispositif) + '">' + H(p.dispositif || 'Autre collaboration') + '</span>' +
       '<h3 class="pil-cardlet-title">' + H(p.title) + '</h3>' +
       '<div class="pil-cardlet-partner">' + porteur + '</div>' +
       '<div class="pil-cardlet-foot">' +
@@ -1124,7 +1124,7 @@ body { overflow: hidden; }
     const doneToday = visible.filter(a => a.done && a.doneOn === todayKey());
     const retard = open.filter(a => urgenceOf(a.due, now) === 'retard').length;
 
-    const suggestions = runSuggestionRules(model, { now, dismissed: options.dismissed });
+    const suggestions = pilotage.runSuggestionRules(model, { now, dismissed: options.dismissed });
     const suggestBlock = suggestions.length ? '<section class="pil-suggest">' +
       '<div class="pil-card-head"><div><h2 class="pil-card-title">Actions suggérées</h2></div>' +
         '<div style="margin-left:auto"><span class="pil-card-aside">déduites des données du CRM</span></div></div>' +
@@ -1180,8 +1180,8 @@ body { overflow: hidden; }
           H([a.partnerName || 'Interne', a.projectTitle].filter(Boolean).join(' · ')) + '</div>' +
         '<div class="pil-action-tags">' +
           (motif ? '<span class="pil-motif ' + motif.tone + '">' + H(motif.label) + '</span>' : '') +
-          (a.stage ? '<span class="pil-stage-chip" style="background:' + stageColor(a.stage) +
-            ';color:' + stageTextColor(a.stage) + '">' + H(a.stage) + '</span>' : '') +
+          (a.stage ? '<span class="pil-stage-chip" style="background:' + pilotage.stageColor(a.stage) +
+            ';color:' + pilotage.stageTextColor(a.stage) + '">' + H(a.stage) + '</span>' : '') +
         '</div>' +
       '</div>' +
       '<div class="pil-action-side">' +
@@ -1320,7 +1320,7 @@ body { overflow: hidden; }
   }
 
   async function acceptSuggestion(id) {
-    const s = runSuggestionRules(model, { now: today(), dismissed: options.dismissed })
+    const s = pilotage.runSuggestionRules(model, { now: today(), dismissed: options.dismissed })
       .find(x => x.id === id);
     if (!s) return;
     const inter = related.interactions;
