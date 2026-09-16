@@ -334,6 +334,16 @@ body { overflow: hidden; }
   font: inherit; font-size: 13.5px; background: var(--card-bg); color: var(--text);
 }
 .pil-field textarea { min-height: 92px; resize: vertical; }
+/* Les sélecteurs multiples (.ms-* de common.css) sont dessinés pour une barre
+   de filtres ; dans un formulaire ils prennent la largeur du champ, comme un
+   <select>. Les cases à cocher restent dans le panneau déroulant. */
+.pil-field .ms-filter { width: 100%; }
+.pil-field .ms-filter-btn { width: 100%; min-height: 38px; justify-content: space-between; font-size: 13.5px; }
+/* Le libellé est déjà porté par le <label> du champ ; le bouton n'affiche que
+   l'état de la sélection, avec un chevron pour annoncer le déroulant. */
+.pil-field .ms-filter-btn .ms-label { display: none; }
+.pil-field .ms-filter-btn::after { content: '▾'; color: var(--text-muted); }
+.pil-field .ms-filter-panel { width: 100%; box-sizing: border-box; }
 .pil-modal-foot {
   display: flex; gap: 8px; justify-content: flex-end;
   padding: 12px 18px 16px; border-top: 1px solid var(--pil-sep);
@@ -760,10 +770,7 @@ body { overflow: hidden; }
       });
 
     return {
-      projects, partners, teams, interactions, actions, structures: structures.map(s => ({
-        id: s.id,
-        name: txt(formatValue(sField(s, 'Nom'))) || ('#' + s.id)
-      })),
+      projects, partners, teams, interactions, actions,
       contacts: cont.records.length,
       stages: stageChoices.length ? stageChoices : orderStages(projects.map(p => p.stage))
     };
@@ -1374,9 +1381,19 @@ body { overflow: hidden; }
       if (e.target === e.currentTarget) close();
     });
     host.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+    // Les sélecteurs multiples ne s'animent qu'une fois le markup dans le DOM.
+    // `conf.selects` les déclare par nom ; onSubmit les reçoit pour lire la
+    // sélection, un <form> ne portant pas ces champs.
+    const selects = {};
+    Object.keys(conf.selects || {}).forEach(name => {
+      const spec = conf.selects[name];
+      selects[name] = createMultiSelect(form.querySelector('#ms-' + name), {
+        values: spec.values, selected: spec.selected || [], labelAll: 'Aucune sélection'
+      });
+    });
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      const err = await conf.onSubmit(form);
+      const err = await conf.onSubmit(form, selects);
       if (err) el('modal-msg').textContent = err;
       else close();
     });
@@ -1457,51 +1474,41 @@ body { overflow: hidden; }
     return field(label, '<select name="' + name + '">' + options + '</select>');
   }
 
-  function multiSelectField(label, name, values) {
-    const checkboxes = values.map(v =>
-      '<label style="display:flex;gap:8px;align-items:center;margin:4px 0"><input type="checkbox" name="' + name + '" value="' + H(v) + '"> ' + H(v) + '</label>'
-    ).join('');
-    return field(label, '<div style="padding:6px">' + checkboxes + '</div>');
+  // Champ à choix multiple : même composant déroulant que les filtres du
+  // Kanban (recherche, tout cocher). Les valeurs et la sélection de départ
+  // sont déclarées dans `conf.selects` d'openModal, qui l'anime.
+  function msField(label, name) {
+    return field(label, msFilterMarkup('ms-' + name, label, 'Aucune sélection'));
   }
 
-  function structureSelectField(label, name, structures) {
-    const options = structures.map(s =>
-      '<label style="display:flex;gap:8px;align-items:center;margin:4px 0"><input type="checkbox" name="' + name + '" value="' + s.id + '" data-name="' + H(s.name) + '"> ' + H(s.name) + '</label>'
-    ).join('');
-    return field(label, '<div style="padding:6px;max-height:150px;overflow-y:auto">' + (options || '<p style="color:var(--text-muted);font-size:12px">Aucune structure disponible</p>') + '</div>');
+  // Ces sélecteurs travaillent sur des noms de structures ; les colonnes de
+  // référence, elles, attendent des identifiants de ligne.
+  function structureIds(structures, names) {
+    const byName = {};
+    structures.forEach(s => { if (!(s.name in byName)) byName[s.name] = s.id; });
+    return names.map(n => byName[n]).filter(id => id !== undefined);
   }
 
-  function getStructuresForForm(researchType) {
-    // Retourne les structures filtrées selon:
-    // 1. Les filtres actuels appliqués à la section Grist (si présents)
-    // 2. Le type de recherche (Établissement, Laboratoire, Équipe)
-    let filtered = model.structures || [];
+  function structureNames(structures, ids) {
+    return structures.filter(s => ids.includes(s.id)).map(s => s.name);
+  }
 
-    // Si on a des structures filtrées par Grist, les utiliser
-    if (structTableId && mappings) {
-      const filteredIds = new Set(structures.map(s => s.id));
-      filtered = filtered.filter(s => filteredIds.has(s.id));
-    }
-
-    // Filtrer par type de recherche
-    if (researchType === 'etablissement') {
-      filtered = filtered.filter(s => {
-        const s_struct = structures.find(x => x.id === s.id);
-        return s_struct && txt(formatValue(sField(s_struct, 'RechercheStructure'))) === 'Établissement';
-      });
-    } else if (researchType === 'laboratoire') {
-      filtered = filtered.filter(s => {
-        const s_struct = structures.find(x => x.id === s.id);
-        return s_struct && txt(formatValue(sField(s_struct, 'RechercheStructure'))) === 'Laboratoire';
-      });
-    } else if (researchType === 'equipe') {
-      filtered = filtered.filter(s => {
-        const s_struct = structures.find(x => x.id === s.id);
-        return s_struct && txt(formatValue(sField(s_struct, 'RechercheEquipeActivite'))); // Équipe a une activité
-      });
-    }
-
-    return filtered.sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  // Les structures à proposer pour un rôle : un laboratoire est une structure
+  // dont la colonne « Structure de recherche » le dit. La comparaison passe par
+  // normalizeKey et une sous-chaîne, pour accepter le libellé du document tel
+  // qu'il est saisi ("Établissement", "Établissement d'enseignement supérieur").
+  function getStructuresForForm(role) {
+    const roleOf = (s) => normalizeKey(formatValue(sField(s, 'RechercheStructure')));
+    const matches = {
+      etablissement: (s) => roleOf(s).includes('etablissement'),
+      laboratoire: (s) => roleOf(s).includes('laboratoire'),
+      // Une équipe se reconnaît aussi à son activité, comme dans isTeam().
+      equipe: (s) => roleOf(s).includes('equipe') || isTeam(s)
+    }[role];
+    return structures
+      .filter(s => !matches || matches(s))
+      .map(s => ({ id: s.id, name: txt(formatValue(sField(s, 'Nom'))) || ('#' + s.id) }))
+      .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   }
 
   // Édition d’une opportunité existante
@@ -1516,19 +1523,35 @@ body { overflow: hidden; }
     const row = opp.records.find(r => r.id === projectId);
     if (!row) return;
 
+    // Les structures proposées par rôle, et celles déjà rattachées à la ligne :
+    // un formulaire d'édition doit partir de l'état enregistré.
+    const etabs = getStructuresForForm('etablissement');
+    const labos = getStructuresForForm('laboratoire');
+    const equipes = getStructuresForForm('equipe');
+    const rawType = row[opp.cols.Type];
+    const typesActuels = Array.isArray(rawType)
+      ? rawType.slice(1).filter(v => typeof v === 'string')
+      : (project.dispositif ? [project.dispositif] : []);
+
     openModal({
       title: 'Éditer : ' + project.title,
       submit: 'Enregistrer',
+      selects: {
+        type: { values: dispositifs, selected: typesActuels },
+        etablissement: { values: etabs.map(s => s.name), selected: structureNames(etabs, refIdsFromValue(row[opp.cols.Etablissement])) },
+        laboratoire: { values: labos.map(s => s.name), selected: structureNames(labos, refIdsFromValue(row[opp.cols.Laboratoire])) },
+        equipe: { values: equipes.map(s => s.name), selected: structureNames(equipes, refIdsFromValue(row[opp.cols.EquipeCluster])) }
+      },
       fields:
         field('Sujet', '<input name="sujet" value="' + H(project.title) + '" required>') +
-        multiSelectField('Type', 'type', dispositifs) +
+        msField('Type', 'type') +
         selectField('Étape', 'statut', stages, project.stage) +
         selectField('Partenaire', 'partner', model.partners.slice()
-          .sort((a, b) => a.name.localeCompare(b.name, 'fr')).map(p => p.name), '',
+          .sort((a, b) => a.name.localeCompare(b.name, 'fr')).map(p => p.name), project.partnerName,
           '<option value="">— Projet interne (sans partenaire) —</option>') +
-        (opp.cols.Etablissement ? structureSelectField('Établissement', 'etablissement', getStructuresForForm('etablissement')) : '') +
-        (opp.cols.Laboratoire ? structureSelectField('Laboratoire', 'laboratoire', getStructuresForForm('laboratoire')) : '') +
-        (opp.cols.EquipeCluster ? structureSelectField('Équipe Cluster', 'equipe', getStructuresForForm('equipe')) : '') +
+        (opp.cols.Etablissement ? msField('Établissement', 'etablissement') : '') +
+        (opp.cols.Laboratoire ? msField('Laboratoire', 'laboratoire') : '') +
+        (opp.cols.EquipeCluster ? msField('Équipe Cluster', 'equipe') : '') +
         (opp.teamWriteCol
           ? field(opp.teamWriteLabel || 'Équipe de recherche',
               '<select name="team"><option value="">—</option>' + teamOptions() + '</select>')
@@ -1536,14 +1559,16 @@ body { overflow: hidden; }
         field('Montant (€)', '<input type="number" name="montant" value="' + (project.montant || '') + '" min="0" step="1000">') +
         field('Date de début', '<input type="date" name="debut" value="' + (project.stageSince ? gristDateToInputValue(project.stageSince) : '') + '">') +
         field('Échéance / date de dépôt', '<input type="date" name="echeance" value="' + (project.depotDue ? gristDateToInputValue(project.depotDue) : '') + '">'),
-      onSubmit: async (form) => {
+      onSubmit: async (form, selects) => {
         const sujet = form.sujet.value.trim();
         if (!sujet) return 'Un sujet est nécessaire.';
         const fields = {};
         if (opp.cols.Sujet && sujet !== project.title) fields[opp.cols.Sujet] = sujet;
+        // Une valeur de Choice est une chaîne, une ChoiceList ['L', …valeurs],
+        // comme les colonnes de référence multiples.
         if (opp.cols.Type) {
-          const types = Array.from(form.querySelectorAll('input[name="type"]:checked')).map(x => x.value);
-          if (types.length) fields[opp.cols.Type] = types;
+          const types = selects.type.getSelected();
+          if (types.length) fields[opp.cols.Type] = ['L', ...types];
         }
         if (opp.cols.Statut && form.statut.value !== project.stage) fields[opp.cols.Statut] = form.statut.value;
         if (opp.cols.Montant && form.montant.value) fields[opp.cols.Montant] = Number(form.montant.value);
@@ -1553,18 +1578,12 @@ body { overflow: hidden; }
           const partner = model.partners.find(x => x.name === form.partner.value);
           if (partner) fields[opp.cols.Partenaires] = ['L', partner.id];
         }
-        if (opp.cols.Etablissement) {
-          const evals = Array.from(form.querySelectorAll('input[name="etablissement"]:checked')).map(x => Number(x.value));
-          if (evals.length) fields[opp.cols.Etablissement] = ['L', ...evals];
-        }
-        if (opp.cols.Laboratoire) {
-          const labs = Array.from(form.querySelectorAll('input[name="laboratoire"]:checked')).map(x => Number(x.value));
-          if (labs.length) fields[opp.cols.Laboratoire] = ['L', ...labs];
-        }
-        if (opp.cols.EquipeCluster) {
-          const equipes = Array.from(form.querySelectorAll('input[name="equipe"]:checked')).map(x => Number(x.value));
-          if (equipes.length) fields[opp.cols.EquipeCluster] = ['L', ...equipes];
-        }
+        [['Etablissement', 'etablissement', etabs], ['Laboratoire', 'laboratoire', labos],
+         ['EquipeCluster', 'equipe', equipes]].forEach(([col, name, list]) => {
+          if (!opp.cols[col]) return;
+          const ids = structureIds(list, selects[name].getSelected());
+          if (ids.length) fields[opp.cols[col]] = ['L', ...ids];
+        });
         if (opp.teamWriteCol && form.team && form.team.value) {
           fields[opp.teamWriteCol] = ['L', Number(form.team.value)];
         }
@@ -1586,19 +1605,28 @@ body { overflow: hidden; }
     if (!opp.tableId) { setStatus('Table Opportunités introuvable'); return; }
     const dispositifs = typeChoices.length ? typeChoices : PILOTAGE_DISPOSITIFS.map(d => d.label);
     const stages = model.stages;
+    const etabs = getStructuresForForm('etablissement');
+    const labos = getStructuresForForm('laboratoire');
+    const equipes = getStructuresForForm('equipe');
     openModal({
       title: 'Nouvelle opportunité',
       submit: 'Créer l’opportunité',
+      selects: {
+        type: { values: dispositifs },
+        etablissement: { values: etabs.map(s => s.name) },
+        laboratoire: { values: labos.map(s => s.name) },
+        equipe: { values: equipes.map(s => s.name) }
+      },
       fields:
         field('Sujet', '<input name="sujet" required>') +
-        multiSelectField('Type', 'type', dispositifs) +
+        msField('Type', 'type') +
         selectField('Étape', 'statut', stages, stage || stages[0]) +
         selectField('Partenaire', 'partner', model.partners.slice()
           .sort((a, b) => a.name.localeCompare(b.name, 'fr')).map(p => p.name), '',
           '<option value="">— Projet interne (sans partenaire) —</option>') +
-        (opp.cols.Etablissement ? structureSelectField('Établissement', 'etablissement', getStructuresForForm('etablissement')) : '') +
-        (opp.cols.Laboratoire ? structureSelectField('Laboratoire', 'laboratoire', getStructuresForForm('laboratoire')) : '') +
-        (opp.cols.EquipeCluster ? structureSelectField('Équipe Cluster', 'equipe', getStructuresForForm('equipe')) : '') +
+        (opp.cols.Etablissement ? msField('Établissement', 'etablissement') : '') +
+        (opp.cols.Laboratoire ? msField('Laboratoire', 'laboratoire') : '') +
+        (opp.cols.EquipeCluster ? msField('Équipe Cluster', 'equipe') : '') +
         (opp.teamWriteCol
           ? field(opp.teamWriteLabel || 'Équipe de recherche',
               '<select name="team"><option value="">—</option>' + teamOptions() + '</select>')
@@ -1606,14 +1634,14 @@ body { overflow: hidden; }
         field('Montant (€)', '<input type="number" name="montant" min="0" step="1000">') +
         field('Date de début', '<input type="date" name="debut">') +
         field('Échéance / date de dépôt', '<input type="date" name="echeance">'),
-      onSubmit: async (form) => {
+      onSubmit: async (form, selects) => {
         const sujet = form.sujet.value.trim();
         if (!sujet) return 'Un sujet est nécessaire.';
         const fields = {};
         if (opp.cols.Sujet) fields[opp.cols.Sujet] = sujet;
         if (opp.cols.Type) {
-          const types = Array.from(form.querySelectorAll('input[name="type"]:checked')).map(x => x.value);
-          if (types.length) fields[opp.cols.Type] = types;
+          const types = selects.type.getSelected();
+          if (types.length) fields[opp.cols.Type] = ['L', ...types];
         }
         if (opp.cols.Statut) fields[opp.cols.Statut] = form.statut.value;
         if (opp.cols.Montant && form.montant.value) fields[opp.cols.Montant] = Number(form.montant.value);
@@ -1623,18 +1651,12 @@ body { overflow: hidden; }
           const partner = model.partners.find(x => x.name === form.partner.value);
           if (partner) fields[opp.cols.Partenaires] = ['L', partner.id];
         }
-        if (opp.cols.Etablissement) {
-          const evals = Array.from(form.querySelectorAll('input[name="etablissement"]:checked')).map(x => Number(x.value));
-          if (evals.length) fields[opp.cols.Etablissement] = ['L', ...evals];
-        }
-        if (opp.cols.Laboratoire) {
-          const labs = Array.from(form.querySelectorAll('input[name="laboratoire"]:checked')).map(x => Number(x.value));
-          if (labs.length) fields[opp.cols.Laboratoire] = ['L', ...labs];
-        }
-        if (opp.cols.EquipeCluster) {
-          const equipes = Array.from(form.querySelectorAll('input[name="equipe"]:checked')).map(x => Number(x.value));
-          if (equipes.length) fields[opp.cols.EquipeCluster] = ['L', ...equipes];
-        }
+        [['Etablissement', 'etablissement', etabs], ['Laboratoire', 'laboratoire', labos],
+         ['EquipeCluster', 'equipe', equipes]].forEach(([col, name, list]) => {
+          if (!opp.cols[col]) return;
+          const ids = structureIds(list, selects[name].getSelected());
+          if (ids.length) fields[opp.cols[col]] = ['L', ...ids];
+        });
         if (opp.teamWriteCol && form.team && form.team.value) {
           fields[opp.teamWriteCol] = ['L', Number(form.team.value)];
         }
