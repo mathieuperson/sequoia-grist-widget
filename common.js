@@ -728,6 +728,21 @@ async function updateRecord(tableId, rowId, fields) {
   invalidateTableCache(tableId);
 }
 
+// La valeur à écrire dans une colonne qui peut porter une liste ou une seule
+// valeur — référence comme choix. Grist attend ['L', …] pour une RefList ou
+// une ChoiceList et la valeur nue pour une Ref ou une Choice ; il refuse
+// l'autre forme, et la cellule s'affiche alors en rose dans la table. Écrire
+// « au petit bonheur » produit donc des lignes que le document rejette, sans
+// que le widget s'en aperçoive : `rel.listCols` porte les colonnes de type
+// liste, relevées dans les métadonnées à la résolution de la table.
+function isListCol(rel, colId) {
+  return !!colId && ((rel && rel.listCols) || []).includes(colId);
+}
+
+function colValue(rel, colId, valeurs) {
+  return isListCol(rel, colId) ? ['L', ...valeurs] : valeurs[0];
+}
+
 async function removeRecord(tableId, rowId) {
   await grist.docApi.applyUserActions([['RemoveRecord', tableId, rowId]]);
   invalidateTableCache(tableId);
@@ -871,10 +886,14 @@ function msFilterMarkup(id, label, labelAll) {
 // Branche le comportement sur ce markup. `onChange(selection)` est appelé à
 // chaque changement. Rend { setOptions, getSelected, setSelected, close }.
 function createMultiSelect(root, conf) {
-  const opts = Object.assign({ values: [], selected: [], labelAll: 'Tous', onChange: null }, conf || {});
+  // `single` : une seule valeur à la fois. Utile quand la colonne visée est un
+  // Choice simple et non une ChoiceList — proposer d'en cocher trois pour n'en
+  // écrire qu'une ferait mentir le formulaire.
+  const opts = Object.assign(
+    { values: [], selected: [], labelAll: 'Tous', onChange: null, single: false }, conf || {});
   if (!root) return { setOptions() {}, getSelected: () => [], setSelected() {}, close() {} };
   let values = opts.values.slice();
-  let selected = opts.selected.slice();
+  let selected = opts.single ? opts.selected.slice(0, 1) : opts.selected.slice();
 
   const btn = root.querySelector('.ms-filter-btn');
   const countEl = btn.querySelector('.ms-count');
@@ -884,7 +903,8 @@ function createMultiSelect(root, conf) {
 
   function updateButton() {
     const n = selected.length;
-    countEl.textContent = n === 0 ? opts.labelAll : n + ' sélectionné' + (n > 1 ? 's' : '');
+    countEl.textContent = n === 0 ? opts.labelAll
+      : (opts.single ? selected[0] : n + ' sélectionné' + (n > 1 ? 's' : ''));
     btn.classList.toggle('active', n > 0);
   }
 
@@ -910,9 +930,17 @@ function createMultiSelect(root, conf) {
       : '<div class="ms-empty">Aucune valeur</div>';
     optionsEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
       cb.addEventListener('change', () => {
-        const set = new Set(selected);
-        if (cb.checked) set.add(cb.value); else set.delete(cb.value);
-        selected = Array.from(set);
+        if (opts.single) {
+          selected = cb.checked ? [cb.value] : [];
+          // Les autres cases doivent suivre, sans re-trier sous le curseur.
+          optionsEl.querySelectorAll('input[type="checkbox"]').forEach(autre => {
+            if (autre !== cb) autre.checked = false;
+          });
+        } else {
+          const set = new Set(selected);
+          if (cb.checked) set.add(cb.value); else set.delete(cb.value);
+          selected = Array.from(set);
+        }
         updateButton();
         if (opts.onChange) opts.onChange(selected.slice());
       });
@@ -939,13 +967,18 @@ function createMultiSelect(root, conf) {
 
   // "Tout cocher" ne porte que sur les valeurs visibles : combiné à la
   // recherche, c'est ce qui permet de cocher un sous-ensemble d'un coup.
-  root.querySelector('[data-action="all"]').addEventListener('click', () => {
-    const visible = Array.from(optionsEl.querySelectorAll('.ms-option'))
-      .filter(l => !l.hidden).map(l => l.querySelector('input').value);
-    selected = Array.from(new Set(selected.concat(visible)));
-    renderOptions(); updateButton();
-    if (opts.onChange) opts.onChange(selected.slice());
-  });
+  const boutonTout = root.querySelector('[data-action="all"]');
+  if (opts.single) {
+    boutonTout.hidden = true; // « Tout cocher » n'a pas de sens pour une valeur unique
+  } else {
+    boutonTout.addEventListener('click', () => {
+      const visible = Array.from(optionsEl.querySelectorAll('.ms-option'))
+        .filter(l => !l.hidden).map(l => l.querySelector('input').value);
+      selected = Array.from(new Set(selected.concat(visible)));
+      renderOptions(); updateButton();
+      if (opts.onChange) opts.onChange(selected.slice());
+    });
+  }
   root.querySelector('[data-action="none"]').addEventListener('click', () => {
     selected = [];
     renderOptions(); updateButton();
@@ -969,6 +1002,7 @@ function createMultiSelect(root, conf) {
     getSelected() { return selected.slice(); },
     setSelected(next) {
       selected = (next || []).filter(v => values.includes(v));
+      if (opts.single) selected = selected.slice(0, 1);
       renderOptions(); updateButton();
     },
     close() { panel.hidden = true; }

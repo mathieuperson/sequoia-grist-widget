@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pilotage Partenariats &amp; Innovation — Cluster SequoIA</title>
-<link rel="stylesheet" href="./common.css?v=20260917">
+<link rel="stylesheet" href="./common.css?v=20260917a">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="./common.js?v=20260917"></script>
-<script src="./pilotage.js?v=20260917"></script>
+<script src="./common.js?v=20260917a"></script>
+<script src="./pilotage.js?v=20260917a"></script>
 <style>
 /* Charte alignée sur common.css (vert #1f6b3f, fond #f4f6f5, police
    système). Seules les valeurs absentes de common.css sont ajoutées ici,
@@ -1685,7 +1685,7 @@ body { overflow: hidden; }
           if (act.cols.Notes && form.notes) fields[act.cols.Notes] = form.notes.value.trim();
           if (act.cols.Interaction) {
             const ids = echanges.filter(i => sel.echange.getSelected().includes(i.name)).map(i => i.id);
-            fields[act.cols.Interaction] = ids.length ? refValue(act, act.cols.Interaction, ids) : null;
+            fields[act.cols.Interaction] = ids.length ? colValue(act, act.cols.Interaction, ids) : null;
           }
         } else {
           if (inter.cols.Suites) fields[inter.cols.Suites] = label;
@@ -1694,12 +1694,12 @@ body { overflow: hidden; }
         // Les rattachements visent la colonne de la table d'origine.
         if (colPartenaires) {
           const ids = structureIds(partenaires, sel.partner.getSelected());
-          fields[colPartenaires] = ids.length ? refValue(rel, colPartenaires, ids) : null;
+          fields[colPartenaires] = ids.length ? colValue(rel, colPartenaires, ids) : null;
         }
         if (colProjets) {
           const ids = sel.projet.getSelected()
             .map(t => (projets.find(p => p.title === t) || {}).id).filter(Boolean);
-          fields[colProjets] = ids.length ? refValue(rel, colProjets, ids) : null;
+          fields[colProjets] = ids.length ? colValue(rel, colProjets, ids) : null;
         }
         try {
           await updateRecord(rel.tableId, a.rowId, fields);
@@ -1721,10 +1721,10 @@ body { overflow: hidden; }
     if (act.cols.Duree && a.duree) fields[act.cols.Duree] = a.duree;
     if (act.cols.Notes && a.notes) fields[act.cols.Notes] = a.notes;
     if (act.cols.Partenaires && a.partnerId) {
-      fields[act.cols.Partenaires] = refValue(act, act.cols.Partenaires, [a.partnerId]);
+      fields[act.cols.Partenaires] = colValue(act, act.cols.Partenaires, [a.partnerId]);
     }
     if (act.cols.Opportunite && a.projectId) {
-      fields[act.cols.Opportunite] = refValue(act, act.cols.Opportunite, [a.projectId]);
+      fields[act.cols.Opportunite] = colValue(act, act.cols.Opportunite, [a.projectId]);
     }
     return fields;
   }
@@ -1793,8 +1793,8 @@ body { overflow: hidden; }
         const fields = {};
         if (act.cols.Intitule) fields[act.cols.Intitule] = p.label;
         if (act.cols.Echeance && p.due !== null) fields[act.cols.Echeance] = p.due;
-        if (act.cols.Partenaires && partner) fields[act.cols.Partenaires] = refValue(act, act.cols.Partenaires, [partner.id]);
-        if (act.cols.Opportunite && projet) fields[act.cols.Opportunite] = refValue(act, act.cols.Opportunite, [projet.id]);
+        if (act.cols.Partenaires && partner) fields[act.cols.Partenaires] = colValue(act, act.cols.Partenaires, [partner.id]);
+        if (act.cols.Opportunite && projet) fields[act.cols.Opportunite] = colValue(act, act.cols.Opportunite, [projet.id]);
         if (act.cols.Priorite && p.priorite) fields[act.cols.Priorite] = p.priorite;
         if (act.cols.Duree && p.duree) fields[act.cols.Duree] = p.duree;
         await addRecord(act.tableId, fields);
@@ -1833,8 +1833,8 @@ body { overflow: hidden; }
       prefixe = 'act:';
       if (act.cols.Intitule) fields[act.cols.Intitule] = s.label;
       if (act.cols.Echeance) fields[act.cols.Echeance] = inDays(7);
-      if (act.cols.Partenaires && s.partnerId) fields[act.cols.Partenaires] = refValue(act, act.cols.Partenaires, [s.partnerId]);
-      if (act.cols.Opportunite && s.projectId) fields[act.cols.Opportunite] = refValue(act, act.cols.Opportunite, [s.projectId]);
+      if (act.cols.Partenaires && s.partnerId) fields[act.cols.Partenaires] = colValue(act, act.cols.Partenaires, [s.partnerId]);
+      if (act.cols.Opportunite && s.projectId) fields[act.cols.Opportunite] = colValue(act, act.cols.Opportunite, [s.projectId]);
     } else {
       if (!inter.tableId) { setStatus('Table Interactions introuvable'); return; }
       tableId = inter.tableId;
@@ -1906,6 +1906,7 @@ body { overflow: hidden; }
       selects[name] = createMultiSelect(form.querySelector('#ms-' + name), {
         values: spec.values, selected: spec.selected || [],
         labelAll: spec.labelAll || 'Aucune sélection',
+        single: !!spec.single,
         onChange: spec.onChange ? (selection) => spec.onChange(selection, selects) : null
       });
     });
@@ -1967,12 +1968,12 @@ body { overflow: hidden; }
             if (act.cols.Recurrence && form.recurrence && form.recurrence.value.trim()) {
               fields[act.cols.Recurrence] = form.recurrence.value.trim();
             }
-            if (act.cols.Partenaires && partnerIds.length) fields[act.cols.Partenaires] = refValue(act, act.cols.Partenaires, partnerIds);
+            if (act.cols.Partenaires && partnerIds.length) fields[act.cols.Partenaires] = colValue(act, act.cols.Partenaires, partnerIds);
             if (act.cols.Opportunite) {
               const ids = selects.projet.getSelected()
                 .map(t => (projets.find(p => p.title === t) || {}).id)
                 .filter(Boolean);
-              if (ids.length) fields[act.cols.Opportunite] = refValue(act, act.cols.Opportunite, ids);
+              if (ids.length) fields[act.cols.Opportunite] = colValue(act, act.cols.Opportunite, ids);
             }
             await addRecord(act.tableId, fields);
           } else {
@@ -2034,12 +2035,6 @@ body { overflow: hidden; }
   // en font partie : c'est souvent à eux que se rattache une idée.
   function sortedPartners() {
     return model.partners.slice().sort((a, b) => a.name.localeCompare(b.name, 'fr'));
-  }
-
-  // La valeur à écrire dans une colonne de référence, selon qu'elle accepte
-  // une liste ou une seule ligne — sur une Ref simple, le premier choix.
-  function refValue(rel, colId, ids) {
-    return (rel.listCols || []).includes(colId) ? ['L', ...ids] : ids[0];
   }
 
   function selectField(label, name, values, current, extra) {
@@ -2135,7 +2130,7 @@ body { overflow: hidden; }
       title: 'Éditer : ' + project.title,
       submit: 'Enregistrer',
       selects: {
-        type: { values: dispositifs, selected: typesActuels },
+        type: { values: dispositifs, selected: typesActuels, single: !isListCol(opp, opp.cols.Type) },
         partner: {
           values: partenaires.map(p => p.name),
           selected: partenaires.filter(p => project.partnerIds.includes(p.id)).map(p => p.name),
@@ -2177,7 +2172,7 @@ body { overflow: hidden; }
         // comme les colonnes de référence multiples.
         if (opp.cols.Type) {
           const types = selects.type.getSelected();
-          if (types.length) fields[opp.cols.Type] = ['L', ...types];
+          if (types.length) fields[opp.cols.Type] = colValue(opp, opp.cols.Type, types);
         }
         if (opp.cols.Statut && form.statut.value !== project.stage) fields[opp.cols.Statut] = form.statut.value;
         if (opp.cols.Montant && form.montant.value) fields[opp.cols.Montant] = Number(form.montant.value);
@@ -2217,7 +2212,7 @@ body { overflow: hidden; }
       title: 'Nouvelle opportunité',
       submit: 'Créer l’opportunité',
       selects: {
-        type: { values: dispositifs },
+        type: { values: dispositifs, single: !isListCol(opp, opp.cols.Type) },
         partner: { values: partenaires.map(p => p.name), labelAll: 'Projet interne (aucun partenaire)' },
         etablissement: { values: etabs.map(s => s.name) },
         laboratoire: {
@@ -2246,7 +2241,7 @@ body { overflow: hidden; }
         if (opp.cols.Sujet) fields[opp.cols.Sujet] = sujet;
         if (opp.cols.Type) {
           const types = selects.type.getSelected();
-          if (types.length) fields[opp.cols.Type] = ['L', ...types];
+          if (types.length) fields[opp.cols.Type] = colValue(opp, opp.cols.Type, types);
         }
         if (opp.cols.Statut) fields[opp.cols.Statut] = form.statut.value;
         if (opp.cols.Montant && form.montant.value) fields[opp.cols.Montant] = Number(form.montant.value);

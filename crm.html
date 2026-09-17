@@ -6,8 +6,8 @@
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-<link rel="stylesheet" href="./common.css?v=20260917">
-<script src="./common.js?v=20260917"></script>
+<link rel="stylesheet" href="./common.css?v=20260917a">
+<script src="./common.js?v=20260917a"></script>
 <style>
   /* ---------- Sidebar ---------- */
   .filter-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
@@ -558,6 +558,11 @@
         const colLabels = {};
         const formulaCols = new Set();
         meta.forEach(m => { colLabels[m.id] = m.label; if (m.isFormula) formulaCols.add(m.id); });
+        // Grist attend ['L', …] pour une colonne qui porte une liste (RefList,
+        // ChoiceList) et la valeur nue pour une colonne à valeur unique ; il
+        // refuse l'autre forme, et la cellule s'affiche alors en rose dans la
+        // table. L'écriture doit donc suivre le type réel de la colonne.
+        const listCols = meta.filter(m => /^(RefList|ChoiceList):?/.test(m.type || '')).map(m => m.id);
 
         // Discovered link columns beyond the primary one (Etablissement /
         // Laboratoire / Equipe Cluster…) double as editable multi-select
@@ -570,13 +575,14 @@
           cols,
           linkCols: linkCols.length ? linkCols : [primary].filter(Boolean),
           extraEditableLinkCols,
+          listCols,
           colLabels,
           records: recordsFromTableData(data),
           error: null
         };
       } catch (err) { /* try the next candidate */ }
     }
-    return { tableId: null, cols: {}, linkCols: [], extraEditableLinkCols: [], colLabels: {}, records: [], error: 'Table introuvable (' + conf.tableCandidates.join(' / ') + ')' };
+    return { tableId: null, cols: {}, linkCols: [], extraEditableLinkCols: [], listCols: [], colLabels: {}, records: [], error: 'Table introuvable (' + conf.tableCandidates.join(' / ') + ')' };
   }
 
   async function loadRelated() {
@@ -1309,9 +1315,15 @@
   // be added — a closed vocabulary, so no free text slips in as a stray
   // near-duplicate. `onChange` is called with the full array on every
   // add/remove; the caller is responsible for saving it.
-  async function renderChoiceListPicker(container, tableId, colId, records, currentValues, onChange) {
+  //
+  // `opts.single` restreint à une valeur : une colonne Choice simple n'en
+  // accepte qu'une, et laisser cocher trois types pour n'en écrire qu'un
+  // serait un mensonge du formulaire. Le nouveau choix remplace l'ancien.
+  async function renderChoiceListPicker(container, tableId, colId, records, currentValues, onChange, opts) {
     if (!container || !colId) { if (container) container.innerHTML = ''; return; }
+    const single = !!(opts && opts.single);
     let values = [...(currentValues || [])];
+    if (single) values = values.slice(0, 1);
     let options = [...(currentValues || [])]; // shown immediately, refined once choices are fetched
     const datalistId = 'dl-' + Math.random().toString(36).slice(2);
 
@@ -1321,7 +1333,8 @@
           values.map((v, i) => '<span class="ref-chip">' + escapeHtml(v) +
             '<button type="button" data-i="' + i + '" title="Retirer">✕</button></span>').join('') +
         '</div>' +
-        '<input class="editable-input ref-input" list="' + datalistId + '" placeholder="Ajouter… (Entrée)">' +
+        '<input class="editable-input ref-input" list="' + datalistId + '" placeholder="' +
+          (single ? 'Choisir… (Entrée)' : 'Ajouter… (Entrée)') + '">' +
         '<datalist id="' + datalistId + '">' +
           options.filter(o => !values.includes(o)).map(o => '<option value="' + escapeHtml(o) + '">').join('') +
         '</datalist>';
@@ -1345,7 +1358,7 @@
           return;
         }
         if (values.includes(match)) { input.value = ''; return; }
-        values.push(match);
+        if (single) values = [match]; else values.push(match);
         input.value = '';
         paint();
         onChange([...values]);
@@ -1544,7 +1557,10 @@
       '<div class="form-modal-grid">' +
         textField('m-sujet', 'Sujet', get('Sujet'), true) +
         selectField('m-statut', 'Statut', get('Statut')) +
-        textField('m-type', 'Type', get('Type')) +
+        // Le Type était un champ libre : un choix multiple à vocabulaire
+        // fermé, comme dans le pilotage, évite les valeurs hors liste — que
+        // Grist refuse — et laisse cumuler « CIFRE + ANR ».
+        choiceListFieldHtml('m-type', 'Type') +
         textField('m-axe', 'Axe SequoIA', get('AxeSequoia')) +
         textField('m-montant', 'Montant (€)', rawGet('Montant') === null ? '' : rawGet('Montant'), false, 'number') +
         dateField('m-debut', 'Date de début', rawGet('DateDebut')) +
@@ -1565,6 +1581,22 @@
     openModal(html, () => {
       populateChoiceSelect('m-statut', r.tableId, cols.Statut, r.records, get('Statut'));
 
+      // Le Type se saisit dans un sélecteur à vocabulaire fermé. Choix
+      // multiple si la colonne est une ChoiceList, valeur unique sinon :
+      // c'est le document qui décide, pas le widget. En édition, chaque
+      // changement s'enregistre aussitôt comme les autres champs ; à la
+      // création, la valeur est relue au moment du « Créer ».
+      const typeEstListe = isListCol(r, cols.Type);
+      let typeValues = choiceListValues(rawGet('Type'));
+      renderChoiceListPicker(
+        document.getElementById('m-type'), r.tableId, cols.Type, r.records, typeValues,
+        (values) => {
+          typeValues = values;
+          if (!isNew && cols.Type) {
+            saver(r.tableId, o.id, cols.Type, colValue(r, cols.Type, values));
+          }
+        }, { single: !typeEstListe });
+
       const getPartenaires = mountRefPicker('m-ref-partenaires',
         structurePickerOptions(), o, r.tableId, cols.Partenaires, isNew,
         [{ id: s.id, label: structField(s, 'Nom') || 'Sans nom' }]);
@@ -1583,7 +1615,7 @@
           const set = (role, value) => { if (cols[role]) fields[cols[role]] = value; };
           set('Sujet', sujet);
           set('Statut', document.getElementById('m-statut').value);
-          set('Type', document.getElementById('m-type').value.trim());
+          if (typeValues.length) set('Type', colValue(r, cols.Type, typeValues));
           set('AxeSequoia', document.getElementById('m-axe').value.trim());
           const montant = document.getElementById('m-montant').value;
           set('Montant', montant === '' ? null : Number(montant));

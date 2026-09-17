@@ -8,7 +8,7 @@ const src = fs.readFileSync(new URL('../common.js', import.meta.url), 'utf8');
 // in a sandbox and expose the functions we need via a `window` shim.
 const sandbox = { console, window: {}, document: undefined };
 vm.createContext(sandbox);
-vm.runInContext(src + '\nwindow.exports = { escapeHtml, pilierClass, initials, formatValue, formatMontant, formatDate, gristDateToInputValue, inputValueToGristDate, statusColor, statusStyle, statusTextColor, registerStatusStyles, readableTextOn, choiceStylesFromWidgetOptions, mapRecord, mapRecords, attachmentIdsFromValue, guessDisplayColumn, chipLabels, debounce, createFieldSaver };', sandbox);
+vm.runInContext(src + '\nwindow.exports = { escapeHtml, pilierClass, initials, formatValue, formatMontant, formatDate, gristDateToInputValue, inputValueToGristDate, statusColor, statusStyle, statusTextColor, registerStatusStyles, readableTextOn, choiceStylesFromWidgetOptions, mapRecord, mapRecords, attachmentIdsFromValue, guessDisplayColumn, chipLabels, debounce, createFieldSaver, isListCol, colValue };', sandbox);
 const fn = sandbox.window.exports;
 
 let pass = 0, fail = 0;
@@ -269,6 +269,23 @@ eq(x.stripHtml('a &amp; b&nbsp;c'), 'a & b c', 'stripHtml: entities decoded');
 eq(x.stripHtml(null), '', 'stripHtml: null -> empty');
 eq(x.excerpt('<p>' + 'mot '.repeat(60) + '</p>', 20).endsWith('…'), true, 'excerpt: long text gets an ellipsis');
 eq(x.excerpt('<p>court</p>', 20), 'court', 'excerpt: short text kept as-is');
+
+// ---- isListCol / colValue ----
+// Grist attend ['L', …] pour une RefList ou une ChoiceList, et la valeur nue
+// pour une Ref ou une Choice. Se tromper de forme fait refuser la cellule par
+// le document — elle s'affiche en rose — sans que le widget s'en aperçoive.
+const relListe = { listCols: ['Type', 'Partenaires'] };
+eq(fn.isListCol(relListe, 'Type'), true, 'isListCol: colonne de type liste');
+eq(fn.isListCol(relListe, 'Statut'), false, 'isListCol: colonne à valeur unique');
+eq(fn.isListCol(relListe, null), false, 'isListCol: colonne absente -> false');
+eq(fn.isListCol(null, 'Type'), false, 'isListCol: table non résolue -> false');
+eq(fn.isListCol({}, 'Type'), false, 'isListCol: métadonnées manquantes -> false');
+eq(fn.colValue(relListe, 'Type', ['CIFRE', 'Chaire']), ['L', 'CIFRE', 'Chaire'],
+  'colValue: ChoiceList -> [L, …valeurs]');
+eq(fn.colValue(relListe, 'Statut', ['Montage']), 'Montage',
+  'colValue: Choice -> la valeur nue, pas un tableau');
+eq(fn.colValue(relListe, 'Statut', ['Montage', 'Idée']), 'Montage',
+  'colValue: Choice -> la première valeur seulement');
 
 // ---- Estampille de version des fichiers partagés ----
 // Un widget vit dans une iframe Grist : son HTML est rechargé au

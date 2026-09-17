@@ -19,8 +19,33 @@ import { fileURLToPath } from 'node:url';
 const REPO = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PARTAGES = ['common.css', 'common.js', 'pilotage.js'];
 
+// Deux passages le même jour donneraient la même date, donc la même URL, donc
+// le cache qu'on cherchait justement à contourner. À défaut de valeur donnée,
+// on suffixe au-delà de la plus avancée des estampilles du jour déjà en place.
+// Il ne suffit pas d'éviter celles qu'on voit : revenir de « 20260917a » à
+// « 20260917 » rendrait une URL déjà servie, donc déjà en cache.
+function versionDuJour() {
+  const jour = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const enPlace = new Set();
+  fs.readdirSync(REPO).filter(f => f.endsWith('.html')).forEach(f => {
+    const html = fs.readFileSync(path.join(REPO, f), 'utf8');
+    PARTAGES.forEach(asset => {
+      const m = html.match(new RegExp(asset.replace('.', '\\.') + '\\?v=([^"]*)'));
+      if (m) enPlace.add(m[1]);
+    });
+  });
+  // Les estampilles du jour, suffixe compris, dans l'ordre : « », a, b, c…
+  const duJour = Array.from(enPlace).filter(v => v.startsWith(jour)).sort();
+  if (!duJour.length) return jour;
+  const derniere = duJour[duJour.length - 1];
+  const suffixe = derniere.slice(jour.length);
+  const rang = suffixe ? suffixe.charCodeAt(0) - 96 : 0; // '' -> 0, 'a' -> 1…
+  if (rang >= 0 && rang < 26) return jour + String.fromCharCode(97 + rang);
+  return jour + '-' + Date.now();
+}
+
 const donne = process.argv[2];
-const version = donne || new Date().toISOString().slice(0, 10).replace(/-/g, '');
+const version = donne || versionDuJour();
 
 const widgets = fs.readdirSync(REPO).filter(f => f.endsWith('.html'));
 let touches = 0;
