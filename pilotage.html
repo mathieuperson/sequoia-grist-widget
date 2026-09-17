@@ -333,6 +333,8 @@ body { overflow: hidden; }
 .pil-action { cursor: pointer; }
 .pil-action .pil-check-wrap, .pil-action .pil-snooze { cursor: default; }
 .pil-modal-note { font-size: 12px; color: var(--text-muted); margin: 0; }
+/* Un projet deviné depuis le partenaire, que la ligne ne porte pas. */
+.pil-ctx-devine { font-style: italic; opacity: 0.75; }
 .pil-btn.danger { border-color: var(--danger); color: var(--danger); }
 .pil-btn.danger:hover { background: var(--danger); color: #fff; }
 
@@ -825,7 +827,11 @@ body { overflow: hidden; }
     // Le contexte d'une action — projet, partenaire, échéance de dépôt —
     // alimente l'urgence et les motifs ; il est le même qu'elle vienne de la
     // table ou d'une interaction.
-    const contexte = (project, partner) => ({
+    // `inferred` distingue un projet deviné — le plus avancé du partenaire,
+    // faute de rattachement — de celui que la ligne porte vraiment. La liste
+    // doit le dire, sinon elle affirme un lien que le document ignore.
+    const contexte = (project, partner, inferred) => ({
+      projectInferred: !!inferred && !!project,
       partnerId: partner ? partner.id : null,
       partnerName: partner ? partner.name : '',
       partnerLastContact: partner ? partner.lastContact : null,
@@ -845,8 +851,8 @@ body { overflow: hidden; }
     const tableActions = act.tableId ? act.records.map(r => {
       const partnerIds = refIdsFromValue(r[act.cols.Partenaires]);
       const projectIds = refIdsFromValue(r[act.cols.Opportunite]);
-      const project = projectIds.map(id => projectById[id]).find(Boolean) ||
-        mostAdvancedProject(projects, partnerIds);
+      const direct = projectIds.map(id => projectById[id]).find(Boolean);
+      const project = direct || mostAdvancedProject(projects, partnerIds);
       const partner = partnerIds.map(id => partnerById[id]).find(Boolean) || null;
       const faitLe = r[act.cols.FaitLe] ?? null;
       return Object.assign({
@@ -864,7 +870,7 @@ body { overflow: hidden; }
         start: r[act.cols.Debut] ?? null,
         recurrence: txt(formatValue(r[act.cols.Recurrence])),
         origin: (options.origin && options.origin['act:' + r.id]) || 'manuelle'
-      }, contexte(project, partner));
+      }, contexte(project, partner, !direct));
     }) : [];
 
     // Les actions déduites des interactions (Prochaine échéance + Suites).
@@ -874,8 +880,8 @@ body { overflow: hidden; }
       .filter(i => i.due !== null || i.suites)
       .map(i => {
         const key = 'int:' + i.id;
-        const project = i.projectIds.map(id => projectById[id]).find(Boolean) ||
-          mostAdvancedProject(projects, i.partnerIds);
+        const direct = i.projectIds.map(id => projectById[id]).find(Boolean);
+        const project = direct || mostAdvancedProject(projects, i.partnerIds);
         const partner = i.partnerIds.map(id => partnerById[id]).find(Boolean) || null;
         return Object.assign({
           id: key,
@@ -892,7 +898,7 @@ body { overflow: hidden; }
           start: null,
           recurrence: '',
           origin: (options.origin && options.origin[key]) || 'manuelle'
-        }, contexte(project, partner));
+        }, contexte(project, partner, !direct));
       });
 
     return {
@@ -1342,8 +1348,13 @@ body { overflow: hidden; }
             ? '<span class="pil-prio ' + prio.key + '" title="Priorité ' + H(prio.label.toLowerCase()) + '">' +
               (prio.key === 'haute' ? '!!' : '!') + '</span>' : '') +
           H(a.label) + '</div>' +
-        '<div class="pil-action-ctx">' +
-          H([a.partnerName || 'Interne', a.projectTitle].filter(Boolean).join(' · ')) + '</div>' +
+        '<div class="pil-action-ctx">' + H(a.partnerName || 'Interne') +
+          (a.projectTitle ? ' · ' + (a.projectInferred
+            // Le projet deviné se lit autrement : la ligne ne le porte pas.
+            ? '<span class="pil-ctx-devine" title="Projet le plus avancé de ce partenaire — cette action n’y est pas rattachée">' +
+              H(a.projectTitle) + '</span>'
+            : H(a.projectTitle)) : '') +
+        '</div>' +
         '<div class="pil-action-tags">' +
           (motif ? '<span class="pil-motif ' + motif.tone + '">' + H(motif.label) + '</span>' : '') +
           (a.stage ? '<span class="pil-stage-chip" style="background:' + stageColor(a.stage) +
@@ -1589,6 +1600,13 @@ body { overflow: hidden; }
           (a.due ? gristDateToInputValue(a.due) : '') + '">') +
         (colPartenaires ? msField('Partenaire(s)', 'partner') : '') +
         (colProjets ? msField('Opportunité', 'projet') : '') +
+        // La liste affiche parfois un projet deviné depuis le partenaire ; le
+        // dire ici évite de croire que le formulaire a perdu la valeur.
+        (colProjets && a.projectInferred && a.projectTitle
+          ? '<p class="pil-modal-note">La liste affiche « ' + H(a.projectTitle) + ' », le projet le plus ' +
+            'avancé de ce partenaire. Cette action n’y est pas rattachée : choisissez-le ci-dessus pour ' +
+            'l’enregistrer.</p>'
+          : '') +
         (deTable && act.cols.Interaction ? msField('Échange associé', 'echange') : '') +
         (deTable && act.cols.Priorite ? selectField('Priorité', 'priorite',
           PILOTAGE_PRIORITES.map(x => x.label), (prioriteOf(a.priorite) || {}).label || 'Normale') : '') +

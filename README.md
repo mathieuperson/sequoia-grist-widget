@@ -98,6 +98,12 @@ l'interaction elle-même — intitulé, échéance, **et ses rattachements** : p
 alors les colonnes d'Interactions. Elle n'est pas supprimable : effacer l'interaction emporterait son compte
 rendu, qui se modifie dans la fiche du partenaire.
 
+**Projet deviné vs rattaché.** Faute de rattachement explicite, une action hérite du projet le plus avancé de
+son partenaire (`mostAdvancedProject()`) — c'est ce qui donne un contexte aux actions anciennes. La liste
+l'affiche alors en italique et le formulaire le dit, avec de quoi l'officialiser d'un clic : sans cette
+distinction, la liste affirmerait un lien que le document ignore, et le formulaire semblerait avoir perdu la
+valeur.
+
 **Charge du jour.** Le sous-titre annonce la somme des efforts estimés des actions en retard et du jour
 (« 2 h 45 à traiter aujourd'hui ») : de quoi voir qu'on a prévu six heures dans une journée qui n'en compte
 pas tant. Le filtre **Moins de 15 min** ne garde que ce qui se case entre deux réunions.
