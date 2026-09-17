@@ -270,5 +270,32 @@ eq(x.stripHtml(null), '', 'stripHtml: null -> empty');
 eq(x.excerpt('<p>' + 'mot '.repeat(60) + '</p>', 20).endsWith('…'), true, 'excerpt: long text gets an ellipsis');
 eq(x.excerpt('<p>court</p>', 20), 'court', 'excerpt: short text kept as-is');
 
+// ---- Estampille de version des fichiers partagés ----
+// Un widget vit dans une iframe Grist : son HTML est rechargé au
+// rafraîchissement, ses sous-ressources non. Sans estampille sur
+// common.css / common.js, le navigateur peut servir un CSS périmé pendant
+// que le HTML est à jour — le code est en ligne et rien ne change à l'écran.
+// Ce test attrape l'asset oublié et les versions qui divergent, pas
+// l'estampille qu'on a négligé d'incrémenter : pour ça, `npm run bump:assets`.
+const racine = new URL('..', import.meta.url);
+const widgets = fs.readdirSync(racine).filter(f => f.endsWith('.html'));
+const estampilles = new Set();
+const sansVersion = [];
+widgets.forEach(f => {
+  const html = fs.readFileSync(new URL(f, racine), 'utf8');
+  ['common.css', 'common.js', 'pilotage.js'].forEach(asset => {
+    const re = new RegExp('(?:href|src)="(?:\\./)?' + asset.replace('.', '\\.') + '(\\?v=([^"]*))?"');
+    const m = html.match(re);
+    if (!m) return;
+    if (!m[2]) sansVersion.push(f + ' -> ' + asset);
+    else estampilles.add(m[2]);
+  });
+});
+eq(widgets.length > 0, true, 'estampille: des widgets à vérifier');
+eq(sansVersion, [], 'estampille: tout fichier partagé est référencé avec ?v=');
+eq(Array.from(estampilles).length <= 1, true,
+  'estampille: une seule version en circulation (sinon un widget a été oublié) — ' +
+  Array.from(estampilles).join(', '));
+
 console.log(`\n${pass} passed, ${fail} failed (final)`);
 process.exit(fail ? 1 : 0);
