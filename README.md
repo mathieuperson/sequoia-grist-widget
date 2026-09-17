@@ -56,12 +56,14 @@ Statut et Type du document, l'équipe de recherche sur la première colonne de r
 montant et les dates. **Le partenaire est optionnel** : sans partenaire, c'est un projet interne au cluster — la
 carte l'affiche comme tel plutôt qu'avec un tiret, et le sous-titre de la vue les compte.
 
-**Mes actions** — les actions sont portées par les interactions (**Prochaine échéance** + **Suites**) : aucune
-table à créer. Elles sont regroupées à l'affichage par urgence (En retard / Aujourd'hui / Cette semaine / Plus
-tard / Sans échéance — les groupes vides ne s'affichent pas), et chacune montre son **motif** (« PROMESSE NON
+**Mes actions** — une todo liste adossée à la table Actions (voir [La table Actions](#la-table-actions)), qui
+affiche aussi, le temps de la transition, les actions encore déduites des interactions (**Prochaine échéance**
++ **Suites**). Elles sont regroupées par urgence (En retard / Aujourd'hui / Cette semaine / Plus tard / Sans
+échéance / Différées — les groupes vides ne s'affichent pas), et chacune montre son **motif** (« PROMESSE NON
 TENUE · 3 J », « DÉPÔT RÉGION BRETAGNE DANS 9 J », « BLOQUE 1,2 M€ », « PARTENAIRE À RELANCER »…), son étape de
-pipeline et un **effort estimé**. Cocher une action vide sa prochaine échéance dans Grist (l'échéance est
-traitée) et la range dans « Terminé aujourd'hui » ; décocher restaure l'échéance d'origine.
+pipeline et un **effort estimé**. Cocher une action de la table y écrit `Fait` et `Fait_le` ; cocher une action
+déduite vide la prochaine échéance de son interaction (l'échéance est traitée) et la range dans « Terminé
+aujourd'hui », décocher la restaure.
 
 Le bloc **Actions suggérées** applique un moteur de règles extensible (`PILOTAGE_SUGGESTION_RULES` dans
 `pilotage.js`), chaque suggestion affichant sa justification chiffrée : projet clos depuis plus de 60 j sans
