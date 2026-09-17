@@ -91,10 +91,12 @@ curseur, `1`–`3` la reportent, `/` va à la recherche. Les raccourcis ne s'app
 jamais pendant une saisie ni un formulaire ouvert.
 
 **Éditer.** Cliquer une ligne ouvre son formulaire — la case à cocher et les boutons de report gardent leur
-geste propre. `e` (ou `Entrée`) l'ouvre sur la ligne au curseur. Une action de la table s'édite en entier et
-peut être supprimée (en deux clics, le bouton se réarmant en « Confirmer ») ; une action déduite d'un échange
-n'expose que ce que l'interaction porte — son intitulé et son échéance — et n'est pas supprimable, effacer
-l'interaction emporterait son compte rendu.
+geste propre. `e` (ou `Entrée`) l'ouvre sur la ligne au curseur. Le formulaire expose ce que porte la ligne
+d'origine : une action de la table s'édite en entier (jusqu'à l'échange auquel elle se rattache) et peut être
+supprimée, en deux clics, le bouton se réarmant en « Confirmer ». Une action déduite d'un échange édite
+l'interaction elle-même — intitulé, échéance, **et ses rattachements** : partenaires et opportunités visent
+alors les colonnes d'Interactions. Elle n'est pas supprimable : effacer l'interaction emporterait son compte
+rendu, qui se modifie dans la fiche du partenaire.
 
 **Charge du jour.** Le sous-titre annonce la somme des efforts estimés des actions en retard et du jour
 (« 2 h 45 à traiter aujourd'hui ») : de quoi voir qu'on a prévu six heures dans une journée qui n'en compte

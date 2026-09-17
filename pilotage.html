@@ -1536,18 +1536,48 @@ body { overflow: hidden; }
 
     const partenaires = sortedPartners();
     const projets = model.projects.slice().sort((a2, b2) => a2.title.localeCompare(b2.title, 'fr'));
-    const selects = deTable ? {
+    // Les échanges, du plus récent au plus ancien, datés pour distinguer deux
+    // réunions de même objet.
+    const echanges = model.interactions.slice()
+      .sort((x, y) => (Number(y.date) || 0) - (Number(x.date) || 0))
+      .map(i => ({
+        id: i.id,
+        name: (i.objet || i.type || 'Échange') + (i.date ? ' — ' + formatDate(i.date) : '')
+      }));
+
+    // Les rattachements enregistrés, lus sur la ligne d'origine : une action
+    // de la table porte les siens, une action déduite ceux de son interaction.
+    const row = deTable
+      ? act.records.find(r => r.id === a.rowId)
+      : related.interactions.records.find(r => r.id === a.rowId);
+    const inter = related.interactions;
+    const lus = (col) => refIdsFromValue(row ? row[col] : null);
+    const partnerIds = deTable ? lus(act.cols.Partenaires) : lus(inter.cols.Partenaires);
+    const projetIds = deTable ? lus(act.cols.Opportunite) : lus(inter.cols.Opportunites);
+    const echangeIds = deTable ? lus(act.cols.Interaction) : [a.rowId];
+
+    const selects = {
       partner: {
         values: partenaires.map(p => p.name),
-        selected: partenaires.filter(p => p.id === a.partnerId).map(p => p.name),
+        selected: partenaires.filter(p => partnerIds.includes(p.id)).map(p => p.name),
         labelAll: 'Aucun partenaire'
       },
       projet: {
         values: projets.map(p => p.title),
-        selected: projets.filter(p => p.id === a.projectId).map(p => p.title),
+        selected: projets.filter(p => projetIds.includes(p.id)).map(p => p.title),
         labelAll: 'Aucune opportunité'
+      },
+      echange: {
+        values: echanges.map(i => i.name),
+        selected: echanges.filter(i => echangeIds.includes(i.id)).map(i => i.name),
+        labelAll: 'Aucun échange'
       }
-    } : {};
+    };
+    // Quelle colonne porte quoi, selon la table d'origine. L'échange n'est
+    // modifiable que sur une action de la table : une action déduite *est*
+    // son interaction, on ne la rattache pas à une autre.
+    const colPartenaires = deTable ? act.cols.Partenaires : inter.cols.Partenaires;
+    const colProjets = deTable ? act.cols.Opportunite : inter.cols.Opportunites;
 
     openModal({
       title: 'Éditer : ' + a.label,
@@ -1557,8 +1587,9 @@ body { overflow: hidden; }
         field('Intitulé', '<input name="label" value="' + H(a.label) + '" required>') +
         field('Échéance', '<input type="date" name="due" value="' +
           (a.due ? gristDateToInputValue(a.due) : '') + '">') +
-        (deTable && act.cols.Partenaires ? msField('Partenaire', 'partner') : '') +
-        (deTable && act.cols.Opportunite ? msField('Opportunité', 'projet') : '') +
+        (colPartenaires ? msField('Partenaire(s)', 'partner') : '') +
+        (colProjets ? msField('Opportunité', 'projet') : '') +
+        (deTable && act.cols.Interaction ? msField('Échange associé', 'echange') : '') +
         (deTable && act.cols.Priorite ? selectField('Priorité', 'priorite',
           PILOTAGE_PRIORITES.map(x => x.label), (prioriteOf(a.priorite) || {}).label || 'Normale') : '') +
         (deTable && act.cols.Duree ? field('Durée estimée (min)',
@@ -1569,9 +1600,9 @@ body { overflow: hidden; }
           '<input name="recurrence" value="' + H(a.recurrence) + '" placeholder="chaque lundi…">') : '') +
         (deTable && act.cols.Notes ? field('Notes',
           '<textarea name="notes">' + H(a.notes) + '</textarea>') : '') +
-        (deTable ? '' : '<p class="pil-modal-note">Cette action vient d’une interaction : ' +
-          'seuls son intitulé et son échéance s’éditent ici. Le compte rendu de l’échange se modifie ' +
-          'dans la fiche du partenaire.</p>'),
+        (deTable ? '' : '<p class="pil-modal-note">Cette action est portée par un échange : ces champs ' +
+          'modifient l’interaction elle-même, y compris ses rattachements. Son compte rendu et sa date ' +
+          'se modifient dans la fiche du partenaire.</p>'),
       // La suppression ne porte que sur une action de la table : effacer
       // l'interaction dont une action est déduite emporterait son compte rendu.
       remove: deTable ? async () => {
@@ -1594,19 +1625,23 @@ body { overflow: hidden; }
           }
           if (act.cols.Recurrence && form.recurrence) fields[act.cols.Recurrence] = form.recurrence.value.trim();
           if (act.cols.Notes && form.notes) fields[act.cols.Notes] = form.notes.value.trim();
-          if (act.cols.Partenaires) {
-            const ids = structureIds(partenaires, sel.partner.getSelected());
-            fields[act.cols.Partenaires] = ids.length ? refValue(act, act.cols.Partenaires, ids) : null;
-          }
-          if (act.cols.Opportunite) {
-            const ids = sel.projet.getSelected()
-              .map(t => (projets.find(p => p.title === t) || {}).id).filter(Boolean);
-            fields[act.cols.Opportunite] = ids.length ? refValue(act, act.cols.Opportunite, ids) : null;
+          if (act.cols.Interaction) {
+            const ids = echanges.filter(i => sel.echange.getSelected().includes(i.name)).map(i => i.id);
+            fields[act.cols.Interaction] = ids.length ? refValue(act, act.cols.Interaction, ids) : null;
           }
         } else {
-          const inter = related.interactions;
           if (inter.cols.Suites) fields[inter.cols.Suites] = label;
           if (inter.cols.ProchaineEcheance) fields[inter.cols.ProchaineEcheance] = due;
+        }
+        // Les rattachements visent la colonne de la table d'origine.
+        if (colPartenaires) {
+          const ids = structureIds(partenaires, sel.partner.getSelected());
+          fields[colPartenaires] = ids.length ? refValue(rel, colPartenaires, ids) : null;
+        }
+        if (colProjets) {
+          const ids = sel.projet.getSelected()
+            .map(t => (projets.find(p => p.title === t) || {}).id).filter(Boolean);
+          fields[colProjets] = ids.length ? refValue(rel, colProjets, ids) : null;
         }
         try {
           await updateRecord(rel.tableId, a.rowId, fields);
