@@ -119,6 +119,7 @@
   .kpi .kpi-value { font-size: 19px; font-weight: 700; line-height: 1.15; }
   .kpi .kpi-value.small { font-size: 14px; font-weight: 600; }
   .kpi .kpi-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 2px; }
+  .kpi .mt { margin-top: 5px; }
   .kpi .kpi-value.warn { color: var(--danger); }
 
   /* ---------- Colonnes ---------- */
@@ -251,13 +252,31 @@
   .pj-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pj-chip:hover { border-color: var(--sequoia-green); }
 
+  /* Les échanges précédents forment une frise : un filet continu porte un
+     point par échange, ce qui donne à voir la cadence du suivi — trois
+     réunions en un mois puis six mois de silence se lisent d'un coup, là où
+     une liste de dates demande de calculer. */
   .tl-item {
     display: flex; gap: 12px;
-    padding: 9px 16px;
+    padding: 9px 16px 9px 0;
     cursor: pointer;
-    border-top: 1px solid #f2f4f3;
+    position: relative;
+    margin-left: 26px;
   }
   .tl-item:hover { background: #f7faf8; }
+  /* Le filet : tiré d'un point à l'autre, interrompu au dernier. */
+  .tl-item::before {
+    content: ''; position: absolute; left: -15px; top: 0; bottom: 0;
+    border-left: 1px solid var(--border);
+  }
+  .tl-item:last-child::before { bottom: auto; height: 17px; }
+  /* Le point, aligné sur la première ligne de texte. */
+  .tl-item::after {
+    content: ''; position: absolute; left: -18px; top: 13px;
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--card-bg); border: 1.5px solid var(--text-muted);
+  }
+  .tl-item:hover::after { border-color: var(--sequoia-green); background: var(--sequoia-green); }
   .tl-item .tl-when { font-size: 11.5px; color: var(--text-muted); min-width: 62px; flex-shrink: 0; padding-top: 1px; }
   .tl-item .tl-body { min-width: 0; flex: 1; }
   .tl-item .tl-title { font-size: 13px; font-weight: 600; }
@@ -503,6 +522,7 @@
   let structTableId = null;
   let current = null;         // selected structure (mapped record)
   let related = {};           // key -> { tableId, cols, records, error }
+  let statutChoices = [];     // choix de la colonne Statut, dans l'ordre du document
   // Par défaut, tout sauf les prospects — comme les autres widgets.
   let filterMode = 'partenaires';
   let query = '';
@@ -571,8 +591,11 @@
   async function loadStatusColors() {
     const opp = related.opportunites;
     if (!opp || !opp.tableId || !opp.cols.Statut) return;
-    const { styles } = await fetchChoiceStyles(opp.tableId, opp.cols.Statut);
+    const { styles, choices } = await fetchChoiceStyles(opp.tableId, opp.cols.Statut);
     registerStatusStyles(styles);
+    // L'ordre des choix est celui du document : il donne l'entonnoir, donc la
+    // position d'une opportunité dedans, sans liste figée dans le widget.
+    statutChoices = choices || [];
   }
 
   // Re-reads every related table from the document (their cached copy is
@@ -919,7 +942,14 @@
           kpiHtml('Dernier contact',
             k.joursDepuisContact === null ? '—' : escapeHtml(formatDaysSince(k.lastContact)),
             k.lastContact ? formatDate(k.lastContact) : 'Aucune interaction',
-            k.joursDepuisContact !== null && k.joursDepuisContact > RELANCE_DAYS) +
+            k.joursDepuisContact !== null && k.joursDepuisContact > RELANCE_DAYS,
+            false,
+            // La jauge situe le silence par rapport au seuil de relance : on
+            // voit qu'il a débordé, sans compter les jours.
+            k.joursDepuisContact === null ? '' : meterMarkup(k.joursDepuisContact, RELANCE_DAYS, {
+              unit: 'jours',
+              label: k.joursDepuisContact > RELANCE_DAYS ? 'à relancer' : 'dans les temps'
+            })) +
           kpiHtml('Interactions', String(k.nbInteractions), k.nbInteractions ? 'depuis le début' : 'aucune', false) +
           kpiHtml('Opportunités',
             k.nbOpportunites + (k.montantTotal ? ' · ' + formatMontantCompact(k.montantTotal) : ''),
@@ -946,10 +976,13 @@
     bindPanelEvents(s);
   }
 
-  function kpiHtml(label, value, sub, warn, small) {
+  // `extra` accueille une jauge ou une répartition : un indicateur qui se voit
+  // en plus de se lire.
+  function kpiHtml(label, value, sub, warn, small, extra) {
     return '<div class="kpi">' +
       '<div class="kpi-label">' + escapeHtml(label) + '</div>' +
       '<div class="kpi-value' + (warn ? ' warn' : '') + (small ? ' small' : '') + '">' + value + '</div>' +
+      (extra || '') +
       '<div class="kpi-sub">' + escapeHtml(sub) + '</div>' +
     '</div>';
   }
@@ -1010,6 +1043,9 @@
               (statut ? '<span class="status-pill" style="background:' + statusColor(statut) +
                 ';color:' + statusTextColor(statut) + '">' + escapeHtml(statut) + '</span>' : '') +
               (linkedVia('opportunites', o, s.id) ? ' <span class="via-pill">' + escapeHtml(linkedVia('opportunites', o, s.id)) + '</span>' : '') +
+              // La pastille nomme l'étape, la jauge la situe dans l'entonnoir :
+              // « Montage » ne dit pas à soi seul si l'affaire s'achève.
+              (statut ? ' ' + statusProgressMarkup(statut, statutChoices, { label: false }) : '') +
               (echeance ? '<div class="o-sub">échéance ' + escapeHtml(formatDate(echeance)) + '</div>' : '') +
             '</div>' +
             '<div class="o-amount">' + escapeHtml(formatMontantCompact(montant)) + '</div>' +

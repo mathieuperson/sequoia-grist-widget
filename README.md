@@ -335,6 +335,22 @@ groupes « En retard / Aujourd'hui / Cette semaine » ne se vident pas avec le t
 
 - `common.css` / `common.js` sont partagés par tous les widgets (design, helpers de formatage, couleurs de statut lues dans le document, upload/téléchargement de pièces jointes via l'API REST Grist).
 - `pilotage.js` porte la logique métier du widget de pilotage en fonctions pures (aucun accès à `grist` ni au DOM), pour qu'elle soit testable sans navigateur ; `pilotage.html` ne fait que lire les tables, rendre et écrire.
+- **Situer plutôt que nommer** : deux composants partagés donnent à voir ce qu'une étiquette se contente de dire.
+  `statusProgressMarkup(statut, choix)` rend une jauge d'avancement — autant de segments que d'étapes, remplis
+  jusqu'à la courante, dans la couleur de l'étape : « Montage » ne dit pas à soi seul si l'affaire commence ou
+  s'achève. L'ordre vient des **choix réels de la colonne** (Grist les conserve dans l'ordre défini), donc aucune
+  liste n'est figée dans le code, et une étape d'abandon se marque à part plutôt qu'en jauge pleine, qui se
+  lirait comme un succès. `meterMarkup(valeur, seuil)` rend une jauge face à un seuil, utilisée sur « dernier
+  contact » : un remplissage qui a débordé se lit plus vite qu'un nombre de jours en rouge. Styles `.sp-*` et
+  `.mt-*` dans `common.css`.
+
+- La **rampe d'étapes de repli** (`--stage-*`) a été re-étagée : « Recherche d'équipe » et « Montage », deux
+  étapes voisines qui se touchent sur le pipeline et le Kanban, étaient à ΔE 4.2 en vision normale — mesuré,
+  donc indissociables. Elles sont maintenant à 9.2, ce qui reste sous le seuil confortable de 15 : onze étapes
+  ne tiennent pas dans une palette catégorielle. C'est acceptable ici parce que le libellé est **toujours**
+  affiché à côté de la couleur — l'identité ne repose jamais sur elle seule. Rappel : ces variables ne sont
+  qu'un repli, `statusStyle()` préférant les couleurs que porte le document.
+
 - Le filtre à choix multiple (bouton + panneau à cases à cocher, recherche, tout cocher/décocher) est partagé : `msFilterMarkup()` / `createMultiSelect()` dans `common.js`, styles `.ms-*` dans `common.css`. Utilisé par `pilotage.html` et `cifre-financement.html`, y compris comme champ de formulaire (le libellé est alors porté par le champ et masqué dans le bouton). **Les valeurs retenues remontent en tête du panneau**, séparées du reste par un filet : sur deux cents structures, ce qui est déjà coché est introuvable au milieu de l'ordre alphabétique. L'ordre n'est recalculé qu'à l'ouverture du panneau, pas à chaque clic — une case qui sauterait sous le curseur ferait décocher de travers.
 - `crm.html` écrit dans plusieurs tables via `grist.docApi.applyUserActions()` (helpers `addRecord` / `updateRecord` / `removeRecord` de `common.js`) et résout leurs colonnes avec `resolveColumns()`.
 - Le compte-rendu (CR) accepte le markdown ; coller une image l'upload automatiquement en pièce jointe Grist et l'insère dans le texte.

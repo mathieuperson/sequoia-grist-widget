@@ -29,16 +29,23 @@
      bleu → orange → jaune → vert, rouge à part pour l'abandon) et servent
      le temps de l'aller-retour, ou pour une étape cible que le document ne
      connaît pas encore. */
-  --stage-idee: #9ca3af;
+  /* Les étapes voisines doivent se distinguer : sur le pipeline et le Kanban
+     elles se touchent. L'orange de « Recherche d'équipe » et celui de
+     « Montage » étaient à ΔE 4.2 en vision normale (mesuré) — indissociables.
+     La rampe est re-étagée pour écarter chaque couple adjacent, la
+     progression gris → bleu → orange → violet → vert restant celle de la
+     charte. Les libellés sont toujours affichés : ils portent l'identité, la
+     couleur ne fait que situer. */
+  --stage-idee: #94a3b8;
   --stage-prospection: var(--status-prospection);
   --stage-premierechange: #60a5fa;
-  --stage-qualification: var(--status-qualification);
+  --stage-qualification: #2563eb;
   --stage-recherchedequipe: #fb923c;
-  --stage-montage: var(--status-montage);
+  --stage-montage: #d97706;
   --stage-contractualisation: var(--status-contractualisation);
   --stage-projetlance: var(--status-concretise);
-  --stage-concretiseencours: var(--status-concretise);
-  --stage-termine: #1b6b4a;
+  --stage-concretiseencours: #16a34a;
+  --stage-termine: #15803d;
   --stage-termineabandonne: var(--status-abandonne);
   --stage-abandonne: var(--status-abandonne);
 }
@@ -1359,6 +1366,10 @@ body { overflow: hidden; }
           (motif ? '<span class="pil-motif ' + motif.tone + '">' + H(motif.label) + '</span>' : '') +
           (a.stage ? '<span class="pil-stage-chip" style="background:' + stageColor(a.stage) +
             ';color:' + stageTextColor(a.stage) + '">' + H(a.stage) + '</span>' : '') +
+          // Où en est l'affaire que cette action fait avancer : une relance en
+          // qualification et une signature en contractualisation ne pèsent pas
+          // pareil, et l'étiquette seule ne le dit pas.
+          (a.stage ? statusProgressMarkup(a.stage, model.stages, { label: false }) : '') +
           // Tant que les deux sources coexistent, dire laquelle porte la ligne :
           // une action déduite d'un échange se solde en vidant son échéance,
           // pas en cochant une case dans la table.

@@ -163,6 +163,57 @@ function statusColor(status) {
   return statusStyle(status).fill;
 }
 
+// ---------- Avancement dans un pipeline ----------
+// Un badge « Montage » ne dit pas si l'affaire commence ou s'achève : il faut
+// connaître la liste pour le situer. Cette jauge le montre — autant de
+// segments que d'étapes, remplis jusqu'à la courante, dans la couleur de
+// l'étape. L'ordre vient des choix de la colonne du document (Grist les garde
+// dans l'ordre où ils sont définis), donc aucune liste n'est figée ici.
+//
+// `stages` est la liste ordonnée des libellés, `current` celui de la ligne.
+// Rend '' si l'étape est inconnue : mieux vaut pas de jauge qu'une fausse.
+function statusProgressMarkup(current, stages, options) {
+  const opts = Object.assign({ label: true, terminalKeys: ['abandonne'] }, options || {});
+  const liste = (stages || []).filter(Boolean);
+  const key = normalizeKey(current);
+  const i = liste.findIndex(s => normalizeKey(s) === key);
+  if (i < 0 || liste.length < 2) return '';
+  const fill = statusColor(current);
+  // Une étape d'abandon n'est pas un aboutissement : elle se marque à part,
+  // barrée, plutôt qu'en jauge pleine qui se lirait comme un succès.
+  const clos = opts.terminalKeys.some(k => key.includes(k));
+  const segments = liste.map((s, j) => {
+    const on = !clos && j <= i;
+    return '<span class="sp-seg' + (on ? ' on' : '') + (clos && j === i ? ' clos' : '') +
+      '" style="' + (on || (clos && j === i) ? 'background:' + fill + ';' : '') + '"></span>';
+  }).join('');
+  return '<span class="sp" role="img" aria-label="Étape ' + escapeHtml(current) +
+    ' — ' + (i + 1) + ' sur ' + liste.length + '"' +
+    ' title="' + escapeHtml(current) + ' — étape ' + (i + 1) + ' sur ' + liste.length + '">' +
+    '<span class="sp-track">' + segments + '</span>' +
+    (opts.label ? '<span class="sp-label">' + escapeHtml(current) + '</span>' : '') +
+    '</span>';
+}
+
+// Jauge d'une grandeur face à un seuil : « 187 j depuis le dernier contact »
+// se lit mieux comme un remplissage qui a débordé que comme un nombre rouge.
+// Au-delà du seuil la jauge est pleine et prend le ton d'alerte.
+function meterMarkup(value, seuil, options) {
+  const opts = Object.assign({ label: '', unit: '', invert: false }, options || {});
+  const v = Number(value);
+  const s = Number(seuil) || 1;
+  if (!isFinite(v)) return '';
+  const part = Math.max(0, Math.min(1, v / s));
+  const depasse = v >= s;
+  return '<span class="mt' + (depasse ? ' over' : '') + '"' +
+    ' title="' + escapeHtml(String(v) + (opts.unit ? ' ' + opts.unit : '')) +
+    ' sur un seuil de ' + s + (opts.unit ? ' ' + opts.unit : '') + '">' +
+    '<span class="mt-track"><span class="mt-fill" style="width:' +
+      Math.round(part * 100) + '%"></span></span>' +
+    (opts.label ? '<span class="mt-label">' + escapeHtml(opts.label) + '</span>' : '') +
+    '</span>';
+}
+
 function statusTextColor(status) {
   return statusStyle(status).text;
 }

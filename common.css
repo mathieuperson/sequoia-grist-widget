@@ -737,3 +737,35 @@ body {
 .ms-option.ms-first-unselected { border-top: 1px solid var(--border); margin-top: 4px; padding-top: 7px; }
 .ms-option input { margin: 0; }
 .ms-empty { font-size: 12.5px; color: var(--text-muted); padding: 6px 4px; }
+
+/* ---------- Avancement dans un pipeline (statusProgressMarkup) ----------
+   Une suite de segments jointifs, remplis jusqu'à l'étape courante : on situe
+   l'affaire dans l'entonnoir sans connaître la liste par cœur. Un filet de
+   fond (pas une ombre) sépare les segments, conformément à la charte. */
+.sp { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.sp-track { display: inline-flex; gap: 2px; flex: none; }
+.sp-seg {
+  width: 9px; height: 5px; border-radius: 2px;
+  background: var(--border);
+}
+.sp-seg.on { background: var(--status-default); }
+/* Une étape d'abandon : un seul segment, à sa place, et rien de rempli avant
+   — la jauge ne doit pas se lire comme une progression menée à terme. */
+.sp-seg.clos { opacity: 0.55; }
+.sp-label {
+  font-size: 11.5px; color: var(--text-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* Sur les vues denses, la jauge seule suffit : le libellé vit ailleurs. */
+.sp.sp-bare .sp-label { display: none; }
+
+/* ---------- Jauge face à un seuil (meterMarkup) ---------- */
+.mt { display: inline-flex; align-items: center; gap: 7px; }
+.mt-track {
+  width: 56px; height: 5px; border-radius: 3px;
+  background: var(--border); overflow: hidden; flex: none;
+}
+.mt-fill { display: block; height: 100%; background: var(--sequoia-green); }
+.mt.over .mt-fill { background: var(--danger); }
+.mt-label { font-size: 11.5px; color: var(--text-muted); }
+.mt.over .mt-label { color: var(--danger); }
