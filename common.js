@@ -195,16 +195,54 @@ function statusProgressMarkup(current, stages, options) {
     '</span>';
 }
 
+// ---------- Répartition d'un tout ----------
+// Une barre empilée : « 12 universités » ne dit pas si l'une en porte la
+// moitié. Les parts sont rangées par taille décroissante et déclinées dans
+// une seule teinte — la composition est ordonnée, pas catégorielle, donc la
+// luminosité suffit à les séparer et aucune teinte n'est inventée. Au-delà
+// de `top` parts, le reste est regroupé plutôt que dilué en tranches
+// illisibles.
+function stackMarkup(items, options) {
+  const opts = Object.assign({ top: 4, resteLabel: 'autres', unit: '' }, options || {});
+  const list = (items || [])
+    .map(x => ({ label: String(x.label === undefined ? '' : x.label), value: Number(x.value) || 0 }))
+    .filter(x => x.value > 0)
+    .sort((a, b) => b.value - a.value);
+  const total = list.reduce((n, x) => n + x.value, 0);
+  if (!total || list.length < 2) return '';
+  const tetes = list.slice(0, opts.top);
+  const reste = list.slice(opts.top).reduce((n, x) => n + x.value, 0);
+  const parts = reste > 0
+    ? tetes.concat([{ label: (list.length - opts.top) + ' ' + opts.resteLabel, value: reste, reste: true }])
+    : tetes;
+  const segments = parts.map((x, i) => {
+    // Une seule teinte, éclaircie par rang ; le regroupement final en retrait.
+    const opacite = x.reste ? 0.22 : (1 - i * 0.17);
+    return '<span class="st-seg" style="width:' + (x.value / total * 100) + '%;opacity:' + opacite +
+      '" title="' + escapeHtml(x.label + ' — ' + x.value + (opts.unit ? ' ' + opts.unit : '') +
+      ' (' + Math.round(x.value / total * 100) + ' %)') + '"></span>';
+  }).join('');
+  const tete = parts[0];
+  return '<span class="st">' +
+    '<span class="st-bar">' + segments + '</span>' +
+    '<span class="st-legend">' + escapeHtml(tete.label) + ' ' +
+      Math.round(tete.value / total * 100) + ' %</span>' +
+    '</span>';
+}
+
 // Jauge d'une grandeur face à un seuil : « 187 j depuis le dernier contact »
 // se lit mieux comme un remplissage qui a débordé que comme un nombre rouge.
 // Au-delà du seuil la jauge est pleine et prend le ton d'alerte.
+// `mode: 'part'` change le propos : ce n'est plus un seuil qu'on franchit
+// mais une part d'un tout — « 5 sur 12 » — donc aucun dépassement à
+// signaler, et le rouge reste réservé aux vraies alertes.
 function meterMarkup(value, seuil, options) {
-  const opts = Object.assign({ label: '', unit: '', invert: false }, options || {});
+  const opts = Object.assign({ label: '', unit: '', mode: 'seuil' }, options || {});
   const v = Number(value);
   const s = Number(seuil) || 1;
   if (!isFinite(v)) return '';
   const part = Math.max(0, Math.min(1, v / s));
-  const depasse = v >= s;
+  const depasse = opts.mode !== 'part' && v >= s;
   return '<span class="mt' + (depasse ? ' over' : '') + '"' +
     ' title="' + escapeHtml(String(v) + (opts.unit ? ' ' + opts.unit : '')) +
     ' sur un seuil de ' + s + (opts.unit ? ' ' + opts.unit : '') + '">' +

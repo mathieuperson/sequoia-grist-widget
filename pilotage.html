@@ -141,6 +141,11 @@ body { overflow: hidden; }
 .pil-kpi-value.danger { color: var(--danger); }
 .pil-kpi-value.green { color: var(--sequoia-green); }
 .pil-kpi-hint { font-family: var(--pil-mono); font-size: 9.5px; letter-spacing: 0.06em; color: var(--text-muted); margin-top: 8px; line-height: 1.5; }
+/* La jauge de part prend la largeur de la tuile : c'est une proportion, pas
+   un gabarit fixe, et la comparaison entre tuiles doit rester juste. */
+.pil-kpi .mt { margin-top: 7px; width: 100%; }
+.pil-kpi .mt-track { flex: 1; width: auto; }
+.pil-kpi .mt-label { font-family: var(--pil-mono); font-size: 9.5px; }
 
 /* ---------- Sections ---------- */
 .pil-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 16px; align-items: start; }
@@ -939,12 +944,29 @@ body { overflow: hidden; }
   const H = (s) => escapeHtml(s);
   const mono = (s) => '<span class="pil-nav-count">' + H(s) + '</span>';
 
-  function kpiCard(label, value, hint, tone) {
+  // `part` = [valeur, total] : la jauge donne l'échelle qu'un nombre seul
+  // n'a pas. « 5 partenaires à relancer » se lit autrement selon qu'il y en
+  // a six ou soixante.
+  function kpiCard(label, value, hint, tone, part) {
+    const jauge = part && Number(part[1]) > 0
+      ? meterMarkup(part[0], part[1], {
+          mode: 'part',
+          label: 'sur ' + formatMontantOrCount(part[1], part[2]),
+          unit: part[2] || ''
+        })
+      : '';
     return '<div class="pil-kpi">' +
       '<div class="pil-kpi-label">' + H(label) + '</div>' +
       '<div class="pil-kpi-value' + (tone ? ' ' + tone : '') + '">' + H(value) + '</div>' +
+      jauge +
       (hint ? '<div class="pil-kpi-hint">' + H(hint) + '</div>' : '') +
       '</div>';
+  }
+
+  // Le total d'une jauge s'écrit comme la valeur qu'il encadre : un montant
+  // en compact, un décompte en clair.
+  function formatMontantOrCount(total, unit) {
+    return unit === '€' ? formatMontantCompact(total) : String(total);
   }
 
   function renderDashboard() {
@@ -953,14 +975,21 @@ body { overflow: hidden; }
     const dateLabel = now.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
     const kpis = [
-      kpiCard('Actions en retard', k.actionsRetard, 'à traiter en priorité', k.actionsRetard ? 'danger' : ''),
-      kpiCard('Actions cette semaine', k.actionsSemaine, 'échéance sous 7 jours'),
-      kpiCard('Partenaires à relancer', k.partenairesARelancer, 'sans contact depuis 30 j'),
-      kpiCard('Projets en discussion', k.projetsEnDiscussion, 'idée → recherche d’équipe'),
-      kpiCard('Pipeline pondéré', formatMontantOrDash(k.pipelinePondere), 'qualification → contractualisation', 'green'),
-      kpiCard('Dossiers à déposer', k.dossiersADeposer, 'échéance de dépôt à venir'),
+      kpiCard('Actions en retard', k.actionsRetard, 'à traiter en priorité',
+        k.actionsRetard ? 'danger' : '', [k.actionsRetard, k.actionsOuvertes]),
+      kpiCard('Actions cette semaine', k.actionsSemaine, 'échéance sous 7 jours',
+        '', [k.actionsSemaine, k.actionsOuvertes]),
+      kpiCard('Partenaires à relancer', k.partenairesARelancer, 'sans contact depuis 30 j',
+        '', [k.partenairesARelancer, k.partenairesActifs]),
+      kpiCard('Projets en discussion', k.projetsEnDiscussion, 'idée → recherche d’équipe',
+        '', [k.projetsEnDiscussion, k.projetsActifs]),
+      kpiCard('Pipeline pondéré', formatMontantOrDash(k.pipelinePondere), 'qualification → contractualisation',
+        'green', [k.pipelinePondere, k.pipelineTotal, '€']),
+      kpiCard('Dossiers à déposer', k.dossiersADeposer, 'échéance de dépôt à venir',
+        '', [k.dossiersADeposer, k.projetsActifs]),
       kpiCard('CIFRE identifiées', k.cifreIdentifiees,
-        k.cifreLancees ? 'dont ' + k.cifreLancees + ' lancée' + (k.cifreLancees > 1 ? 's' : '') : 'hors étapes closes')
+        k.cifreLancees ? 'dont ' + k.cifreLancees + ' lancée' + (k.cifreLancees > 1 ? 's' : '') : 'hors étapes closes',
+        '', [k.cifreIdentifiees, k.projetsActifs])
     ].join('');
 
     const suggestions = runSuggestionRules(model, { now, dismissed: options.dismissed });

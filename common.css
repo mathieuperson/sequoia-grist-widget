@@ -769,3 +769,15 @@ body {
 .mt.over .mt-fill { background: var(--danger); }
 .mt-label { font-size: 11.5px; color: var(--text-muted); }
 .mt.over .mt-label { color: var(--danger); }
+
+/* ---------- Répartition d'un tout (stackMarkup) ----------
+   Segments proportionnels dans une seule teinte, séparés par un filet de
+   fond de 2px : sans cet écart, deux parts voisines de luminosité proche se
+   liraient comme une seule. */
+.st { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.st-bar { display: flex; gap: 2px; height: 6px; border-radius: 3px; overflow: hidden; }
+.st-seg { display: block; height: 100%; background: var(--sequoia-green); min-width: 2px; }
+.st-legend {
+  font-size: 11px; color: var(--text-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}

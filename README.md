@@ -24,7 +24,11 @@ Volontairement hors périmètre : pas de décompte de partenaires ni d'acteurs d
 `cartographie.html`), et pas de création de structure depuis cet onglet.
 
 **Tableau de bord** — bandeau de sept indicateurs (actions en retard, actions cette semaine, partenaires à
-relancer, projets en discussion, pipeline pondéré, dossiers à déposer, CIFRE identifiées), pipeline en barres
+relancer, projets en discussion, pipeline pondéré, dossiers à déposer, CIFRE identifiées), chacun avec **sa
+jauge de part et son total** : « 5 partenaires à relancer » se lit autrement selon qu'il y en a six ou soixante,
+et `computeKpis()` rend donc aussi les dénominateurs (`actionsOuvertes`, `projetsActifs`, `partenairesActifs`,
+`pipelineTotal`). Un partenaire n'entre dans ce total que s'il porte un projet actif : c'est la population que
+« à relancer » concerne. Puis le pipeline en barres
 proportionnelles au nombre de projets de l'étape et **colorées par étape**, partenaires à relancer (restreints à
 ceux qui portent un projet en cours, du contact le plus ancien au plus récent, avec le projet concerné et la
 prochaine action ou, à défaut, celle que le moteur suggère), les six prochaines actions, les dispositifs

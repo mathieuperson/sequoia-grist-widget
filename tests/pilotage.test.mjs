@@ -258,6 +258,30 @@ eq(kpis.dossiersADeposer, 1, 'kpi: dossiers à déposer (date de dépôt à veni
 eq(kpis.cifreIdentifiees, 3, 'kpi: CIFRE identifiées, hors étapes closes');
 eq(p.computeKpis({}, NOW).pipelinePondere, 0, 'kpi: données vides -> pas d\'erreur');
 
+// Les totaux qui servent de dénominateur aux jauges du tableau de bord : un
+// compte sans son échelle ne dit pas s'il est gros ou petit.
+eq(kpis.actionsOuvertes, KPI_ACTIONS.filter(a => !a.done).length, 'kpi: total des actions ouvertes');
+eq(kpis.actionsRetard <= kpis.actionsOuvertes, true, '...qui encadre bien les actions en retard');
+eq(kpis.actionsSemaine <= kpis.actionsOuvertes, true, '...et celles de la semaine');
+eq(kpis.projetsActifs, KPI_PROJECTS.filter(pr => !p.isStageIn(pr.stage, 'clos')).length,
+  'kpi: total des projets actifs, hors étapes closes');
+eq(kpis.projetsEnDiscussion <= kpis.projetsActifs, true, '...qui encadre les projets en discussion');
+eq(kpis.cifreIdentifiees <= kpis.projetsActifs, true, '...et les CIFRE');
+eq(kpis.pipelineTotal >= kpis.pipelinePondere, true, 'kpi: le pipeline total couvre le pondéré');
+// Un partenaire n'entre dans le dénominateur que s'il porte un projet actif :
+// c'est la population que « à relancer » concerne.
+eq(p.computeKpis({
+  projects: [{ id: 1, stage: 'Montage', partnerIds: [1] }, { id: 2, stage: 'Abandonné', partnerIds: [2] }],
+  partners: [{ id: 1, name: 'A' }, { id: 2, name: 'B' }, { id: 3, name: 'C' }],
+  actions: []
+}, NOW).partenairesActifs, 1, 'kpi: seuls les partenaires portant un projet actif comptent');
+eq(p.computeKpis({
+  projects: [{ id: 1, stage: 'Montage', partnerIds: [1] }],
+  partners: [{ id: 1, name: 'A', prospect: true }],
+  actions: []
+}, NOW).partenairesActifs, 0, '...un prospect n’en fait pas partie');
+eq(p.computeKpis({}, NOW).projetsActifs, 0, 'kpi: totaux à zéro sur données vides');
+
 // ---- Moteur de suggestions ----
 const SUGG_DATA = {
   projects: [

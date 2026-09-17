@@ -467,6 +467,12 @@ function computeKpis(data, now) {
     return left !== null && left < 0 && !isStageIn(p.stage, 'lance') && !isStageIn(p.stage, 'clos');
   });
   const cifre = d.projects.filter(p => isCifre(p.dispositif) && !isStageIn(p.stage, 'clos'));
+  // Les totaux qui donnent son sens à chaque compte : « 5 partenaires à
+  // relancer » ne dit rien sans savoir s'il y en a six ou soixante. Ils
+  // servent de dénominateur aux jauges du tableau de bord.
+  const actifs = d.projects.filter(p => !isStageIn(p.stage, 'clos'));
+  const avecProjet = d.partners.filter(p => !p.prospect &&
+    actifs.some(pr => (pr.partnerIds || []).includes(p.id)));
   return {
     actionsRetard: open.filter(a => urgenceOf(a.due, now) === 'retard').length,
     actionsSemaine: open.filter(a => ['aujourdhui', 'semaine'].includes(urgenceOf(a.due, now))).length,
@@ -475,7 +481,11 @@ function computeKpis(data, now) {
     pipelinePondere: sumMontants(pondere),
     dossiersADeposer: aDeposer.length,
     cifreIdentifiees: cifre.length,
-    cifreLancees: cifre.filter(p => isStageIn(p.stage, 'lance')).length
+    cifreLancees: cifre.filter(p => isStageIn(p.stage, 'lance')).length,
+    actionsOuvertes: open.length,
+    projetsActifs: actifs.length,
+    partenairesActifs: avecProjet.length,
+    pipelineTotal: sumMontants(actifs)
   };
 }
 

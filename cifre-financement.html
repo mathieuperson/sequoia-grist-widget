@@ -27,6 +27,8 @@
   }
   .kpi-card .value { font-size: 24px; font-weight: 700; color: var(--sequoia-green-dark); line-height: 1.2; }
   .kpi-card .label { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); margin-top: 4px; }
+  .kpi-card .kpi-ratio { font-size: 11.5px; color: var(--text-muted); margin-top: 6px; }
+  .kpi-card .st { margin-top: 8px; }
 
   .warn-banner {
     background: #fff7ed; border: 1px solid #fdba74; color: #9a3412; border-radius: 8px;
@@ -629,16 +631,30 @@
   }
 
   // ---------- Rendering ----------
-  function kpiCard(value, label) {
-    return '<div class="kpi-card"><div class="value">' + escapeHtml(value) + '</div><div class="label">' + escapeHtml(label) + '</div></div>';
+  // `extra` accueille une répartition ou un ratio : le total dit combien, la
+  // forme dit comment c'est distribué — « 12 universités » ne révèle pas que
+  // l'une en porte la moitié.
+  function kpiCard(value, label, extra) {
+    return '<div class="kpi-card"><div class="value">' + escapeHtml(value) + '</div>' +
+      '<div class="label">' + escapeHtml(label) + '</div>' +
+      (extra || '') + '</div>';
   }
 
   function renderKpis(pivot) {
     const nbEntreprises = pivot.groupList.reduce((n, g) => n + g.rows.length, 0);
+    // La répartition porte sur les thèses, pas sur le nombre d'entreprises :
+    // une université avec un seul partenaire peut porter dix thèses.
+    const parUniversite = pivot.groupList.map(g => ({
+      label: g.universite || 'Sans université',
+      value: g.rows.reduce((n, e) => n + (e.nbCIFRE || 0), 0)
+    }));
+    const moyenne = pivot.totalNb ? pivot.totalMontant / pivot.totalNb : 0;
     document.getElementById('kpi-row').innerHTML = [
       kpiCard(pivot.totalNb, 'Thèses CIFRE'),
-      kpiCard(formatKEuros(pivot.totalMontant), 'Montant total investi'),
-      kpiCard(pivot.groupList.length, 'Universités'),
+      kpiCard(formatKEuros(pivot.totalMontant), 'Montant total investi',
+        moyenne ? '<div class="kpi-ratio">' + escapeHtml(formatKEuros(moyenne)) + ' par thèse en moyenne</div>' : ''),
+      kpiCard(pivot.groupList.length, 'Universités',
+        stackMarkup(parUniversite, { unit: 'thèses', resteLabel: 'autres universités' })),
       kpiCard(nbEntreprises, 'Entreprises partenaires')
     ].join('');
   }
