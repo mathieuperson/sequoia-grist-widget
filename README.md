@@ -286,6 +286,23 @@ Deux détails qui comptent :
 3. Régler **Niveau d'accès** sur "Lecture des données du document" (ou accepter la demande d'accès affichée dans le panneau, y compris en écriture pour Interactions/Opportunités).
 4. Une section **Colonnes mappées** apparaît dans le panneau du widget : associer chaque rôle (ex. "Nom", "Date", "CR"...) à la colonne réelle de la table. C'est ce mapping qui rend les widgets indépendants du nommage exact des colonnes.
 
+## Estampiller les fichiers partagés après les avoir modifiés
+
+Un widget vit dans une iframe Grist : rafraîchir la page recharge son HTML, **pas ses sous-ressources**. Sans
+estampille sur `common.css` / `common.js` / `pilotage.js`, le navigateur peut donc servir un CSS vieux de
+plusieurs jours pendant que le HTML, lui, est à jour — le code est en ligne, GitHub Pages a déployé, et rien ne
+change à l'écran. Le symptôme est trompeur : ce que porte le HTML apparaît, ce que portent les fichiers
+partagés non. C'est arrivé assez souvent pour mériter un outil :
+
+```
+npm run bump:assets          # pose la date du jour : common.css?v=20260917
+npm run bump:assets -- 42    # ou une valeur précise
+```
+
+À lancer **dès qu'un fichier partagé change**, avant de committer. `npm test` vérifie ensuite que chaque widget
+référence bien ces fichiers avec une estampille et qu'une seule version circule — ce qui attrape le widget
+oublié, à défaut de l'estampille qu'on a négligé d'incrémenter.
+
 ## Tests
 
 `tests/common.test.mjs` couvre les fonctions pures de `common.js` (formatage, mapping, dates, couleurs de statut)
