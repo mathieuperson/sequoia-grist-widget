@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pilotage Partenariats &amp; Innovation — Cluster SequoIA</title>
-<link rel="stylesheet" href="./common.css?v=20260918n">
+<link rel="stylesheet" href="./common.css?v=20260918o">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="./common.js?v=20260918n"></script>
-<script src="./pilotage.js?v=20260918n"></script>
+<script src="./common.js?v=20260918o"></script>
+<script src="./pilotage.js?v=20260918o"></script>
 <style>
 /* Charte alignée sur common.css (vert #1f6b3f, fond #f4f6f5, police
    système). Seules les valeurs absentes de common.css sont ajoutées ici,
@@ -370,8 +370,8 @@ body { overflow: hidden; }
 .pil-kfiltres-note { font-size: 11.5px; color: var(--text-muted); }
 .pil-kgroupe { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
 .pil-kgroupe select {
-  border: 1px solid var(--pil-border); border-radius: 8px;
-  background: var(--pil-surface); padding: 4px 7px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--card-bg); padding: 4px 7px;
   font-size: 12px; font-family: inherit; color: var(--text);
 }
 .pil-kanban {
@@ -391,15 +391,15 @@ body { overflow: hidden; }
 .pil-kcol-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
 .pil-kcol-count {
   margin-left: auto; font-size: 11px; font-weight: 700;
-  background: var(--pil-surface); border-radius: 999px; padding: 1px 8px;
+  background: var(--card-bg); border-radius: 999px; padding: 1px 8px;
 }
 .pil-kcol-body { display: flex; flex-direction: column; gap: 8px; padding: 0 9px 11px; min-height: 60px; }
 .pil-kcol-body.survol { background: var(--sequoia-green-light); border-radius: 10px; }
 .pil-kcol-vide { font-size: 12px; color: var(--text-muted); font-style: italic; padding: 8px 4px; }
 /* Une carte par action : ce qu'il faut pour decider, rien de plus. */
 .pil-kc {
-  background: var(--pil-surface);
-  border: 1px solid var(--pil-border);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 9px 11px;
   cursor: grab;
@@ -424,8 +424,8 @@ body { overflow: hidden; }
 .pil-kc-due.aujourdhui { color: var(--sequoia-green-dark); font-weight: 700; }
 .pil-kc-move {
   margin-left: auto; max-width: 128px;
-  border: 1px solid var(--pil-border); border-radius: 7px;
-  background: var(--pil-surface); font-size: 11px; padding: 2px 4px;
+  border: 1px solid var(--border); border-radius: 7px;
+  background: var(--card-bg); font-size: 11px; padding: 2px 4px;
   font-family: inherit;
 }
 .pil-kc-source { margin-left: auto; font-size: 10.5px; color: var(--text-muted); font-style: italic; }
@@ -445,12 +445,68 @@ body { overflow: hidden; }
 .pil-kc-prio.haute { background: #fee2e2; color: #991b1b; }
 .pil-kc-prio.basse { background: #e6f4ea; color: #14532d; }
 
+/* Choix de la vue du tableau : kanban, matrice, calendrier. */
+.pil-modes { display: inline-flex; gap: 2px; background: var(--pil-surface-2); border-radius: 9px; padding: 2px; margin-bottom: 12px; }
+.pil-mode {
+  border: none; background: none; cursor: pointer;
+  border-radius: 7px; padding: 5px 13px;
+  font-size: 12.5px; font-weight: 600; font-family: inherit; color: var(--text-muted);
+}
+.pil-mode.on { background: var(--card-bg); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,0.07); }
+
+/* ---- Matrice d'Eisenhower ----
+   Quatre quadrants, teintes selon ce qu'ils appellent : agir, planifier,
+   expedier, laisser. La couleur porte la consigne, pas la decoration. */
+.pil-eisenhower { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+@media (max-width: 900px) { .pil-eisenhower { grid-template-columns: 1fr; } }
+.pil-eis { border-radius: 12px; padding: 12px 13px; border: 1px solid transparent; }
+.pil-eis.faire { background: #fef2f2; border-color: #fecaca; }
+.pil-eis.planifier { background: #eff6ff; border-color: #bfdbfe; }
+.pil-eis.deleguer { background: #fffbeb; border-color: #fde68a; }
+.pil-eis.limiter { background: var(--pil-surface-2); border-color: var(--border); }
+.pil-eis-head { display: flex; align-items: center; gap: 8px; }
+.pil-eis-titre { font-size: 13px; font-weight: 700; }
+.pil-eis-head .pil-kcol-count { margin-left: auto; background: rgba(255,255,255,0.75); }
+.pil-eis-regle { font-size: 11px; color: var(--text-muted); margin: 1px 0 9px; }
+.pil-eis-body { display: flex; flex-direction: column; gap: 8px; min-height: 40px; }
+.pil-eis-body .pil-kc { cursor: pointer; }
+
+/* ---- Calendrier ---- */
+.pil-cal-barre { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.pil-cal-mois { font-size: 14px; font-weight: 700; text-transform: capitalize; min-width: 150px; }
+.pil-calendrier { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.pil-cal-tete {
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--text-muted); padding: 2px 4px;
+}
+.pil-cal-jour {
+  min-height: 86px; background: var(--pil-surface-2);
+  border: 1px solid var(--border); border-radius: 9px;
+  padding: 5px 5px 6px; display: flex; flex-direction: column; gap: 3px;
+}
+.pil-cal-jour.vide { background: none; border-color: transparent; }
+.pil-cal-jour.aujourdhui { border-color: var(--sequoia-green); background: var(--sequoia-green-light); }
+.pil-cal-num { font-size: 11px; color: var(--text-muted); font-weight: 700; }
+.pil-cal-act {
+  display: block; width: 100%; text-align: left;
+  border: none; border-radius: 6px; cursor: pointer;
+  background: var(--card-bg); color: var(--text);
+  padding: 3px 6px; font-size: 11px; font-family: inherit; line-height: 1.3;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  border-left: 3px solid var(--sequoia-green);
+}
+.pil-cal-act.haute { border-left-color: var(--danger); }
+.pil-cal-act.done { text-decoration: line-through; color: var(--text-muted); }
+.pil-cal-act:hover { background: var(--sequoia-green-light); }
+.pil-cal-sansdate { margin-top: 14px; background: var(--pil-surface-2); border-radius: 12px; padding: 4px 9px 11px; }
+.pil-cal-sansdate-body { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 8px; }
+
 /* Ce qui a ete solde, par fenetre de temps. */
 .pil-avancement { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
 .pil-av-bloc {
   flex: 1; min-width: 140px;
   /* Le fond gris des colonnes, sinon les blocs se confondent avec la page. */
-  background: var(--pil-surface-2); border: 1px solid var(--pil-border);
+  background: var(--pil-surface-2); border: 1px solid var(--border);
   border-radius: 10px; padding: 10px 13px;
 }
 .pil-av-nb { font-size: 21px; font-weight: 700; line-height: 1.1; }
@@ -673,6 +729,7 @@ body { overflow: hidden; }
         // elle existe, et reste silencieuse sinon.
         Priorite: ['Priorite', 'Priorité', 'Importance'],
         Statut: ['Statut', 'Status', 'Etat', 'État', 'Colonne', 'Avancement'],
+        Important: ['Important', 'Importante', 'Importance_haute', 'Strategique', 'Stratégique'],
         Duree: ['Duree_min', 'Duree', 'Durée', 'Durée (min)', 'Duree_minutes', 'Estimation'],
         Debut: ['Debut', 'Début', 'Date_debut', 'A_partir_de', 'Differee'],
         Recurrence: ['Recurrence', 'Récurrence', 'Repetition', 'Répétition']
@@ -702,6 +759,8 @@ body { overflow: hidden; }
   let kanbanPartenaires = [];     // filtre par partenaire
   let kanbanUrgentes = false;     // n'afficher que les actions prioritaires
   let kanbanGroupe = 'statut';    // statut | partenaire | priorite | echeance
+  let tableauMode = 'kanban';     // kanban | eisenhower | calendrier
+  let moisCalendrier = null;      // mois affiché par le calendrier (1er du mois)
   let actionCursor = null;
   // Filtres du Kanban, chacun un choix multiple. Vides = tout passe.
   const projectFilters = { dispositif: [], partenaire: [], equipe: [] };
@@ -1020,6 +1079,7 @@ body { overflow: hidden; }
         recurrence: txt(formatValue(r[act.cols.Recurrence])),
         statut: txt(formatValue(r[act.cols.Statut])),
         contactIds: refIdsFromValue(r[act.cols.Contacts]),
+        important: act.cols.Important ? !!r[act.cols.Important] : null,
         origin: (options.origin && options.origin['act:' + r.id]) || 'manuelle'
       }, contexte(project, partner, !direct));
     }) : [];
@@ -1050,6 +1110,7 @@ body { overflow: hidden; }
           recurrence: '',
           statut: '',
           contactIds: [],
+          important: null,
           origin: (options.origin && options.origin[key]) || 'manuelle'
         }, contexte(project, partner, !direct));
       });
@@ -1664,18 +1725,8 @@ body { overflow: hidden; }
       .filter(a => !kanbanUrgentes || (prioriteOf(a.priorite) || {}).key === 'haute');
   }
 
-  function renderKanban() {
-    const actions = actionsDuKanban();
-    const now = today();
-    const colonnes = kanbanColonnes(actions);
-    // Déplacer une carte n'a de sens qu'entre des états : on ne change pas le
-    // partenaire d'une action en la glissant, et son échéance encore moins.
-    const deplacable = kanbanGroupe === 'statut';
-    const act = related.actions || { cols: {} };
-    const partenaires = Array.from(new Set(model.actions.map(a => a.partnerName).filter(Boolean)))
-      .sort((a, b) => a.localeCompare(b, 'fr'));
-
-    const carte = (a) => {
+  // Une carte d'action, la même dans les trois vues du tableau.
+  function carteAction(a, now, colonnes, deplacable) {
       const prio = prioriteOf(a.priorite);
       const urgence = urgenceOf(a.due, now);
       const deTable = a.source === 'table';
@@ -1703,7 +1754,138 @@ body { overflow: hidden; }
               '<span class="pil-kc-source" title="Cette action vient d’un échange : reprenez-la dans vos actions pour la déplacer">issue d’un échange</span>')) +
         '</div>' +
       '</article>';
-    };
+    }
+
+  // ---- Matrice d'Eisenhower ----
+  //
+  // Deux axes : ce qui presse, ce qui compte. « Urgent » se lit de l'echeance
+  // (en retard, aujourd'hui, cette semaine) ; « important » de la colonne
+  // Important si le document en a une, sinon de la priorite haute. Vue de
+  // lecture : on n'y deplace pas de carte, car un glisser changerait en
+  // silence une echeance ou une priorite.
+  const EISENHOWER = [
+    { key: 'faire',     important: true,  urgent: true,  titre: 'Faire maintenant',  regle: 'important et urgent' },
+    { key: 'planifier', important: true,  urgent: false, titre: 'Planifier',         regle: 'important, pas urgent' },
+    { key: 'deleguer',  important: false, urgent: true,  titre: 'Déléguer ou expédier', regle: 'urgent, pas important' },
+    { key: 'limiter',   important: false, urgent: false, titre: 'Plus tard',         regle: 'ni l’un ni l’autre' }
+  ];
+
+  function estUrgente(a, now) {
+    return ['retard', 'aujourdhui', 'semaine'].includes(urgenceOfAction(a, now));
+  }
+
+  function estImportante(a) {
+    if (a.important !== null && a.important !== undefined) return !!a.important;
+    return (prioriteOf(a.priorite) || {}).key === 'haute';
+  }
+
+  function renderEisenhower(actions, now) {
+    const act = related.actions || { cols: {} };
+    const cases = EISENHOWER.map(q => {
+      const dedans = actions.filter(a =>
+        estImportante(a) === q.important && estUrgente(a, now) === q.urgent);
+      return '<section class="pil-eis ' + q.key + '">' +
+        '<div class="pil-eis-head">' +
+          '<span class="pil-eis-titre">' + H(q.titre) + '</span>' +
+          '<span class="pil-kcol-count">' + dedans.length + '</span>' +
+        '</div>' +
+        '<div class="pil-eis-regle">' + H(q.regle) + '</div>' +
+        '<div class="pil-eis-body">' +
+          (dedans.length ? dedans.map(a => carteAction(a, now, [], false)).join('')
+            : '<div class="pil-kcol-vide">Rien ici</div>') +
+        '</div>' +
+      '</section>';
+    }).join('');
+    return '<div class="pil-eisenhower">' + cases + '</div>' +
+      '<p class="pil-kfiltres-note">« Important » suit ' +
+        (act.cols.Important ? 'la colonne Important de la table des actions.'
+          : 'la priorité haute. Une colonne « Important » (case à cocher) dans la table des actions la remplacerait.') +
+      ' Cliquez une carte pour la modifier.</p>';
+  }
+
+  // ---- Calendrier ----
+  //
+  // Un mois, une action sur son echeance. Ce qui n'a pas de date est liste
+  // dessous : invisible dans un calendrier, ce serait la meilleure facon de
+  // l'oublier.
+  const JOURS_SEM = ['lun', 'mar', 'mer', 'jeu', 'ven', 'sam', 'dim'];
+
+  function moisAffiche() {
+    if (moisCalendrier) return new Date(moisCalendrier);
+    const d = new Date();
+    return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+  }
+
+  function renderCalendrier(actions, now) {
+    const debut = moisAffiche();
+    const annee = debut.getUTCFullYear();
+    const mois = debut.getUTCMonth();
+    const nbJours = new Date(Date.UTC(annee, mois + 1, 0)).getUTCDate();
+    // Lundi comme premier jour de la semaine : getUTCDay() donne 0 pour dimanche.
+    const decalage = (new Date(Date.UTC(annee, mois, 1)).getUTCDay() + 6) % 7;
+
+    const parJour = {};
+    const sansDate = [];
+    actions.forEach(a => {
+      const cle = a.due ? gristDateToInputValue(a.due) : null;
+      if (!cle) { sansDate.push(a); return; }
+      (parJour[cle] = parJour[cle] || []).push(a);
+    });
+
+    const cellules = [];
+    for (let i = 0; i < decalage; i++) cellules.push('<div class="pil-cal-jour vide"></div>');
+    for (let j = 1; j <= nbJours; j++) {
+      const cle = new Date(Date.UTC(annee, mois, j)).toISOString().slice(0, 10);
+      const dedans = parJour[cle] || [];
+      const cejour = cle === todayKey();
+      cellules.push('<div class="pil-cal-jour' + (cejour ? ' aujourdhui' : '') + '">' +
+        '<div class="pil-cal-num">' + j + '</div>' +
+        dedans.map(a => {
+          const prio = prioriteOf(a.priorite);
+          return '<button type="button" class="pil-cal-act' + (a.done ? ' done' : '') +
+            (prio && prio.key === 'haute' ? ' haute' : '') +
+            '" data-carte="' + H(a.id) + '" title="' + H(a.label + ' — ' + (a.partnerName || 'Interne')) + '">' +
+            H(a.label) + '</button>';
+        }).join('') +
+      '</div>');
+    }
+
+    const nomMois = new Date(Date.UTC(annee, mois, 1))
+      .toLocaleDateString('fr-FR', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+
+    return '<div class="pil-cal-barre">' +
+        '<button type="button" class="pil-btn" id="cal-prec" aria-label="Mois précédent">←</button>' +
+        '<span class="pil-cal-mois">' + H(nomMois) + '</span>' +
+        '<button type="button" class="pil-btn" id="cal-suiv" aria-label="Mois suivant">→</button>' +
+        '<button type="button" class="pil-btn" id="cal-auj">Ce mois-ci</button>' +
+      '</div>' +
+      '<div class="pil-calendrier">' +
+        JOURS_SEM.map(j => '<div class="pil-cal-tete">' + j + '</div>').join('') +
+        cellules.join('') +
+      '</div>' +
+      (sansDate.length
+        ? '<section class="pil-cal-sansdate">' +
+            '<div class="pil-kcol-head"><span class="pil-kcol-title">Sans échéance</span>' +
+              '<span class="pil-kcol-count">' + sansDate.length + '</span></div>' +
+            '<div class="pil-cal-sansdate-body">' +
+              sansDate.map(a => carteAction(a, now, [], false)).join('') +
+            '</div>' +
+          '</section>'
+        : '');
+  }
+
+  function renderKanban() {
+    const actions = actionsDuKanban();
+    const now = today();
+    const colonnes = kanbanColonnes(actions);
+    // Déplacer une carte n'a de sens qu'entre des états : on ne change pas le
+    // partenaire d'une action en la glissant, et son échéance encore moins.
+    const deplacable = kanbanGroupe === 'statut';
+    const act = related.actions || { cols: {} };
+    const partenaires = Array.from(new Set(model.actions.map(a => a.partnerName).filter(Boolean)))
+      .sort((a, b) => a.localeCompare(b, 'fr'));
+
+    const carte = (a) => carteAction(a, now, colonnes, deplacable);
 
     const colonnesHtml = colonnes.map(c => {
       const dedans = actions.filter(a => colonneDe(a, colonnes, now) === c);
@@ -1716,21 +1898,34 @@ body { overflow: hidden; }
       '</section>';
     }).join('');
 
+    const MODES = [
+      { key: 'kanban', label: 'Kanban' },
+      { key: 'eisenhower', label: 'Eisenhower' },
+      { key: 'calendrier', label: 'Calendrier' }
+    ];
+    const bascule = '<div class="pil-modes" role="tablist">' +
+      MODES.map(m => '<button type="button" class="pil-mode' + (m.key === tableauMode ? ' on' : '') +
+        '" data-mode="' + m.key + '" role="tab" aria-selected="' + (m.key === tableauMode) + '">' +
+        H(m.label) + '</button>').join('') + '</div>';
+
     const filtres =
       '<div class="pil-kfiltres">' +
+        // Le regroupement ne concerne que le kanban : les deux autres vues ont
+        // leurs propres axes.
+        (tableauMode !== 'kanban' ? '' :
         '<label class="pil-kgroupe">Grouper par ' +
           '<select id="kanban-groupe">' +
             KANBAN_GROUPES.map(g => '<option value="' + g.key + '"' +
               (g.key === kanbanGroupe ? ' selected' : '') + '>' + H(g.label) + '</option>').join('') +
           '</select>' +
-        '</label>' +
+        '</label>') +
         msFilterMarkup('ms-kpartenaire', 'Partenaire', 'Tous les partenaires') +
         '<button type="button" class="pil-chip-btn' + (kanbanUrgentes ? ' on' : '') + '" id="flt-urgentes"' +
           ' aria-pressed="' + (kanbanUrgentes ? 'true' : 'false') + '">Urgentes seulement</button>' +
         // La note suit ce qui décide vraiment des colonnes : les choix de la
         // colonne. Une colonne Statut présente mais sans choix définis ne
         // donne rien non plus.
-        (statutActionChoices.length || kanbanGroupe !== 'statut' ? '' :
+        (statutActionChoices.length || kanbanGroupe !== 'statut' || tableauMode !== 'kanban' ? '' :
           '<span class="pil-kfiltres-note">Deux colonnes par défaut. Pour les vôtres ' +
           '(à faire, en cours, traité), donnez à la table des actions une colonne ' +
           '« Statut » de type Choix, avec ces valeurs.</span>') +
@@ -1760,11 +1955,15 @@ body { overflow: hidden; }
         '<h1 class="pil-h1" id="kanban-title">Tableau des actions</h1>' +
         '<p class="pil-sub">' + (statusMsg ? '<span class="pil-status">' + H(statusMsg) + '</span>' : '') +
           actions.length + ' action' + (actions.length > 1 ? 's' : '') + ' affichée' + (actions.length > 1 ? 's' : '') +
-          ' · glissez une carte d’une colonne à l’autre</p>' +
+          (tableauMode === 'kanban' ? ' · glissez une carte d’une colonne à l’autre'
+            : tableauMode === 'eisenhower' ? ' · ce qui presse en haut, ce qui compte à gauche'
+            : ' · sur leur échéance') + '</p>' +
       '</div>' +
       '<button type="button" class="pil-btn primary" id="btn-action-kanban">+ Nouvelle action</button>' +
-      '</div>' + avancement + filtres +
-      '<div class="pil-kanban">' + colonnesHtml + '</div>' +
+      '</div>' + avancement + bascule + filtres +
+      (tableauMode === 'eisenhower' ? renderEisenhower(actions, now)
+        : tableauMode === 'calendrier' ? renderCalendrier(actions, now)
+        : '<div class="pil-kanban">' + colonnesHtml + '</div>') +
       '<div class="pil-kdata" hidden data-partenaires="' + H(partenaires.join('|')) + '"></div>';
   }
 
@@ -1801,6 +2000,27 @@ body { overflow: hidden; }
       onChange: (choisis) => { kanbanPartenaires = choisis; render(); }
     });
     if (!ms) return;
+
+    hote.querySelectorAll('[data-mode]').forEach(b => {
+      b.addEventListener('click', () => { tableauMode = b.dataset.mode; render(); });
+    });
+    const prec = hote.querySelector('#cal-prec');
+    const suiv = hote.querySelector('#cal-suiv');
+    const auj = hote.querySelector('#cal-auj');
+    const glisserMois = (n) => {
+      const d = moisAffiche();
+      moisCalendrier = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + n, 1));
+      render();
+    };
+    if (prec) prec.addEventListener('click', () => glisserMois(-1));
+    if (suiv) suiv.addEventListener('click', () => glisserMois(1));
+    if (auj) auj.addEventListener('click', () => { moisCalendrier = null; render(); });
+    // Dans le calendrier et la matrice, une carte s'ouvre : rien ne s'y glisse.
+    if (tableauMode !== 'kanban') {
+      hote.querySelectorAll('[data-carte]').forEach(c => {
+        c.addEventListener('click', () => editActionModal(c.dataset.carte));
+      });
+    }
 
     const groupe = hote.querySelector('#kanban-groupe');
     if (groupe) groupe.addEventListener('change', () => { kanbanGroupe = groupe.value; render(); });
