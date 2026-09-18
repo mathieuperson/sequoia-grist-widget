@@ -6,8 +6,8 @@
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-<link rel="stylesheet" href="./common.css?v=20260918e">
-<script src="./common.js?v=20260918e"></script>
+<link rel="stylesheet" href="./common.css?v=20260918f">
+<script src="./common.js?v=20260918f"></script>
 <style>
   /* ---------- Sidebar ---------- */
   .filter-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
@@ -174,7 +174,12 @@
   .contact-row .c-text { min-width: 0; flex: 1; }
   .contact-row .c-name { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .contact-row .c-sub { font-size: 11.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .contact-row .star { color: #eab308; font-size: 12px; flex-shrink: 0; }
+  /* L'etoile occupe sa place meme absente, sinon les boutons de la ligne
+     voisine se decalent et la colonne ne se lit plus comme une colonne. */
+  .contact-row .star {
+    color: #eab308; font-size: 12px; flex-shrink: 0;
+    width: 13px; text-align: center;
+  }
 
   /* ---- Opportunités ---- */
   .opp-row {
@@ -217,7 +222,32 @@
     border-color: var(--sequoia-green);
     background: var(--sequoia-green-light);
   }
-  .btn-ghost {
+  /* Lien vers le profil LinkedIn, dans la meme famille que le bouton de copie :
+     discret au repos, bleu de la marque au survol. */
+  .li-btn {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    color: var(--text-muted);
+    font-size: 11px; font-weight: 700; font-style: italic;
+    text-decoration: none;
+    opacity: 0.45;
+    transition: opacity 0.12s ease;
+    flex-shrink: 0;
+  }
+  .contact-row:hover .li-btn, .ann-row:hover .li-btn, .li-btn:focus { opacity: 1; }
+  .li-btn:hover {
+    opacity: 1;
+    color: #fff;
+    background: #0a66c2; /* bleu LinkedIn */
+    border-color: #0a66c2;
+  }
+  .ann-copie .li-btn { margin-right: 4px; }
+
+  /* Bouton d'action discret dans un entete de panneau — plus petit que le
+     .btn-ghost de l'entete de fiche, qui garde sa propre taille. */
+  .btn-mini {
     border: 1px solid var(--border);
     background: var(--card-bg);
     color: var(--sequoia-green-dark);
@@ -227,7 +257,7 @@
     font-weight: 600;
     cursor: pointer;
   }
-  .btn-ghost:hover { border-color: var(--sequoia-green); background: var(--sequoia-green-light); }
+  .btn-mini:hover { border-color: var(--sequoia-green); background: var(--sequoia-green-light); }
 
   /* ---- Annuaire ---- */
   .annuaire {
@@ -259,7 +289,9 @@
   .ann-nom { font-weight: 600; cursor: pointer; }
   .ann-nom:hover { color: var(--sequoia-green-dark); text-decoration: underline; }
   .ann-mail { color: var(--text-muted); }
-  .ann-copie { width: 40px; text-align: right; }
+  /* Assez large pour le lien et le bouton cote a cote : plus etroit, ils
+     s'empilaient et la ligne doublait de hauteur. */
+  .ann-copie { width: 78px; text-align: right; white-space: nowrap; }
   .ann-sans-adresse { color: var(--text-muted); }
   .ann-vide { color: var(--border); }
 
@@ -1082,6 +1114,7 @@
           fonction: cols.Fonction ? formatValue(c[cols.Fonction]) : '',
           structure: structField(s, 'Nom') || 'Sans nom',
           adresses: emailsOfContact(c),
+          linkedin: linkedinLink(c),
           principal: !!(cols.ContactPrincipal && c[cols.ContactPrincipal])
         });
       });
@@ -1129,7 +1162,7 @@
             '<td class="ann-mail">' + (l.adresses.length
               ? escapeHtml(l.adresses.join(', '))
               : '<span class="ann-vide">—</span>') + '</td>' +
-            '<td class="ann-copie">' + (l.adresses.length
+            '<td class="ann-copie">' + l.linkedin + (l.adresses.length
               ? '<button class="copy-btn" data-copy-email="' + escapeHtml(l.adresses.join('; ')) + '" title="Copier">⧉</button>'
               : '') + '</td>' +
           '</tr>').join('') +
@@ -1146,7 +1179,7 @@
             '</p>' +
         '</div>' +
         '<div class="annuaire-actions">' +
-          (annuaireSel.size ? '<button class="btn-ghost" id="ann-vider">Décocher</button>' : '') +
+          (annuaireSel.size ? '<button class="btn-mini" id="ann-vider">Décocher</button>' : '') +
           '<button class="btn-primary" id="ann-copier"' + (nbAdresses ? '' : ' disabled') + '>' +
             '⧉ Copier ' + nbAdresses + ' adresse' + (nbAdresses > 1 ? 's' : '') +
             (coches.length ? ' · ' + coches.length + ' coché' + (coches.length > 1 ? 's' : '') : '') + '</button>' +
@@ -1342,11 +1375,12 @@
               '<div class="c-name">' + escapeHtml(contactName(c)) + '</div>' +
               '<div class="c-sub">' + escapeHtml(sub) + '</div>' +
             '</div>' +
+            linkedinLink(c) +
             (adressesContact.length
               ? '<button class="copy-btn" data-copy-email="' + escapeHtml(adressesContact.join('; ')) + '"' +
                 ' title="Copier ' + escapeHtml(adressesContact.join(', ')) + '">⧉</button>'
               : '') +
-            (principal ? '<span class="star" title="Contact principal">★</span>' : '') +
+            '<span class="star"' + (principal ? ' title="Contact principal">★' : '>') + '</span>' +
           '</div>';
         }).join('');
 
@@ -1354,7 +1388,7 @@
     // frequent quand on vient chercher a qui ecrire.
     const adresses = emailsOfStructure(s.id);
     const action = adresses.length
-      ? '<button class="btn-ghost" id="btn-copy-emails" title="' + escapeHtml(adresses.join('; ')) + '">' +
+      ? '<button class="btn-mini" id="btn-copy-emails" title="' + escapeHtml(adresses.join('; ')) + '">' +
           '⧉ ' + adresses.length + ' adresse' + (adresses.length > 1 ? 's' : '') + '</button>'
       : '';
     return panelShell('Contacts', list.length, 'btn-new-contact', '+ Contact', body, action);
@@ -1450,7 +1484,8 @@
     bindCopyButtons();
 
     document.querySelectorAll('[data-contact]').forEach(el => {
-      el.addEventListener('click', () => {
+      el.addEventListener('click', (e) => {
+        if (e.target.closest('.li-btn')) return; // le lien s'ouvre pour lui-meme
         const rec = rel('contacts').records.find(c => c.id === Number(el.dataset.contact));
         if (rec) openContactModal(rec, s);
       });
@@ -2207,6 +2242,28 @@
       .split(/[;,\s]+/)
       .map(x => x.trim())
       .filter(x => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x));
+  }
+
+  // Le champ LinkedIn est saisi a la main : parfois l'URL complete, parfois
+  // « linkedin.com/in/… » sans protocole, parfois l'identifiant seul. On en
+  // fait une URL absolue — un href relatif pointerait vers GitHub Pages.
+  function linkedinUrl(valeur) {
+    const brut = String(valeur || '').trim();
+    if (!brut) return '';
+    if (/^https?:\/\//i.test(brut)) return brut;
+    if (/^(www\.)?linkedin\.com\//i.test(brut)) return 'https://' + brut.replace(/^www\./i, '');
+    // Un identifiant seul : pas d'espace, pas de point d'entree douteux.
+    if (/^[\w\-À-ÿ.%]+$/.test(brut)) return 'https://www.linkedin.com/in/' + encodeURIComponent(brut);
+    return '';
+  }
+
+  function linkedinLink(contact) {
+    const cols = rel('contacts').cols;
+    if (!cols.Linkedin) return '';
+    const url = linkedinUrl(formatValue(contact[cols.Linkedin]));
+    if (!url) return '';
+    return '<a class="li-btn" href="' + escapeHtml(url) + '" target="_blank" rel="noopener noreferrer"' +
+      ' title="Profil LinkedIn — ' + escapeHtml(contactName(contact)) + '">in</a>';
   }
 
   function emailsOfStructure(structureId) {
