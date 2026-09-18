@@ -6,8 +6,8 @@
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-<link rel="stylesheet" href="./common.css?v=20260918c">
-<script src="./common.js?v=20260918c"></script>
+<link rel="stylesheet" href="./common.css?v=20260918d">
+<script src="./common.js?v=20260918d"></script>
 <style>
   /* ---------- Sidebar ---------- */
   .filter-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
@@ -1634,7 +1634,7 @@
     openModal(html, () => {
       const getStructures = mountRefPicker('m-ref-structures',
         structurePickerOptions(), c, r.tableId, cols.Structures, isNew,
-        [{ id: s.id, label: structField(s, 'Nom') || 'Sans nom' }]);
+        [{ id: s.id, label: structField(s, 'Nom') || 'Sans nom' }], structureChip);
 
       if (isNew) {
         document.getElementById('m-nom').focus();
@@ -1655,7 +1655,8 @@
           // Sans lien le contact n'apparaîtrait sur aucune fiche : la
           // structure ouverte reste le repli si la puce en a été retirée.
           const structureChips = getStructures();
-          set('Structures', ['L', ...(structureChips.length ? structureChips.map(x => x.id) : [s.id])]);
+          set('Structures', refListValue(r.tableId, cols.Structures,
+            structureChips.length ? structureChips.map(x => x.id) : [s.id]));
           try {
             setModalStatus('Création…');
             await addRecord(r.tableId, fields);
@@ -1759,12 +1760,14 @@
 
       const getPartenaires = mountRefPicker('m-ref-partenaires',
         structurePickerOptions(), o, r.tableId, cols.Partenaires, isNew,
-        [{ id: s.id, label: structField(s, 'Nom') || 'Sans nom' }]);
+        [{ id: s.id, label: structField(s, 'Nom') || 'Sans nom' }], structureChip);
       const getExtraLinks = mountExtraStructureLinks('opportunites', o, r.tableId, isNew);
       const getContacts = mountRefPicker('m-ref-contacts',
-        contactPickerOptions(s.id, 'structure'), o, r.tableId, cols.ContactPartenaire, isNew);
+        contactOptionsForRecord('opportunites', o, s.id), o, r.tableId, cols.ContactPartenaire, isNew,
+        null, contactChip);
       const getClusterContacts = mountRefPicker('m-ref-contacts-cluster',
-        contactPickerOptions(s.id, 'all'), o, r.tableId, cols.ContactCluster, isNew);
+        contactPickerOptions(s.id, 'all'), o, r.tableId, cols.ContactCluster, isNew,
+        null, contactChip);
 
       if (isNew) {
         document.getElementById('m-sujet').focus();
@@ -1785,13 +1788,16 @@
           set('Commentaire', document.getElementById('m-commentaire').value.trim());
           const contactChips = getContacts();
           const clusterChips = getClusterContacts();
-          if (contactChips.length) set('ContactPartenaire', ['L', ...contactChips.map(c => c.id)]);
-          if (clusterChips.length) set('ContactCluster', ['L', ...clusterChips.map(c => c.id)]);
+          if (contactChips.length) set('ContactPartenaire',
+            refListValue(r.tableId, cols.ContactPartenaire, contactChips.map(c => c.id)));
+          if (clusterChips.length) set('ContactCluster',
+            refListValue(r.tableId, cols.ContactCluster, clusterChips.map(c => c.id)));
           const partenaireChips = getPartenaires();
-          set('Partenaires', ['L', ...(partenaireChips.length ? partenaireChips.map(c => c.id) : [s.id])]);
+          set('Partenaires', refListValue(r.tableId, cols.Partenaires,
+            partenaireChips.length ? partenaireChips.map(c => c.id) : [s.id]));
           Object.entries(getExtraLinks).forEach(([colId, getChips]) => {
             const chips = getChips();
-            if (chips.length) fields[colId] = ['L', ...chips.map(c => c.id)];
+            if (chips.length) fields[colId] = refListValue(r.tableId, colId, chips.map(c => c.id));
           });
           try {
             setModalStatus('Création…');
@@ -1873,12 +1879,14 @@
 
       const getPartenaires = mountRefPicker('m-ref-partenaires',
         structurePickerOptions(), i, r.tableId, cols.Partenaires, isNew,
-        [{ id: s.id, label: structField(s, 'Nom') || 'Sans nom' }]);
+        [{ id: s.id, label: structField(s, 'Nom') || 'Sans nom' }], structureChip);
       const getExtraLinks = mountExtraStructureLinks('interactions', i, r.tableId, isNew);
       const getContacts = mountRefPicker('m-ref-contacts',
-        contactPickerOptions(s.id, 'structure'), i, r.tableId, cols.ContactPartenaire, isNew);
+        contactOptionsForRecord('interactions', i, s.id), i, r.tableId, cols.ContactPartenaire, isNew,
+        null, contactChip);
       const getClusterContacts = mountRefPicker('m-ref-contacts-cluster',
-        contactPickerOptions(s.id, 'all'), i, r.tableId, cols.ContactCluster, isNew);
+        contactPickerOptions(s.id, 'all'), i, r.tableId, cols.ContactCluster, isNew,
+        null, contactChip);
 
       if (isNew) {
         document.getElementById('m-objet').focus();
@@ -1894,16 +1902,19 @@
           set('Suites', document.getElementById('m-suites').value.trim());
           const contactChips = getContacts();
           const clusterChips = getClusterContacts();
-          if (contactChips.length) set('ContactPartenaire', ['L', ...contactChips.map(c => c.id)]);
-          if (clusterChips.length) set('ContactCluster', ['L', ...clusterChips.map(c => c.id)]);
+          if (contactChips.length) set('ContactPartenaire',
+            refListValue(r.tableId, cols.ContactPartenaire, contactChips.map(c => c.id)));
+          if (clusterChips.length) set('ContactCluster',
+            refListValue(r.tableId, cols.ContactCluster, clusterChips.map(c => c.id)));
           Object.entries(getExtraLinks).forEach(([colId, getChips]) => {
             const chips = getChips();
-            if (chips.length) fields[colId] = ['L', ...chips.map(c => c.id)];
+            if (chips.length) fields[colId] = refListValue(r.tableId, colId, chips.map(c => c.id));
           });
           // Sans lien l'interaction n'apparaîtrait sur aucune fiche : la
           // structure ouverte reste le repli si la puce en a été retirée.
           const partenaireChips = getPartenaires();
-          set('Partenaires', ['L', ...(partenaireChips.length ? partenaireChips.map(c => c.id) : [s.id])]);
+          set('Partenaires', refListValue(r.tableId, cols.Partenaires,
+            partenaireChips.length ? partenaireChips.map(c => c.id) : [s.id]));
           try {
             setModalStatus('Création…');
             const newId = await addRecord(r.tableId, fields);
@@ -1948,6 +1959,49 @@
       .sort((a, b) => a.label.localeCompare(b.label, 'fr'));
   }
 
+  // Les contacts proposes pour une ligne : ceux de toutes les structures
+  // qu'elle designe, pas seulement celle de la fiche ouverte. Une interaction
+  // creee depuis Neverhack et consultee depuis SOTERN doit continuer d'offrir
+  // les contacts de Neverhack, sinon ses contacts partenaires deviennent
+  // inmodifiables depuis cette fiche.
+  function contactOptionsForRecord(key, record, structureId) {
+    const structIds = new Set([structureId]);
+    if (record) {
+      (rel(key).linkCols || []).forEach(col =>
+        refIdsFromValue(record[col]).forEach(id => structIds.add(id)));
+    }
+    const vus = new Set();
+    const options = [];
+    structIds.forEach(id => contactsOf(id).forEach(c => {
+      if (vus.has(c.id)) return;
+      vus.add(c.id);
+      options.push({ id: c.id, label: contactName(c) });
+    }));
+    return options.sort((a, b) => a.label.localeCompare(b.label, 'fr'));
+  }
+
+  // Etiquette d'un contact / d'une structure par son identifiant, pour les
+  // valeurs enregistrees hors de la liste proposee.
+  function contactChip(id) {
+    const c = rel('contacts').records.find(x => x.id === id);
+    return c ? { id, label: contactName(c) } : null;
+  }
+
+  // Une colonne de reference peut porter une liste (RefList) ou une seule
+  // ligne (Ref) : Grist refuse l'autre forme. Vider une RefList s'ecrit ['L'],
+  // vider une Ref s'ecrit 0.
+  function refListValue(tableId, colId, ids) {
+    const r = Object.keys(related).map(k => related[k]).find(x => x.tableId === tableId)
+      || { listCols: structListCols };
+    if (isListCol(r, colId)) return ['L', ...ids];
+    return ids.length ? ids[0] : 0;
+  }
+
+  function structureChip(id) {
+    const st = structures.find(x => x.id === id);
+    return st ? { id, label: structField(st, 'Nom') || 'Sans nom' } : null;
+  }
+
   // Toutes les structures du document, pour taguer une interaction/
   // opportunité/contact sur plusieurs partenaires présents (ex. une réunion
   // avec deux structures), pas seulement celle depuis laquelle on l'a créée.
@@ -1980,7 +2034,7 @@
     const r = rel(relKey);
     const getters = {};
     (r.extraEditableLinkCols || []).forEach(colId => {
-      getters[colId] = mountRefPicker(extraStructureFieldId(colId), structurePickerOptions(), record, tableId, colId, isNew);
+      getters[colId] = mountRefPicker(extraStructureFieldId(colId), structurePickerOptions(), record, tableId, colId, isNew, null, structureChip);
     });
     return getters;
   }
@@ -1992,20 +2046,34 @@
   // à la création (ex. la structure ouverte) — sans effet en édition, où le
   // point de départ est toujours la valeur déjà enregistrée. Renvoie un
   // accesseur sur la sélection courante.
-  function mountRefPicker(elId, options, record, tableId, colId, isNew, defaultChipsWhenNew) {
+  // `resoudre(id)` donne l'etiquette d'une valeur enregistree absente de la
+  // liste proposee. Sans lui, une telle valeur ne s'affichait pas — et le
+  // premier changement du champ l'effacait, puisque l'enregistrement reecrit
+  // la colonne entiere a partir des seules pastilles visibles.
+  function mountRefPicker(elId, options, record, tableId, colId, isNew, defaultChipsWhenNew, resoudre) {
     let chips = [];
     const el = document.getElementById(elId);
     if (!el) return () => chips;
+    let proposees = options;
     if (record && colId) {
-      const currentIds = refIdsFromValue(record[colId]);
-      chips = options.filter(o => currentIds.includes(o.id));
+      const parId = {};
+      options.forEach(o => { parId[o.id] = o; });
+      chips = refIdsFromValue(record[colId])
+        .map(id => parId[id] || (resoudre && resoudre(id)) || { id, label: 'Ligne #' + id });
+      // Ce qui est enregistre doit rester proposable : sinon une valeur
+      // retiree par erreur ne pourrait pas etre remise depuis cette fiche.
+      const manquantes = chips.filter(c => !parId[c.id]);
+      if (manquantes.length) {
+        proposees = options.concat(manquantes)
+          .sort((x, y) => String(x.label).localeCompare(String(y.label), 'fr'));
+      }
     } else {
       chips = defaultChipsWhenNew || [];
     }
-    renderLocalPicker(el, options, chips, (next) => {
+    renderLocalPicker(el, proposees, chips, (next) => {
       chips = next;
       if (!isNew && colId && record) {
-        updateRecord(tableId, record.id, { [colId]: ['L', ...next.map(c => c.id)] })
+        updateRecord(tableId, record.id, { [colId]: refListValue(tableId, colId, next.map(c => c.id)) })
           .then(() => setModalStatus('Enregistré ✓'))
           .catch(err => { console.error(err); setModalStatus('Erreur d’enregistrement'); });
       }
