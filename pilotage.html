@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pilotage Partenariats &amp; Innovation — Cluster SequoIA</title>
-<link rel="stylesheet" href="./common.css?v=20260918o">
+<link rel="stylesheet" href="./common.css?v=20260918p">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="./common.js?v=20260918o"></script>
-<script src="./pilotage.js?v=20260918o"></script>
+<script src="./common.js?v=20260918p"></script>
+<script src="./pilotage.js?v=20260918p"></script>
 <style>
 /* Charte alignée sur common.css (vert #1f6b3f, fond #f4f6f5, police
    système). Seules les valeurs absentes de common.css sont ajoutées ici,
@@ -1726,7 +1726,7 @@ body { overflow: hidden; }
   }
 
   // Une carte d'action, la même dans les trois vues du tableau.
-  function carteAction(a, now, colonnes, deplacable) {
+  function carteAction(a, now, colonnes, deplacable, quadrant) {
       const prio = prioriteOf(a.priorite);
       const urgence = urgenceOf(a.due, now);
       const deTable = a.source === 'table';
@@ -1747,8 +1747,23 @@ body { overflow: hidden; }
         '<div class="pil-kc-foot">' +
           '<span class="pil-kc-due ' + urgence + '">' + H(dueLabel(a.due, now)) + '</span>' +
           (deTable && deplacable
-            ? '<select class="pil-kc-move" data-move="' + H(a.id) + '" aria-label="Déplacer « ' + H(a.label) + ' »">' +
-                colonnes.map(c => '<option' + (c === colonneDe(a, colonnes, now) ? ' selected' : '') + '>' + H(c) + '</option>').join('') +
+            ? '<select class="pil-kc-move" data-move="' + H(a.id) + '" title="Déplacer cette action"' +
+                ' aria-label="Déplacer « ' + H(a.label) + ' »">' +
+                // Une première option qui nomme le geste : un sélecteur qui
+                // n'affiche que la colonne courante se lit comme une étiquette,
+                // et on ne devine pas qu'il sert à déplacer.
+                '<option value="" disabled selected>Déplacer vers…</option>' +
+                colonnes.map(c => '<option' + (c === colonneDe(a, colonnes, now) ? ' data-ici="1"' : '') + '>' +
+                  H(c) + (c === colonneDe(a, colonnes, now) ? ' (ici)' : '') + '</option>').join('') +
+              '</select>'
+            : quadrant && deTable
+            // Dans la matrice, déplacer revient à re-décider : le sélecteur
+            // nomme la case visée, et le bandeau d'état dira ce qui a changé.
+            ? '<select class="pil-kc-move" data-quadrant="' + H(a.id) + '" title="Déplacer cette action"' +
+                ' aria-label="Déplacer « ' + H(a.label) + ' »">' +
+                '<option value="" disabled selected>Déplacer vers…</option>' +
+                EISENHOWER.map(q => '<option value="' + q.key + '"' + (q.key === quadrant ? ' disabled' : '') + '>' +
+                  H(q.titre) + (q.key === quadrant ? ' (ici)' : '') + '</option>').join('') +
               '</select>'
             : (deTable ? '' :
               '<span class="pil-kc-source" title="Cette action vient d’un échange : reprenez-la dans vos actions pour la déplacer">issue d’un échange</span>')) +
@@ -1779,6 +1794,44 @@ body { overflow: hidden; }
     return (prioriteOf(a.priorite) || {}).key === 'haute';
   }
 
+  // Deplacer une action dans la matrice, c'est re-decider : ce qui compte passe
+  // en priorite haute, ce qui presse recoit une echeance proche. On l'ecrit, et
+  // on dit exactement ce qui a change — c'est tout l'interet de la matrice,
+  // mais ca ne doit pas se produire par accident, d'ou le choix explicite.
+  async function deplacerEisenhower(id, quadrantKey) {
+    const act = related.actions;
+    const a = model.actions.find(x => x.id === id);
+    const q = EISENHOWER.find(x => x.key === quadrantKey);
+    if (!a || !q || a.source !== 'table' || !act.tableId) return;
+    const fields = {};
+    const changements = [];
+
+    if (estImportante(a) !== q.important) {
+      if (act.cols.Important) {
+        fields[act.cols.Important] = q.important;
+        changements.push(q.important ? 'marquée importante' : 'plus importante');
+      } else if (act.cols.Priorite) {
+        const cible = q.important ? 'haute' : 'normale';
+        const choix = PILOTAGE_PRIORITES.find(p => p.key === cible);
+        fields[act.cols.Priorite] = choix.label;
+        changements.push('priorité ' + choix.label.toLowerCase());
+      }
+    }
+    if (estUrgente(a, today()) !== q.urgent && act.cols.Echeance) {
+      // Urgent : aujourd'hui. Pas urgent : dans deux semaines — au-delà de la
+      // fenêtre « cette semaine », sans effacer l'échéance, qu'on ne devine pas.
+      fields[act.cols.Echeance] = q.urgent ? inDays(0) : inDays(14);
+      changements.push('échéance ' + (q.urgent ? 'aujourd’hui' : 'dans deux semaines'));
+    }
+    if (!changements.length) { setStatus('Rien à changer : elle y est déjà'); return; }
+    try {
+      setStatus('Déplacement…');
+      await updateRecord(act.tableId, a.rowId, fields);
+      await refresh();
+      setStatus(q.titre + ' — ' + changements.join(', '));
+    } catch (err) { console.error(err); setStatus('Erreur d’enregistrement'); }
+  }
+
   function renderEisenhower(actions, now) {
     const act = related.actions || { cols: {} };
     const cases = EISENHOWER.map(q => {
@@ -1791,7 +1844,7 @@ body { overflow: hidden; }
         '</div>' +
         '<div class="pil-eis-regle">' + H(q.regle) + '</div>' +
         '<div class="pil-eis-body">' +
-          (dedans.length ? dedans.map(a => carteAction(a, now, [], false)).join('')
+          (dedans.length ? dedans.map(a => carteAction(a, now, [], false, q.key)).join('')
             : '<div class="pil-kcol-vide">Rien ici</div>') +
         '</div>' +
       '</section>';
@@ -1800,7 +1853,8 @@ body { overflow: hidden; }
       '<p class="pil-kfiltres-note">« Important » suit ' +
         (act.cols.Important ? 'la colonne Important de la table des actions.'
           : 'la priorité haute. Une colonne « Important » (case à cocher) dans la table des actions la remplacerait.') +
-      ' Cliquez une carte pour la modifier.</p>';
+      ' Déplacer une carte re-décide : la priorité et l’échéance suivent la case, ' +
+      'et le bandeau d’état dit ce qui a changé. Un clic sur la carte ouvre son formulaire.</p>';
   }
 
   // ---- Calendrier ----
@@ -2015,10 +2069,20 @@ body { overflow: hidden; }
     if (prec) prec.addEventListener('click', () => glisserMois(-1));
     if (suiv) suiv.addEventListener('click', () => glisserMois(1));
     if (auj) auj.addEventListener('click', () => { moisCalendrier = null; render(); });
+    hote.querySelectorAll('[data-quadrant]').forEach(sel => {
+      sel.addEventListener('change', () => {
+        if (sel.value) deplacerEisenhower(sel.dataset.quadrant, sel.value);
+      });
+      // Le clic sur le sélecteur ne doit pas ouvrir la fiche par-dessus.
+      sel.addEventListener('click', (e) => e.stopPropagation());
+    });
     // Dans le calendrier et la matrice, une carte s'ouvre : rien ne s'y glisse.
     if (tableauMode !== 'kanban') {
       hote.querySelectorAll('[data-carte]').forEach(c => {
-        c.addEventListener('click', () => editActionModal(c.dataset.carte));
+        c.addEventListener('click', (e) => {
+          if (e.target.closest('select')) return;
+          editActionModal(c.dataset.carte);
+        });
       });
     }
 
@@ -2026,7 +2090,10 @@ body { overflow: hidden; }
     if (groupe) groupe.addEventListener('change', () => { kanbanGroupe = groupe.value; render(); });
 
     hote.querySelectorAll('[data-move]').forEach(sel => {
-      sel.addEventListener('change', () => deplacerAction(sel.dataset.move, sel.value));
+      sel.addEventListener('change', () => {
+        const colonne = sel.value.replace(/ \(ici\)$/, '');
+        if (colonne) deplacerAction(sel.dataset.move, colonne);
+      });
     });
 
     // Glisser-déposer : le sélecteur de chaque carte reste le chemin sûr
@@ -2221,8 +2288,18 @@ body { overflow: hidden; }
       .sort((x, y) => (Number(y.date) || 0) - (Number(x.date) || 0))
       .map(i => ({
         id: i.id,
+        partnerIds: i.partnerIds || [],
         name: (i.objet || i.type || 'Échange') + (i.date ? ' — ' + formatDate(i.date) : '')
       }));
+
+    // Les échanges proposés sont ceux des partenaires retenus : sur un document
+    // qui en compte des centaines, la liste entière est inutilisable. Sans
+    // partenaire choisi, tout est proposé — on ne peut pas encore restreindre.
+    const echangesDesPartenaires = (nomsRetenus) => {
+      const ids = structureIds(partenaires, nomsRetenus);
+      if (!ids.length) return echanges;
+      return echanges.filter(i => i.partnerIds.some(id => ids.includes(id)));
+    };
 
     // Les rattachements enregistrés, lus sur la ligne d'origine : une action
     // de la table porte les siens, une action déduite ceux de son interaction.
@@ -2247,10 +2324,22 @@ body { overflow: hidden; }
         labelAll: 'Aucune opportunité'
       },
       echange: {
-        values: echanges.map(i => i.name),
+        // Ce qui est déjà rattaché reste proposé, même hors du filtre : sinon
+        // le multi-select l'abandonnerait en silence.
+        values: Array.from(new Set(
+          echangesDesPartenaires(partenaires.filter(p => partnerIds.includes(p.id)).map(p => p.name))
+            .map(i => i.name)
+            .concat(echanges.filter(i => echangeIds.includes(i.id)).map(i => i.name)))),
         selected: echanges.filter(i => echangeIds.includes(i.id)).map(i => i.name),
         labelAll: 'Aucun échange'
       }
+    };
+    // Changer de partenaire resserre la liste des échanges.
+    selects.partner.onChange = (choisis, tous) => {
+      if (!tous.echange) return;
+      const retenus = tous.echange.getSelected();
+      tous.echange.setOptions(Array.from(new Set(
+        echangesDesPartenaires(choisis).map(i => i.name).concat(retenus))));
     };
     // Qui est concerné : la colonne n'existe que si le document la porte.
     const contacts = contactsListe();

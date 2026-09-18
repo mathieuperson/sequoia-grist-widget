@@ -355,18 +355,53 @@ function attachmentIdsFromValue(value) {
   return [];
 }
 
+// Envoie des fichiers dans le magasin de pièces jointes du document, et rend
+// leurs identifiants — ce qu'attend une colonne de type Attachments.
+//
+// Deux chemins, dans cet ordre : l'API du widget quand la version de Grist la
+// porte (elle passe par le même canal que les autres écritures, donc sans
+// jeton ni requête traversant l'iframe), puis l'API REST du document. Le
+// second échouait en silence sur certaines instances — le jeton d'accès d'un
+// widget peut être refusé en écriture sur /attachments — et l'appelant n'avait
+// qu'un « (403) » à afficher. On remonte désormais ce que le serveur a dit.
 async function uploadAttachments(files) {
+  const liste = Array.from(files || []).filter(Boolean);
+  if (!liste.length) return [];
+
+  if (grist.docApi && typeof grist.docApi.uploadAttachment === 'function') {
+    const ids = [];
+    for (const fichier of liste) {
+      ids.push(await grist.docApi.uploadAttachment(fichier));
+    }
+    return ids.filter(id => id !== null && id !== undefined);
+  }
+
   const { token, baseUrl } = await grist.docApi.getAccessToken({ readOnly: false });
   const form = new FormData();
-  for (const file of files) form.append('upload', file, file.name);
-  const res = await fetch(`${baseUrl}/attachments?auth=${encodeURIComponent(token)}`, {
-    method: 'POST',
-    body: form
-  });
-  if (!res.ok) throw new Error('Échec de l\'upload (' + res.status + ')');
+  liste.forEach(fichier => form.append('upload', fichier, fichier.name));
+  let res;
+  try {
+    res = await fetch(`${baseUrl}/attachments?auth=${encodeURIComponent(token)}`, {
+      method: 'POST',
+      body: form
+    });
+  } catch (err) {
+    // Réseau, CORS, ou requête bloquée par le cadre : le message brut est plus
+    // utile que « échec de l'upload ».
+    throw new Error('Le document n’a pas pu être joint (' + (err && err.message ? err.message : err) + ')');
+  }
+  if (!res.ok) {
+    const corps = await res.text().catch(() => '');
+    throw new Error('Envoi refusé par le document — HTTP ' + res.status +
+      (corps ? ' : ' + corps.slice(0, 200) : ''));
+  }
   const data = await res.json();
   // Response shape: array of ids, or array of {id} objects depending on version.
-  return (Array.isArray(data) ? data : data.rows || []).map(x => (typeof x === 'object' ? x.id : x));
+  const ids = (Array.isArray(data) ? data : data.rows || [])
+    .map(x => (typeof x === 'object' ? x.id : x))
+    .filter(id => id !== null && id !== undefined);
+  if (!ids.length) throw new Error('Le document n’a renvoyé aucun identifiant de pièce jointe');
+  return ids;
 }
 
 async function getAttachmentMeta(id) {

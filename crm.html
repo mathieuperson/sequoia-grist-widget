@@ -6,8 +6,8 @@
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-<link rel="stylesheet" href="./common.css?v=20260918o">
-<script src="./common.js?v=20260918o"></script>
+<link rel="stylesheet" href="./common.css?v=20260918p">
+<script src="./common.js?v=20260918p"></script>
 <style>
   /* ---------- Sidebar ---------- */
   .filter-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
@@ -2856,6 +2856,9 @@
           set('DateDebut', inputValueToGristDate(document.getElementById('m-debut').value));
           set('Echeance', inputValueToGristDate(document.getElementById('m-echeance').value));
           set('Commentaire', document.getElementById('m-commentaire').value.trim());
+          const oppChips = getOpportunites();
+          if (oppChips.length) set('Opportunites',
+            refListValue(r.tableId, cols.Opportunites, oppChips.map(o => o.id)));
           const contactChips = getContacts();
           const clusterChips = getClusterContacts();
           if (contactChips.length) set('ContactPartenaire',
@@ -2934,6 +2937,12 @@
         extraStructureFieldsHtml('interactions') +
         '<div class="form-field full"><label>Contact(s) partenaire</label><div id="m-ref-contacts"></div></div>' +
         '<div class="form-field full"><label>Contact(s) cluster</label><div id="m-ref-contacts-cluster"></div></div>' +
+        // Rattacher un échange à une opportunité : c'est ce qui permet de
+        // retrouver, sur la fiche d'un projet, tout l'historique des échanges
+        // qui l'ont fait avancer.
+        (cols.Opportunites
+          ? '<div class="form-field full"><label>Opportunité(s)</label><div id="m-ref-opportunites"></div></div>'
+          : '') +
         '<div class="form-modal-note">Créée depuis la fiche <strong>' + escapeHtml(structField(s, 'Nom')) + '</strong> — ajoutez les autres structures présentes ci-dessus si besoin.</div>' +
       '</div>' +
       (isNew ? '' :
@@ -2984,6 +2993,9 @@
       const getClusterContacts = mountRefPicker('m-ref-contacts-cluster',
         contactPickerOptions(s.id, 'all'), i, r.tableId, cols.ContactCluster, isNew,
         null, contactChip);
+      const getOpportunites = mountRefPicker('m-ref-opportunites',
+        opportunitePickerOptions(i, s.id), i, r.tableId, cols.Opportunites, isNew,
+        null, opportuniteChip);
 
       if (isNew) {
         document.getElementById('m-objet').focus();
@@ -3286,6 +3298,36 @@
     return ids.length ? ids[0] : 0;
   }
 
+  // Les opportunités proposées : celles des structures que l'échange désigne,
+  // puis celle de la fiche ouverte. Sur un document qui en compte des
+  // centaines, proposer tout le catalogue ne sert personne.
+  function opportunitePickerOptions(record, structureId) {
+    const r = rel('opportunites');
+    const cols = r.cols;
+    const structIds = new Set([structureId]);
+    if (record) {
+      (rel('interactions').linkCols || []).forEach(col =>
+        refIdsFromValue(record[col]).forEach(id => structIds.add(id)));
+    }
+    const vues = new Set();
+    const options = [];
+    r.records.forEach(o => {
+      const lie = (r.linkCols || []).some(col =>
+        refIdsFromValue(o[col]).some(id => structIds.has(id)));
+      if (!lie || vues.has(o.id)) return;
+      vues.add(o.id);
+      options.push({ id: o.id, label: (cols.Sujet ? formatValue(o[cols.Sujet]) : '') || 'Sans sujet' });
+    });
+    return options.sort((a, b) => a.label.localeCompare(b.label, 'fr'));
+  }
+
+  function opportuniteChip(id) {
+    const r = rel('opportunites');
+    const o = r.records.find(x => x.id === id);
+    if (!o) return null;
+    return { id, label: (r.cols.Sujet ? formatValue(o[r.cols.Sujet]) : '') || 'Sans sujet' };
+  }
+
   function structureChip(id) {
     const st = structures.find(x => x.id === id);
     return st ? { id, label: structField(st, 'Nom') || 'Sans nom' } : null;
@@ -3484,8 +3526,11 @@
             img.src = await getAttachmentDownloadUrl(attId);
             placeholder.replaceWith(img);
           } catch (err) {
-            placeholder.textContent = 'Échec du téléversement de l’image.';
+            // Dire pourquoi : « échec » seul n'aide ni l'utilisateur ni moi.
+            placeholder.textContent = 'Image non téléversée — ' +
+              (err && err.message ? err.message : 'raison inconnue');
             console.error(err);
+            toast(err && err.message ? err.message : 'Téléversement impossible', true);
           }
           saveCR(serializeCrForSave(editor));
           return;
@@ -3535,8 +3580,14 @@
         await updateRecord(tableId, i.id, { [cols.PJ]: ['L', ...all] });
         i[cols.PJ] = ['L', ...all];
         await paint();
+        toast(newIds.length > 1 ? newIds.length + ' fichiers joints' : 'Fichier joint');
       } catch (err) {
+        // L'échec ne restait que dans la console : la zone reprenait son texte
+        // et rien ne disait que le fichier n'était pas parti.
         console.error(err);
+        const message = err && err.message ? err.message : 'Envoi impossible';
+        setModalStatus('Pièce jointe : ' + message);
+        toast(message, true);
       } finally {
         zone.textContent = original;
       }
