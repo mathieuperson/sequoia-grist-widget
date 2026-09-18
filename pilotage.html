@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pilotage Partenariats &amp; Innovation — Cluster SequoIA</title>
-<link rel="stylesheet" href="./common.css?v=20260918m">
+<link rel="stylesheet" href="./common.css?v=20260918n">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="./common.js?v=20260918m"></script>
-<script src="./pilotage.js?v=20260918m"></script>
+<script src="./common.js?v=20260918n"></script>
+<script src="./pilotage.js?v=20260918n"></script>
 <style>
 /* Charte alignée sur common.css (vert #1f6b3f, fond #f4f6f5, police
    système). Seules les valeurs absentes de common.css sont ajoutées ici,
@@ -429,6 +429,32 @@ body { overflow: hidden; }
   font-family: inherit;
 }
 .pil-kc-source { margin-left: auto; font-size: 10.5px; color: var(--text-muted); font-style: italic; }
+.pil-kc-qui { display: flex; align-items: center; gap: 5px; margin-top: 6px; font-size: 11.5px; color: var(--text-muted); }
+.pil-kc-av {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 17px; height: 17px; border-radius: 50%;
+  background: var(--sequoia-green); color: #fff;
+  font-size: 8.5px; font-weight: 700; flex-shrink: 0;
+}
+.pil-kc-tags { margin-top: 6px; }
+.pil-kc-prio {
+  display: inline-block; border-radius: 6px; padding: 1px 7px;
+  font-size: 10.5px; font-weight: 700;
+  background: var(--pil-surface-2); color: var(--text-muted);
+}
+.pil-kc-prio.haute { background: #fee2e2; color: #991b1b; }
+.pil-kc-prio.basse { background: #e6f4ea; color: #14532d; }
+
+/* Ce qui a ete solde, par fenetre de temps. */
+.pil-avancement { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
+.pil-av-bloc {
+  flex: 1; min-width: 140px;
+  /* Le fond gris des colonnes, sinon les blocs se confondent avec la page. */
+  background: var(--pil-surface-2); border: 1px solid var(--pil-border);
+  border-radius: 10px; padding: 10px 13px;
+}
+.pil-av-nb { font-size: 21px; font-weight: 700; line-height: 1.1; }
+.pil-av-label { font-size: 11px; color: var(--text-muted); margin-bottom: 6px; }
 
 .pil-chip-btn {
   font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 20px;
@@ -993,6 +1019,7 @@ body { overflow: hidden; }
         start: r[act.cols.Debut] ?? null,
         recurrence: txt(formatValue(r[act.cols.Recurrence])),
         statut: txt(formatValue(r[act.cols.Statut])),
+        contactIds: refIdsFromValue(r[act.cols.Contacts]),
         origin: (options.origin && options.origin['act:' + r.id]) || 'manuelle'
       }, contexte(project, partner, !direct));
     }) : [];
@@ -1022,6 +1049,7 @@ body { overflow: hidden; }
           start: null,
           recurrence: '',
           statut: '',
+          contactIds: [],
           origin: (options.origin && options.origin[key]) || 'manuelle'
         }, contexte(project, partner, !direct));
       });
@@ -1651,13 +1679,20 @@ body { overflow: hidden; }
       const prio = prioriteOf(a.priorite);
       const urgence = urgenceOf(a.due, now);
       const deTable = a.source === 'table';
+      const qui = contactNames(a.contactIds);
       return '<article class="pil-kc' + (a.done ? ' done' : '') + '" draggable="' + (deTable && deplacable ? 'true' : 'false') +
           '" data-carte="' + H(a.id) + '">' +
-        '<div class="pil-kc-title">' +
-          (prio && prio.key === 'haute' ? '<span class="pil-kc-urgent">urgent</span>' : '') +
-          H(a.label) + '</div>' +
+        '<div class="pil-kc-title">' + H(a.label) + '</div>' +
         '<div class="pil-kc-meta">' + H(a.partnerName || 'Interne') +
           (a.projectTitle ? ' · ' + H(a.projectTitle) : '') + '</div>' +
+        // Qui s'en occupe, s'il y a quelqu'un : une carte sans visage laisse
+        // croire que tout repose sur soi.
+        (qui ? '<div class="pil-kc-qui">' +
+          '<span class="pil-kc-av">' + H(initials(qui.split(',')[0].trim())) + '</span>' +
+          H(qui) + '</div>' : '') +
+        // La priorité se lit d'un coup d'œil, comme dans un tableau de tickets.
+        (prio ? '<div class="pil-kc-tags"><span class="pil-kc-prio ' + prio.key + '">' +
+          H(prio.label) + (prio.key === 'haute' ? ' 🔥' : '') + '</span></div>' : '') +
         '<div class="pil-kc-foot">' +
           '<span class="pil-kc-due ' + urgence + '">' + H(dueLabel(a.due, now)) + '</span>' +
           (deTable && deplacable
@@ -1701,6 +1736,26 @@ body { overflow: hidden; }
           '« Statut » de type Choix, avec ces valeurs.</span>') +
       '</div>';
 
+    // Ce qui a été soldé : sans ce repère, un tableau ne montre que ce qui
+    // reste, et donne le sentiment de n'avancer jamais.
+    const faitesLe = (depuis) => model.actions.filter(a =>
+      a.done && a.doneOn && a.doneOn >= depuis).length;
+    const jour = todayKey();
+    const ilYA = (n) => gristDateToInputValue(inDays(-n));
+    const ouvertes = model.actions.filter(a => !a.done).length;
+    const avancement =
+      '<section class="pil-avancement">' +
+        ['Aujourd’hui', 'Sur 7 jours', 'Sur 30 jours'].map((label, i) => {
+          const depuis = [jour, ilYA(7), ilYA(30)][i];
+          const n = faitesLe(depuis);
+          return '<div class="pil-av-bloc">' +
+            '<div class="pil-av-nb">' + n + '</div>' +
+            '<div class="pil-av-label">' + H(label) + '</div>' +
+            meterMarkup(n, Math.max(n + ouvertes, 1), { mode: 'part', label: '' }) +
+          '</div>';
+        }).join('') +
+      '</section>';
+
     return '<div class="pil-view-head"><div>' +
         '<h1 class="pil-h1" id="kanban-title">Tableau des actions</h1>' +
         '<p class="pil-sub">' + (statusMsg ? '<span class="pil-status">' + H(statusMsg) + '</span>' : '') +
@@ -1708,7 +1763,7 @@ body { overflow: hidden; }
           ' · glissez une carte d’une colonne à l’autre</p>' +
       '</div>' +
       '<button type="button" class="pil-btn primary" id="btn-action-kanban">+ Nouvelle action</button>' +
-      '</div>' + filtres +
+      '</div>' + avancement + filtres +
       '<div class="pil-kanban">' + colonnesHtml + '</div>' +
       '<div class="pil-kdata" hidden data-partenaires="' + H(partenaires.join('|')) + '"></div>';
   }
