@@ -6,8 +6,8 @@
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-<link rel="stylesheet" href="./common.css?v=20260918f">
-<script src="./common.js?v=20260918f"></script>
+<link rel="stylesheet" href="./common.css?v=20260918g">
+<script src="./common.js?v=20260918g"></script>
 <style>
   /* ---------- Sidebar ---------- */
   .filter-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
@@ -452,6 +452,56 @@
     color: var(--text-muted); cursor: pointer;
   }
   .pj-dropzone.dragover { border-color: var(--sequoia-green); background: var(--sequoia-green-light); }
+  /* ---- Actions d'une structure ---- */
+  .act-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .act-row:last-of-type { border-bottom: none; }
+  .act-row.fait .act-label { text-decoration: line-through; color: var(--text-muted); }
+  .act-row input[type="checkbox"] { cursor: pointer; flex-shrink: 0; }
+  .act-text { flex: 1; min-width: 0; }
+  .act-label { font-size: 13px; font-weight: 600; }
+  .act-sub { font-size: 11.5px; color: var(--text-muted); margin-top: 1px; }
+  .act-due { font-size: 11.5px; color: var(--text-muted); flex-shrink: 0; }
+  .act-due.retard { color: var(--danger); font-weight: 700; }
+  .act-sep {
+    font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--text-muted); font-weight: 700;
+    padding: 9px 16px 3px;
+  }
+  .act-toggle { margin: 9px 16px; }
+  .act-form { display: flex; gap: 7px; padding: 10px 16px; border-top: 1px solid var(--border); }
+  .act-form #act-nouvelle { flex: 1; min-width: 0; }
+  .act-form input {
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 6px 9px; font-size: 12.5px; font-family: inherit;
+  }
+  .act-form input:focus { outline: none; border-color: var(--sequoia-green); }
+
+  /* ---- Actions de suivi d'un echange ---- */
+  .suivi-liste { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; }
+  .suivi-vide { font-size: 12.5px; color: var(--text-muted); font-style: italic; }
+  .suivi-item {
+    display: flex; align-items: center; gap: 9px;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 7px 10px; font-size: 13px;
+  }
+  .suivi-item.fait .suivi-label { text-decoration: line-through; color: var(--text-muted); }
+  .suivi-item .suivi-label { flex: 1; min-width: 0; }
+  .suivi-item .suivi-qui, .suivi-item .suivi-due {
+    font-size: 11.5px; color: var(--text-muted); flex-shrink: 0;
+  }
+  .suivi-form { display: flex; gap: 8px; align-items: center; }
+  .suivi-form #suivi-label { flex: 1; }
+  .suivi-form input {
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 7px 10px; font-size: 13px; font-family: inherit;
+  }
+  .suivi-form input:focus { outline: none; border-color: var(--sequoia-green); }
+  .suivi-contacts-field { margin-top: 9px; }
+
   .pj-list { margin-top: 9px; display: flex; flex-direction: column; gap: 6px; }
   .pj-item {
     display: flex; align-items: center; gap: 8px;
@@ -594,6 +644,24 @@
         PJ: ['PJ', 'Piece_jointe', 'Pièce-jointe', 'PiecesJointes', 'Attachments']
       }
     },
+    // La table des actions n'est pas requise : le CRM sait s'en passer, et le
+    // bloc « suites » de la fiche échange n'apparaît que si elle existe.
+    actions: {
+      optional: true,
+      tableCandidates: ['Actions_MP', 'ActionsMP', 'ACTIONS_MP', 'Actions', 'Action'],
+      linkRole: 'Partenaires',
+      roles: {
+        Intitule: ['Intitule', 'Intitulé', 'Libelle', 'Libellé', 'Titre', 'Objet'],
+        Echeance: ['Echeance', 'Échéance', 'Date_echeance', 'Date'],
+        Fait: ['Fait', 'Faite', 'Termine', 'Terminé', 'Done'],
+        Opportunite: ['Opportunite', 'Opportunité', 'Opportunites', 'Opportunités'],
+        Partenaires: ['Partenaires', 'Partenaire', 'Structures', 'Structure'],
+        Interaction: ['Interaction', 'Interactions'],
+        Contacts: ['Contacts', 'Contact', 'Contact(s)', 'Interlocuteurs'],
+        Notes: ['Notes', 'Note', 'Commentaire', 'Détail'],
+        Priorite: ['Priorite', 'Priorité', 'Importance']
+      }
+    },
     opportunites: {
       tableCandidates: ['Opportunites', 'Opportunités', 'Opportunite'],
       linkRole: 'Partenaires',
@@ -631,6 +699,7 @@
   let structListCols = [];
   let structureAOuvrir = null; // structure créée ici, à ouvrir dès qu'elle arrive
   let interactionOuverte = null; // échange dont l'aperçu est déplié dans la frise
+  let actionsFaitesVisibles = false; // historique des actions, replié par défaut
   let vue = 'fiche';             // 'fiche' ou 'annuaire'
   let annuaireSel = new Set();   // contacts cochés dans l'annuaire
   // Par défaut, tout sauf les prospects — comme les autres widgets.
@@ -899,12 +968,25 @@
         }
       });
     }
+    // Les actions de la todo comptent aussi : c'est souvent la vraie prochaine
+    // chose à faire, et elle ne se lisait nulle part sur la fiche.
+    const aCols = rel('actions').cols;
+    const actionsOuvertes = actionsOfStructure(structureId).filter(x => !actionEstFaite(x));
+    if (aCols.Echeance) {
+      actionsOuvertes.forEach(x => {
+        const d = Number(x[aCols.Echeance]) || 0;
+        if (d && daysSince(d) <= todayDays) {
+          candidates.push({ date: d, label: (aCols.Intitule && x[aCols.Intitule]) || 'Action' });
+        }
+      });
+    }
     candidates.sort((a, b) => a.date - b.date);
 
     return {
       nbContacts: contactsOf(structureId).length,
       nbInteractions: interactions.length,
       nbOpportunites: opportunites.length,
+      nbActions: actionsOuvertes.length,
       montantTotal,
       lastContact,
       joursDepuisContact: lastContact ? daysSince(lastContact) : null,
@@ -1319,6 +1401,7 @@
             oppsPanelHtml(s) +
           '</div>' +
           '<div class="crm-col">' +
+            actionsPanelHtml(s) +
             timelinePanelHtml(s) +
           '</div>' +
         '</div>' +
@@ -1392,6 +1475,76 @@
           '⧉ ' + adresses.length + ' adresse' + (adresses.length > 1 ? 's' : '') + '</button>'
       : '';
     return panelShell('Contacts', list.length, 'btn-new-contact', '+ Contact', body, action);
+  }
+
+  // ---- Actions à mener pour cette structure ----
+  //
+  // Les actions vivaient dans le widget de pilotage seulement : depuis une
+  // fiche, rien ne disait ce qu'on avait prévu de faire avec ce partenaire.
+  // Ici, les actions ouvertes en tête, les terminées derrière un bouton, et
+  // de quoi en ajouter une en une ligne.
+  function actionsOfStructure(structureId) {
+    const a = rel('actions');
+    if (!a.tableId) return [];
+    const directes = linkedRecords('actions', structureId);
+    return directes.concat(recordsViaContacts('actions', structureId, directes));
+  }
+
+  function actionEstFaite(x) {
+    const a = rel('actions');
+    return !!(a.cols.Fait && x[a.cols.Fait]);
+  }
+
+  function actionsPanelHtml(s) {
+    const a = rel('actions');
+    if (!a.tableId) return ''; // table absente : le CRM s'en passe
+    const liste = actionsOfStructure(s.id);
+    const ouvertes = liste.filter(x => !actionEstFaite(x))
+      .sort((x, y) => {
+        // Les plus urgentes devant ; celles sans échéance à la fin.
+        const dx = a.cols.Echeance ? Number(x[a.cols.Echeance]) || Infinity : Infinity;
+        const dy = a.cols.Echeance ? Number(y[a.cols.Echeance]) || Infinity : Infinity;
+        return dx - dy;
+      });
+    const faites = liste.filter(actionEstFaite);
+
+    const ligne = (x) => {
+      const due = a.cols.Echeance ? x[a.cols.Echeance] : null;
+      const retard = due && daysSince(due) > 0 && !actionEstFaite(x);
+      const qui = a.cols.Contacts ? contactNamesFor(refIdsFromValue(x[a.cols.Contacts])) : [];
+      const via = linkedVia('actions', x, s.id);
+      return '<div class="act-row' + (actionEstFaite(x) ? ' fait' : '') + '" data-action-row="' + x.id + '">' +
+        '<input type="checkbox" data-action-done="' + x.id + '"' +
+          (actionEstFaite(x) ? ' checked' : '') + (a.cols.Fait ? '' : ' disabled') + '>' +
+        '<div class="act-text">' +
+          '<div class="act-label">' +
+            escapeHtml(a.cols.Intitule ? formatValue(x[a.cols.Intitule]) : 'Sans intitulé') +
+            (via ? ' <span class="via-pill">' + escapeHtml(via) + '</span>' : '') +
+          '</div>' +
+          (qui.length ? '<div class="act-sub">' + escapeHtml(qui.join(', ')) + '</div>' : '') +
+        '</div>' +
+        (due ? '<span class="act-due' + (retard ? ' retard' : '') + '">' +
+          escapeHtml(formatDate(due)) + '</span>' : '') +
+      '</div>';
+    };
+
+    const corps =
+      (ouvertes.length ? ouvertes.map(ligne).join('') : '<div class="panel-empty">Aucune action en cours.</div>') +
+      (faites.length
+        ? (actionsFaitesVisibles
+            ? '<div class="act-sep">Terminées</div>' + faites.map(ligne).join('')
+            : '') +
+          '<button type="button" class="btn-mini act-toggle" id="btn-actions-faites">' +
+            (actionsFaitesVisibles ? 'Masquer les terminées'
+              : 'Voir les ' + faites.length + ' terminée' + (faites.length > 1 ? 's' : '')) + '</button>'
+        : '') +
+      '<div class="act-form">' +
+        '<input id="act-nouvelle" placeholder="Nouvelle action…">' +
+        '<input type="date" id="act-due" title="Échéance">' +
+        '<button type="button" class="btn-mini" id="act-ajouter">Ajouter</button>' +
+      '</div>';
+
+    return panelShell('Actions', ouvertes.length, null, null, corps);
   }
 
   function oppsPanelHtml(s) {
@@ -1478,6 +1631,46 @@
     if (newOpp) newOpp.addEventListener('click', () => openOpportuniteModal(null, s));
     const newInter2 = byId('btn-new-interaction-2');
     if (newInter2) newInter2.addEventListener('click', () => openInteractionModal(null, s));
+    // ---- Actions de la fiche ----
+    const bascule = byId('btn-actions-faites');
+    if (bascule) bascule.addEventListener('click', () => {
+      actionsFaitesVisibles = !actionsFaitesVisibles;
+      render();
+    });
+    document.querySelectorAll('[data-action-done]').forEach(cb => {
+      cb.addEventListener('change', async () => {
+        const a = rel('actions');
+        try {
+          await updateRecord(a.tableId, Number(cb.dataset.actionDone), { [a.cols.Fait]: cb.checked });
+          await refreshRelated(true);
+        } catch (err) { console.error(err); toast('Erreur d’enregistrement', true); }
+      });
+    });
+    const ajouter = byId('act-ajouter');
+    if (ajouter) {
+      const creer = async () => {
+        const a = rel('actions');
+        const champ = byId('act-nouvelle');
+        const label = champ.value.trim();
+        if (!label) { champ.focus(); return; }
+        const fields = {};
+        const pose = (colId, valeur) => { if (colId) fields[colId] = valeur; };
+        pose(a.cols.Intitule, label);
+        const due = byId('act-due').value;
+        if (a.cols.Echeance && due) pose(a.cols.Echeance, inputValueToGristDate(due));
+        pose(a.cols.Partenaires, refListValue(a.tableId, a.cols.Partenaires, [s.id]));
+        try {
+          await addRecord(a.tableId, fields);
+          await refreshRelated(true);
+          toast('Action ajoutée');
+        } catch (err) { console.error(err); toast('Erreur à la création', true); }
+      };
+      ajouter.addEventListener('click', creer);
+      byId('act-nouvelle').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); creer(); }
+      });
+    }
+
     const copyEmails = byId('btn-copy-emails');
     if (copyEmails) copyEmails.addEventListener('click', () =>
       copierAdresses(emailsOfStructure(s.id), structField(s, 'Nom')));
@@ -2145,7 +2338,21 @@
         '<div class="cr-editable" id="cr-editor" contenteditable="true" data-placeholder="Rédigez le compte-rendu… (collez une image directement)"></div>' +
         '<div class="modal-section">Pièces jointes</div>' +
         '<div class="pj-dropzone" id="pj-dropzone">Glissez un fichier ici, ou cliquez pour parcourir</div>' +
-        '<div class="pj-list" id="pj-list"></div>') +
+        '<div class="pj-list" id="pj-list"></div>' +
+        // Les suites d'un échange méritent mieux qu'une ligne de texte libre :
+        // une vraie action, rattachée à l'échange, avec les interlocuteurs
+        // concernés — c'est elle qu'on retrouvera dans la todo du pilotage.
+        (rel('actions').tableId
+          ? '<div class="modal-section">Actions de suivi</div>' +
+            '<div class="suivi-liste" id="suivi-liste"></div>' +
+            '<div class="suivi-form">' +
+              '<input id="suivi-label" placeholder="Que faut-il faire ensuite ?">' +
+              '<input type="date" id="suivi-due" title="Échéance">' +
+              '<button class="btn-primary" id="suivi-add">+ Action</button>' +
+            '</div>' +
+            '<div class="form-field full suivi-contacts-field"><label>Contacts concernés</label>' +
+              '<div id="suivi-contacts"></div></div>'
+          : '')) +
       '<div class="form-modal-actions">' +
         (isNew ? '' : '<button class="btn-danger modal-actions-left" id="m-delete">Supprimer</button>') +
         '<button class="btn-secondary" data-close>' + (isNew ? 'Annuler' : 'Fermer') + '</button>' +
@@ -2224,7 +2431,102 @@
 
       setupCrEditor(r.tableId, i, cols);
       setupAttachments(r.tableId, i, cols);
+      setupActionsDeSuivi(i, s);
     }, true);
+  }
+
+  // ---- Actions de suivi d'un échange ----
+  //
+  // Le champ « Suites » est du texte libre : le pilotage en déduit une action,
+  // mais sans échéance propre, sans interlocuteur, et sans pouvoir être cochée
+  // ailleurs que dans l'échange. Ici on crée une vraie ligne dans la table des
+  // actions, rattachée à l'échange, à ses partenaires et à ses opportunités.
+
+  function actionsDeLEchange(interactionId) {
+    const a = rel('actions');
+    if (!a.tableId || !a.cols.Interaction) return [];
+    return a.records.filter(x => recordLinksTo(x, a.cols.Interaction, interactionId));
+  }
+
+  function setupActionsDeSuivi(i, s) {
+    const a = rel('actions');
+    const zone = document.getElementById('suivi-liste');
+    if (!a.tableId || !zone) return;
+    const inter = rel('interactions');
+
+    function peindre() {
+      const liste = actionsDeLEchange(i.id);
+      zone.innerHTML = liste.length === 0
+        ? '<div class="suivi-vide">Aucune action rattachée à cet échange.</div>'
+        : liste.map(x => {
+            const fait = !!(a.cols.Fait && x[a.cols.Fait]);
+            const due = a.cols.Echeance ? x[a.cols.Echeance] : null;
+            const qui = a.cols.Contacts ? contactNamesFor(refIdsFromValue(x[a.cols.Contacts])) : [];
+            return '<div class="suivi-item' + (fait ? ' fait' : '') + '">' +
+              '<input type="checkbox" data-suivi="' + x.id + '"' + (fait ? ' checked' : '') +
+                (a.cols.Fait ? '' : ' disabled') + '>' +
+              '<span class="suivi-label">' +
+                escapeHtml(a.cols.Intitule ? formatValue(x[a.cols.Intitule]) : 'Sans intitulé') + '</span>' +
+              (qui.length ? '<span class="suivi-qui">' + escapeHtml(qui.join(', ')) + '</span>' : '') +
+              (due ? '<span class="suivi-due">' + escapeHtml(formatDate(due)) + '</span>' : '') +
+            '</div>';
+          }).join('');
+      zone.querySelectorAll('[data-suivi]').forEach(cb => {
+        cb.addEventListener('change', async () => {
+          try {
+            await updateRecord(a.tableId, Number(cb.dataset.suivi), { [a.cols.Fait]: cb.checked });
+            related.actions = await resolveRelated('actions');
+            peindre();
+          } catch (err) { console.error(err); setModalStatus('Erreur d’enregistrement'); }
+        });
+      });
+    }
+
+    peindre();
+
+    // Les interlocuteurs de l'échange sont proposés d'emblée : une suite
+    // concerne le plus souvent les gens qu'on vient de voir.
+    const options = contactOptionsForRecord('interactions', i, s.id);
+    const dejaIds = inter.cols.ContactPartenaire ? refIdsFromValue(i[inter.cols.ContactPartenaire]) : [];
+    let chips = options.filter(o => dejaIds.includes(o.id));
+    const zoneContacts = document.getElementById('suivi-contacts');
+    if (zoneContacts && a.cols.Contacts) {
+      renderLocalPicker(zoneContacts, options, chips, (next) => { chips = next; });
+    } else if (zoneContacts) {
+      zoneContacts.closest('.suivi-contacts-field').hidden = true;
+    }
+
+    const champ = document.getElementById('suivi-label');
+    const echeance = document.getElementById('suivi-due');
+    const bouton = document.getElementById('suivi-add');
+
+    async function creer() {
+      const label = champ.value.trim();
+      if (!label) { champ.focus(); return; }
+      const fields = {};
+      const pose = (colId, valeur) => { if (colId) fields[colId] = valeur; };
+      pose(a.cols.Intitule, label);
+      if (a.cols.Echeance && echeance.value) pose(a.cols.Echeance, inputValueToGristDate(echeance.value));
+      pose(a.cols.Interaction, refListValue(a.tableId, a.cols.Interaction, [i.id]));
+      if (chips.length) pose(a.cols.Contacts, refListValue(a.tableId, a.cols.Contacts, chips.map(c => c.id)));
+      // L'action hérite des rattachements de l'échange : c'est le même sujet.
+      const partenaires = inter.cols.Partenaires ? refIdsFromValue(i[inter.cols.Partenaires]) : [];
+      if (partenaires.length) pose(a.cols.Partenaires, refListValue(a.tableId, a.cols.Partenaires, partenaires));
+      const opportunites = inter.cols.Opportunites ? refIdsFromValue(i[inter.cols.Opportunites]) : [];
+      if (opportunites.length) pose(a.cols.Opportunite, refListValue(a.tableId, a.cols.Opportunite, opportunites));
+      try {
+        setModalStatus('Création de l’action…');
+        await addRecord(a.tableId, fields);
+        related.actions = await resolveRelated('actions');
+        champ.value = '';
+        echeance.value = '';
+        peindre();
+        setModalStatus('Action créée ✓');
+      } catch (err) { console.error(err); setModalStatus('Erreur à la création de l’action'); }
+    }
+
+    bouton.addEventListener('click', creer);
+    champ.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); creer(); } });
   }
 
   // Contacts proposés par un sélecteur : ceux de la structure ouverte pour

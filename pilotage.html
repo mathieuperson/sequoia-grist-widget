@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pilotage Partenariats &amp; Innovation — Cluster SequoIA</title>
-<link rel="stylesheet" href="./common.css?v=20260918f">
+<link rel="stylesheet" href="./common.css?v=20260918g">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="./common.js?v=20260918f"></script>
-<script src="./pilotage.js?v=20260918f"></script>
+<script src="./common.js?v=20260918g"></script>
+<script src="./pilotage.js?v=20260918g"></script>
 <style>
 /* Charte alignée sur common.css (vert #1f6b3f, fond #f4f6f5, police
    système). Seules les valeurs absentes de common.css sont ajoutées ici,
@@ -346,7 +346,6 @@ body { overflow: hidden; }
 .pil-action .pil-check-wrap, .pil-action .pil-snooze { cursor: default; }
 .pil-modal-note { font-size: 12px; color: var(--text-muted); margin: 0; }
 /* Un projet deviné depuis le partenaire, que la ligne ne porte pas. */
-.pil-ctx-devine { font-style: italic; opacity: 0.75; }
 .pil-btn.danger { border-color: var(--danger); color: var(--danger); }
 .pil-btn.danger:hover { background: var(--danger); color: #fff; }
 
@@ -573,6 +572,7 @@ body { overflow: hidden; }
         Opportunite: ['Opportunite', 'Opportunité', 'Opportunites', 'Opportunités'],
         Partenaires: ['Partenaires', 'Partenaire', 'Structures', 'Structure'],
         Interaction: ['Interaction', 'Interactions'],
+        Contacts: ['Contacts', 'Contact', 'Contact(s)', 'Interlocuteurs'],
         Notes: ['Notes', 'Note', 'Commentaire', 'Détail'],
         // Toutes optionnelles : chaque colonne allume sa fonction le jour où
         // elle existe, et reste silencieuse sinon.
@@ -601,6 +601,7 @@ body { overflow: hidden; }
   // Vue « Mes actions » : filtre « moins de 15 min » (caser une tâche entre
   // deux réunions) et ligne au curseur clavier.
   let actionsCourtes = false;
+  let voirTerminees = false; // l'historique des actions faites, replié par défaut
   let actionCursor = null;
   // Filtres du Kanban, chacun un choix multiple. Vides = tout passe.
   const projectFilters = { dispositif: [], partenaire: [], equipe: [] };
@@ -840,22 +841,31 @@ body { overflow: hidden; }
     // alimente l'urgence et les motifs ; il est le même qu'elle vienne de la
     // table ou d'une interaction.
     // `inferred` distingue un projet deviné — le plus avancé du partenaire,
-    // faute de rattachement — de celui que la ligne porte vraiment. La liste
-    // doit le dire, sinon elle affirme un lien que le document ignore.
-    const contexte = (project, partner, inferred) => ({
-      projectInferred: !!inferred && !!project,
-      partnerId: partner ? partner.id : null,
-      partnerName: partner ? partner.name : '',
-      partnerLastContact: partner ? partner.lastContact : null,
-      projectId: project ? project.id : null,
-      projectTitle: project ? project.title : '',
-      stage: project ? project.stage : '',
-      montant: project ? project.montant : null,
-      hasTeam: project ? project.hasTeam : true,
-      stageSince: project ? project.stageSince : null,
-      depotDue: project ? project.depotDue : null,
-      depotLabel: partner ? partner.name : ''
-    });
+    // faute de rattachement — de celui que la ligne porte vraiment.
+    //
+    // Un projet deviné ne prête rien à l'action : ni son étape, ni son
+    // montant, ni sa date de dépôt. La liste affichait tout cela, si bien
+    // qu'une action portait l'avancement et l'échéance d'une opportunité
+    // qu'elle ne concernait pas — une devinette présentée comme un fait. Il
+    // n'en reste que le titre, pour que le formulaire puisse le proposer.
+    const contexte = (project, partner, inferred) => {
+      const porte = inferred ? null : project; // ce que la ligne porte vraiment
+      return {
+        partnerId: partner ? partner.id : null,
+        partnerName: partner ? partner.name : '',
+        partnerLastContact: partner ? partner.lastContact : null,
+        projectId: porte ? porte.id : null,
+        projectTitle: porte ? porte.title : '',
+        // Le projet deviné, garde seulement pour la proposition du formulaire.
+        projetDevine: inferred && project ? { id: project.id, title: project.title } : null,
+        stage: porte ? porte.stage : '',
+        montant: porte ? porte.montant : null,
+        hasTeam: porte ? porte.hasTeam : true,
+        stageSince: porte ? porte.stageSince : null,
+        depotDue: porte ? porte.depotDue : null,
+        depotLabel: partner ? partner.name : ''
+      };
+    };
 
     // La todo liste vit dans sa table : « Fait » y est enregistré, donc
     // visible dans le document et durable.
@@ -866,7 +876,10 @@ body { overflow: hidden; }
       const direct = projectIds.map(id => projectById[id]).find(Boolean);
       const project = direct || mostAdvancedProject(projects, partnerIds);
       const partner = partnerIds.map(id => partnerById[id]).find(Boolean) || null;
-      const faitLe = r[act.cols.FaitLe] ?? null;
+      // Ramene au meme format que les actions deduites (« 2026-09-18 ») : la
+      // colonne donne une date Grist, l'autre source une chaine, et comparer
+      // les deux au jour courant ne marchait pour aucune des deux.
+      const faitLe = r[act.cols.FaitLe] ? gristDateToInputValue(r[act.cols.FaitLe]) : null;
       return Object.assign({
         id: 'act:' + r.id,
         rowId: r.id,
@@ -1156,6 +1169,17 @@ body { overflow: hidden; }
     }).filter(Boolean).join(', ');
   }
 
+  // Les contacts du document, pour les sélecteurs des formulaires.
+  function contactsListe() {
+    const cont = related.contacts || { records: [], cols: {} };
+    return cont.records.map(c => ({
+      id: c.id,
+      name: txt(formatValue(c[cont.cols.NomComplet])) ||
+        [txt(formatValue(c[cont.cols.Prenom])), txt(formatValue(c[cont.cols.Nom]))].filter(Boolean).join(' ') ||
+        ('#' + c.id)
+    })).filter(c => c.name).sort((x, y) => x.name.localeCompare(y.name, 'fr'));
+  }
+
   // ---------------------------------------------------------------------
   // Rendu — Kanban
   // ---------------------------------------------------------------------
@@ -1299,7 +1323,14 @@ body { overflow: hidden; }
       .filter(a => matchesQuery([a.label, a.partnerName, a.projectTitle]))
       .filter(a => !actionsCourtes || a.done || estimatedEffortMinutes(a) <= 15);
     const open = visible.filter(a => !a.done);
-    const doneToday = visible.filter(a => a.done && a.doneOn === todayKey());
+    // Les actions faites restent consultables : cocher une action la faisait
+    // disparaitre pour de bon des le lendemain, alors que c'est la trace de ce
+    // qui a ete fait — et parfois la seule facon de retrouver ce qu'on a
+    // coche par erreur. Les plus recentes d'abord.
+    const terminees = visible.filter(a => a.done)
+      .sort((x, y) => String(y.doneOn || '').localeCompare(String(x.doneOn || '')));
+    const doneToday = terminees.filter(a => a.doneOn === todayKey());
+    const doneAvant = terminees.filter(a => a.doneOn !== todayKey());
     const retard = open.filter(a => urgenceOf(a.due, now) === 'retard').length;
     // La charge du jour : voir qu'on a prévu six heures dans une journée qui
     // n'en compte pas tant, avant de s'en apercevoir à 18 h.
@@ -1330,9 +1361,34 @@ body { overflow: hidden; }
         '<div class="pil-card-body">' + g.actions.map(a => renderAction(a, now)).join('') + '</div>' +
       '</section>').join('');
 
-    const doneBlock = doneToday.length ? card("Terminé aujourd'hui", '',
-      doneToday.map(a => renderAction(a, now)).join(''),
-      '<span class="pil-card-aside">' + doneToday.length + '</span>') : '';
+    // Groupées par jour d'achèvement, pour que l'historique se lise.
+    const parJour = [];
+    doneAvant.forEach(a => {
+      const cle = a.doneOn || '';
+      const dernier = parJour[parJour.length - 1];
+      if (dernier && dernier.cle === cle) dernier.actions.push(a);
+      else parJour.push({ cle, actions: [a] });
+    });
+    const doneBlock = terminees.length ? card('Terminées', '',
+      (doneToday.length
+        ? '<div class="pil-done-jour">Aujourd’hui</div>' +
+          doneToday.map(a => renderAction(a, now)).join('')
+        : '') +
+      (doneAvant.length
+        ? (voirTerminees
+            ? parJour.map(g =>
+                '<div class="pil-done-jour">' +
+                  H(g.cle ? formatDate(inputValueToGristDate(g.cle)) : 'Date inconnue') + '</div>' +
+                g.actions.map(a => renderAction(a, now)).join('')).join('')
+            : '') +
+          '<button type="button" class="pil-btn" id="btn-terminees">' +
+            (voirTerminees
+              ? 'Masquer l’historique'
+              : 'Voir les ' + doneAvant.length + ' terminée' + (doneAvant.length > 1 ? 's' : '') +
+                ' avant aujourd’hui') +
+          '</button>'
+        : ''),
+      '<span class="pil-card-aside">' + terminees.length + '</span>') : '';
 
     return '<div class="pil-view-head"><div>' +
         '<h1 class="pil-h1" id="act-title">Mes actions</h1>' +
@@ -1385,11 +1441,7 @@ body { overflow: hidden; }
               (prio.key === 'haute' ? '!!' : '!') + '</span>' : '') +
           H(a.label) + '</div>' +
         '<div class="pil-action-ctx">' + H(a.partnerName || 'Interne') +
-          (a.projectTitle ? ' · ' + (a.projectInferred
-            // Le projet deviné se lit autrement : la ligne ne le porte pas.
-            ? '<span class="pil-ctx-devine" title="Projet le plus avancé de ce partenaire — cette action n’y est pas rattachée">' +
-              H(a.projectTitle) + '</span>'
-            : H(a.projectTitle)) : '') +
+          (a.projectTitle ? ' · ' + H(a.projectTitle) : '') +
         '</div>' +
         '<div class="pil-action-tags">' +
           (motif ? '<span class="pil-motif ' + motif.tone + '">' + H(motif.label) + '</span>' : '') +
@@ -1624,6 +1676,16 @@ body { overflow: hidden; }
         labelAll: 'Aucun échange'
       }
     };
+    // Qui est concerné : la colonne n'existe que si le document la porte.
+    const contacts = contactsListe();
+    const contactIds = deTable && act.cols.Contacts ? lus(act.cols.Contacts) : [];
+    if (deTable && act.cols.Contacts) {
+      selects.contact = {
+        values: contacts.map(c => c.name),
+        selected: contacts.filter(c => contactIds.includes(c.id)).map(c => c.name),
+        labelAll: 'Personne en particulier'
+      };
+    }
     // Quelle colonne porte quoi, selon la table d'origine. L'échange n'est
     // modifiable que sur une action de la table : une action déduite *est*
     // son interaction, on ne la rattache pas à une autre.
@@ -1640,13 +1702,14 @@ body { overflow: hidden; }
           (a.due ? gristDateToInputValue(a.due) : '') + '">') +
         (colPartenaires ? msField('Partenaire(s)', 'partner') : '') +
         (colProjets ? msField('Opportunité', 'projet') : '') +
-        // La liste affiche parfois un projet deviné depuis le partenaire ; le
-        // dire ici évite de croire que le formulaire a perdu la valeur.
-        (colProjets && a.projectInferred && a.projectTitle
-          ? '<p class="pil-modal-note">La liste affiche « ' + H(a.projectTitle) + ' », le projet le plus ' +
-            'avancé de ce partenaire. Cette action n’y est pas rattachée : choisissez-le ci-dessus pour ' +
-            'l’enregistrer.</p>'
+        // Rien n'est rattache, mais le partenaire a un projet en cours : le
+        // proposer plutot que de le supposer.
+        (colProjets && a.projetDevine
+          ? '<p class="pil-modal-note">Aucune opportunité rattachée. Le projet le plus avancé de ' +
+            H(a.partnerName || 'ce partenaire') + ' est « ' + H(a.projetDevine.title) + ' » : ' +
+            'choisissez-le ci-dessus si c’est le bon.</p>'
           : '') +
+        (deTable && act.cols.Contacts ? msField('Qui est concerné', 'contact') : '') +
         (deTable && act.cols.Interaction ? msField('Échange associé', 'echange') : '') +
         (deTable && act.cols.Priorite ? selectField('Priorité', 'priorite',
           PILOTAGE_PRIORITES.map(x => x.label), (prioriteOf(a.priorite) || {}).label || 'Normale') : '') +
@@ -1658,9 +1721,17 @@ body { overflow: hidden; }
           '<input name="recurrence" value="' + H(a.recurrence) + '" placeholder="chaque lundi…">') : '') +
         (deTable && act.cols.Notes ? field('Notes',
           '<textarea name="notes">' + H(a.notes) + '</textarea>') : '') +
-        (deTable ? '' : '<p class="pil-modal-note">Cette action est portée par un échange : ces champs ' +
-          'modifient l’interaction elle-même, y compris ses rattachements. Son compte rendu et sa date ' +
-          'se modifient dans la fiche du partenaire.</p>'),
+        (deTable ? '' : '<p class="pil-modal-note">Cette action est portée par un échange : seuls ces ' +
+          'champs existent, et les modifier modifie l’interaction elle-même. Pour lui donner une ' +
+          'priorité, une durée, une date de début, des interlocuteurs ou des notes, reprenez-la dans ' +
+          'la table des actions — le bouton ci-dessous la recopie et libère l’échange.</p>'),
+      // Une action déduite n'a que ce que porte son interaction. La reprendre
+      // dans la table lui donne les siens, sans perdre ses rattachements.
+      secondary: (!deTable && act.tableId) ? {
+        label: 'Reprendre dans mes actions',
+        erreur: 'Reprise impossible.',
+        run: () => reprendreCommeAction(a)
+      } : null,
       // La suppression ne porte que sur une action de la table : effacer
       // l'interaction dont une action est déduite emporterait son compte rendu.
       remove: deTable ? async () => {
@@ -1687,6 +1758,10 @@ body { overflow: hidden; }
             const ids = echanges.filter(i => sel.echange.getSelected().includes(i.name)).map(i => i.id);
             fields[act.cols.Interaction] = ids.length ? colValue(act, act.cols.Interaction, ids) : null;
           }
+          if (act.cols.Contacts && sel.contact) {
+            const ids = contacts.filter(c => sel.contact.getSelected().includes(c.name)).map(c => c.id);
+            fields[act.cols.Contacts] = ids.length ? colValue(act, act.cols.Contacts, ids) : null;
+          }
         } else {
           if (inter.cols.Suites) fields[inter.cols.Suites] = label;
           if (inter.cols.ProchaineEcheance) fields[inter.cols.ProchaineEcheance] = due;
@@ -1708,6 +1783,45 @@ body { overflow: hidden; }
         } catch (err) { console.error(err); return 'Erreur d’enregistrement.'; }
       }
     });
+  }
+
+  // Reprendre une action déduite d'un échange dans la table des actions : la
+  // même action, mais qui existe pour elle-même et peut donc porter priorité,
+  // durée, date de début, interlocuteurs et notes. Les rattachements de
+  // l'échange la suivent, et l'échange est libéré de sa suite pour qu'elle ne
+  // figure pas deux fois dans la liste.
+  async function reprendreCommeAction(a) {
+    const act = related.actions;
+    const inter = related.interactions;
+    if (!act.tableId) throw new Error('table des actions absente');
+    const ligne = inter.records.find(r => r.id === a.rowId);
+    if (!ligne) throw new Error('échange introuvable');
+
+    const fields = {};
+    const pose = (colId, valeur) => { if (colId) fields[colId] = valeur; };
+    pose(act.cols.Intitule, a.label);
+    if (act.cols.Echeance) fields[act.cols.Echeance] = a.due;
+    if (act.cols.Interaction) fields[act.cols.Interaction] = colValue(act, act.cols.Interaction, [a.rowId]);
+    const reprendre = (source, cible) => {
+      if (!source || !cible) return;
+      const ids = refIdsFromValue(ligne[source]);
+      if (ids.length) fields[cible] = colValue(act, cible, ids);
+    };
+    reprendre(inter.cols.Partenaires, act.cols.Partenaires);
+    reprendre(inter.cols.Opportunites, act.cols.Opportunite);
+    reprendre(inter.cols.ContactPartenaire, act.cols.Contacts);
+
+    setStatus('Reprise de l’action…');
+    const nouvelId = await addRecord(act.tableId, fields);
+    // L'échange garde son compte rendu et sa date ; il perd sa suite, qui vit
+    // désormais dans la table des actions.
+    const vide = {};
+    if (inter.cols.Suites) vide[inter.cols.Suites] = '';
+    if (inter.cols.ProchaineEcheance) vide[inter.cols.ProchaineEcheance] = null;
+    if (Object.keys(vide).length) await updateRecord(inter.tableId, a.rowId, vide);
+    await refresh();
+    setStatus('Action reprise ✓');
+    if (nouvelId) editActionModal('act:' + nouvelId);
   }
 
   // L'occurrence suivante reprend tout de l'action soldée sauf son état :
@@ -1873,6 +1987,8 @@ body { overflow: hidden; }
       '<div class="pil-modal-body">' + conf.fields + '</div>' +
       '<div class="pil-modal-foot"><span class="pil-modal-msg" id="modal-msg"></span>' +
         (conf.remove ? '<button type="button" class="pil-btn danger" data-remove>Supprimer</button>' : '') +
+        (conf.secondary ? '<button type="button" class="pil-btn" data-secondary>' +
+          H(conf.secondary.label) + '</button>' : '') +
         '<button type="button" class="pil-btn" data-close>Annuler</button>' +
         '<button type="submit" class="pil-btn primary">' + H(conf.submit) + '</button>' +
       '</div></form></div>';
@@ -1890,6 +2006,19 @@ body { overflow: hidden; }
       }
       try { await conf.remove(); close(); }
       catch (err) { console.error(err); el('modal-msg').textContent = 'Suppression impossible.'; }
+    });
+    // L'action secondaire peut ouvrir une autre fenêtre à sa suite : refermer
+    // celle-ci d'abord, sinon la fermeture emporterait la nouvelle. Ce qu'elle
+    // a à dire passe donc par le bandeau d'état, pas par cette fenêtre.
+    const btnSecond = host.querySelector('[data-secondary]');
+    if (btnSecond) btnSecond.addEventListener('click', async () => {
+      btnSecond.disabled = true;
+      close();
+      try { await conf.secondary.run(); }
+      catch (err) {
+        console.error(err);
+        setStatus(conf.secondary.erreur || 'Opération impossible.');
+      }
     });
     host.querySelector('.pil-modal-backdrop').addEventListener('click', (e) => {
       if (e.target === e.currentTarget) close();
@@ -2294,6 +2423,10 @@ body { overflow: hidden; }
       if (box) return editActionModal(box.dataset.action);
     }
     if (e.target.closest('#quick-add')) return submitQuickAction();
+    if (e.target.closest('#btn-terminees')) {
+      voirTerminees = !voirTerminees;
+      return render();
+    }
     if (e.target.closest('#flt-courtes')) {
       actionsCourtes = !actionsCourtes;
       return render();
