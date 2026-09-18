@@ -6,8 +6,8 @@
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-<link rel="stylesheet" href="./common.css?v=20260918g">
-<script src="./common.js?v=20260918g"></script>
+<link rel="stylesheet" href="./common.css?v=20260918h">
+<script src="./common.js?v=20260918h"></script>
 <style>
   /* ---------- Sidebar ---------- */
   .filter-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
@@ -904,12 +904,27 @@
   function opportunitesOf(id) {
     const cols = rel('opportunites').cols;
     const directes = linkedRecords('opportunites', id);
+    // L'ordre de l'entonnoir, celui que le document donne à sa colonne Statut :
+    // une affaire en montage se lit avant une en contractualisation. Trier par
+    // montant, comme avant, mêlait les étapes et donnait un classement qui ne
+    // disait rien du parcours. À étape égale, le montant départage.
+    const rangEtape = (o) => {
+      if (!cols.Statut) return 0;
+      const statut = formatValue(o[cols.Statut]);
+      const i = statutChoices.indexOf(statut);
+      // Un statut hors de la liste du document passe après ceux qu'elle
+      // connaît, plutôt qu'en tête par accident.
+      return i === -1 ? statutChoices.length : i;
+    };
     return directes.concat(recordsViaContacts('opportunites', id, directes)).sort((a, b) => {
-      // Abandoned ones sink to the bottom whatever their amount — they're
+      // Abandoned ones sink to the bottom whatever their stage — they're
       // history, not pipeline.
       const aa = cols.Statut && isAbandoned(a[cols.Statut]) ? 1 : 0;
       const ab = cols.Statut && isAbandoned(b[cols.Statut]) ? 1 : 0;
       if (aa !== ab) return aa - ab;
+      const ra = rangEtape(a);
+      const rb = rangEtape(b);
+      if (ra !== rb) return ra - rb;
       const ma = cols.Montant ? (Number(a[cols.Montant]) || 0) : 0;
       const mb = cols.Montant ? (Number(b[cols.Montant]) || 0) : 0;
       return mb - ma;
