@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pilotage Partenariats &amp; Innovation — Cluster SequoIA</title>
-<link rel="stylesheet" href="./common.css?v=20260918p">
+<link rel="stylesheet" href="./common.css?v=20260918q">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="./common.js?v=20260918p"></script>
-<script src="./pilotage.js?v=20260918p"></script>
+<script src="./common.js?v=20260918q"></script>
+<script src="./pilotage.js?v=20260918q"></script>
 <style>
 /* Charte alignée sur common.css (vert #1f6b3f, fond #f4f6f5, police
    système). Seules les valeurs absentes de common.css sont ajoutées ici,
@@ -444,6 +444,14 @@ body { overflow: hidden; }
 }
 .pil-kc-prio.haute { background: #fee2e2; color: #991b1b; }
 .pil-kc-prio.basse { background: #e6f4ea; color: #14532d; }
+/* Ce qui compte, marque sur la carte : on le voit dans les trois vues. */
+.pil-kc-imp {
+  display: inline-block; border-radius: 6px; padding: 1px 7px;
+  font-size: 10.5px; font-weight: 700; background: #fef3c7; color: #92400e;
+}
+/* Case a cocher en ligne, dans un formulaire. */
+.pil-ligne-check { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.pil-ligne-check input { width: 16px; height: 16px; accent-color: var(--sequoia-green); cursor: pointer; }
 
 /* Choix de la vue du tableau : kanban, matrice, calendrier. */
 .pil-modes { display: inline-flex; gap: 2px; background: var(--pil-surface-2); border-radius: 9px; padding: 2px; margin-bottom: 12px; }
@@ -1742,8 +1750,15 @@ body { overflow: hidden; }
           '<span class="pil-kc-av">' + H(initials(qui.split(',')[0].trim())) + '</span>' +
           H(qui) + '</div>' : '') +
         // La priorité se lit d'un coup d'œil, comme dans un tableau de tickets.
-        (prio ? '<div class="pil-kc-tags"><span class="pil-kc-prio ' + prio.key + '">' +
-          H(prio.label) + (prio.key === 'haute' ? ' 🔥' : '') + '</span></div>' : '') +
+        // « Important » est une autre question : il se voit partout, pas
+        // seulement dans la case de la matrice où l'action a atterri.
+        (prio || a.important
+          ? '<div class="pil-kc-tags">' +
+            (prio ? '<span class="pil-kc-prio ' + prio.key + '">' +
+              H(prio.label) + (prio.key === 'haute' ? ' 🔥' : '') + '</span>' : '') +
+            (a.important ? '<span class="pil-kc-imp" title="Action importante">★ important</span>' : '') +
+            '</div>'
+          : '') +
         '<div class="pil-kc-foot">' +
           '<span class="pil-kc-due ' + urgence + '">' + H(dueLabel(a.due, now)) + '</span>' +
           (deTable && deplacable
@@ -2378,6 +2393,11 @@ body { overflow: hidden; }
         (deTable && act.cols.Interaction ? msField('Échange associé', 'echange') : '') +
         (deTable && act.cols.Priorite ? selectField('Priorité', 'priorite',
           PILOTAGE_PRIORITES.map(x => x.label), (prioriteOf(a.priorite) || {}).label || 'Normale') : '') +
+        // « Important » n'est pas « urgent » : ce qui compte se décide ici, une
+        // fois, et la matrice range ensuite l'action sans rien deviner.
+        (deTable && act.cols.Important ? field('Importance',
+          '<label class="pil-ligne-check"><input type="checkbox" name="important"' +
+          (a.important ? ' checked' : '') + '> Action importante</label>') : '') +
         (deTable && act.cols.Duree ? field('Durée estimée (min)',
           '<input type="number" name="duree" min="0" step="15" value="' + (a.duree || '') + '">') : '') +
         (deTable && act.cols.Debut ? field('À faire à partir du',
@@ -2413,6 +2433,7 @@ body { overflow: hidden; }
           if (act.cols.Intitule) fields[act.cols.Intitule] = label;
           if (act.cols.Echeance) fields[act.cols.Echeance] = due;
           if (act.cols.Priorite && form.priorite) fields[act.cols.Priorite] = form.priorite.value;
+          if (act.cols.Important && form.important) fields[act.cols.Important] = form.important.checked;
           if (act.cols.Duree && form.duree) fields[act.cols.Duree] = Number(form.duree.value) || null;
           if (act.cols.Debut && form.debut) {
             fields[act.cols.Debut] = form.debut.value ? inputValueToGristDate(form.debut.value) : null;
@@ -2739,6 +2760,8 @@ body { overflow: hidden; }
         // Chaque champ n'apparaît que si le document porte sa colonne.
         (act.cols.Priorite ? selectField('Priorité', 'priorite',
           PILOTAGE_PRIORITES.map(x => x.label), 'Normale') : '') +
+        (act.cols.Important ? field('Importance',
+          '<label class="pil-ligne-check"><input type="checkbox" name="important"> Action importante</label>') : '') +
         (act.cols.Duree ? field('Durée estimée (min)',
           '<input type="number" name="duree" min="0" step="15" placeholder="30">') : '') +
         (act.cols.Debut ? field('À faire à partir du (facultatif)',
@@ -2757,6 +2780,7 @@ body { overflow: hidden; }
             if (act.cols.Echeance) fields[act.cols.Echeance] = inputValueToGristDate(form.due.value);
             if (act.cols.Notes && form.notes.value.trim()) fields[act.cols.Notes] = form.notes.value.trim();
             if (act.cols.Priorite && form.priorite) fields[act.cols.Priorite] = form.priorite.value;
+            if (act.cols.Important && form.important && form.important.checked) fields[act.cols.Important] = true;
             if (act.cols.Duree && form.duree && form.duree.value) fields[act.cols.Duree] = Number(form.duree.value);
             if (act.cols.Debut && form.debut && form.debut.value) fields[act.cols.Debut] = inputValueToGristDate(form.debut.value);
             if (act.cols.Recurrence && form.recurrence && form.recurrence.value.trim()) {
