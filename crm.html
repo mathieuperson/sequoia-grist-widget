@@ -6,8 +6,8 @@
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-<link rel="stylesheet" href="./common.css?v=20260918b">
-<script src="./common.js?v=20260918b"></script>
+<link rel="stylesheet" href="./common.css?v=20260918c">
+<script src="./common.js?v=20260918c"></script>
 <style>
   /* ---------- Sidebar ---------- */
   .filter-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
@@ -197,23 +197,6 @@
 
   /* ---- Timeline ---- */
   .timeline { padding: 4px 0; }
-  .tl-last {
-    margin: 10px 16px 14px;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    background: #fbfcfb;
-    padding: 13px 15px;
-    cursor: pointer;
-  }
-  .tl-last:hover { border-color: var(--sequoia-green); }
-  .tl-last-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
-  .tl-last-head .tl-date { font-size: 12.5px; font-weight: 700; }
-  .tl-last-head .tl-who { font-size: 12px; color: var(--text-muted); flex: 1; min-width: 0; }
-  .tl-badge {
-    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
-    color: var(--sequoia-green-dark); background: var(--sequoia-green-light);
-    border-radius: 10px; padding: 2px 8px;
-  }
   /* Ligne rattachée à la structure par une autre colonne que Partenaire(s)
      (Laboratoire Cluster, Etablissement Cluster…) : on dit laquelle. */
   .via-pill {
@@ -227,14 +210,15 @@
     font-weight: 600;
     vertical-align: middle;
   }
-  .tl-objet { font-size: 13.5px; font-weight: 700; margin-bottom: 6px; }
   .tl-cr {
     font-size: 13px; line-height: 1.55; color: var(--text);
-    max-height: 260px; overflow: hidden; position: relative;
+    max-height: 200px; overflow: hidden; position: relative;
   }
+  /* Le compte rendu est coupe net : le degrade dit qu'il continue, et le
+     bouton « Ouvrir en entier » dit ou. */
   .tl-cr.clipped::after {
     content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 40px;
-    background: linear-gradient(180deg, rgba(251,252,251,0), #fbfcfb);
+    background: linear-gradient(180deg, rgba(247,250,248,0), #f4f7f5);
   }
   .tl-cr img { max-width: 100%; border-radius: 6px; }
   .tl-cr h1, .tl-cr h2, .tl-cr h3 { font-size: 14px; margin: 8px 0 3px; }
@@ -280,10 +264,26 @@
   .tl-item .tl-when { font-size: 11.5px; color: var(--text-muted); min-width: 62px; flex-shrink: 0; padding-top: 1px; }
   .tl-item .tl-body { min-width: 0; flex: 1; }
   .tl-item .tl-title { font-size: 13px; font-weight: 600; }
-  .tl-item .tl-excerpt {
+  .tl-item .tl-meta {
     font-size: 12px; color: var(--text-muted); margin-top: 2px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
+  /* L'echange retenu s'ouvre sur place : un apercu du compte rendu et de ses
+     pieces jointes, sans quitter la frise. La fiche complete reste a un clic. */
+  .tl-item.open { background: #f4f7f5; }
+  .tl-item.open::after { border-color: var(--sequoia-green); background: var(--sequoia-green); }
+  .tl-item.open .tl-meta { white-space: normal; overflow: visible; }
+  .tl-preview { margin: 9px 0 2px; border-top: 1px solid var(--border); padding-top: 9px; }
+  .tl-preview-empty { font-size: 12.5px; color: var(--text-muted); font-style: italic; }
+  .tl-open-btn {
+    margin-top: 10px;
+    border: 1px solid var(--sequoia-green);
+    background: var(--card-bg);
+    color: var(--sequoia-green-dark);
+    border-radius: 8px; padding: 5px 11px;
+    font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+  .tl-open-btn:hover { background: var(--sequoia-green); color: #fff; }
   .type-pill {
     display: inline-block; padding: 1px 8px; border-radius: 10px;
     background: var(--sequoia-green-light); color: var(--sequoia-green-dark);
@@ -529,6 +529,7 @@
   // unique (et la cellule s'affiche alors en rose).
   let structListCols = [];
   let structureAOuvrir = null; // structure créée ici, à ouvrir dès qu'elle arrive
+  let interactionOuverte = null; // échange dont l'aperçu est déplié dans la frise
   // Par défaut, tout sauf les prospects — comme les autres widgets.
   let filterMode = 'partenaires';
   let query = '';
@@ -962,6 +963,8 @@
   }
 
   function selectStructure(s) {
+    // L'aperçu déplié appartient à la fiche ouverte, pas à la suivante.
+    if (!current || current.id !== s.id) interactionOuverte = null;
     current = s;
     grist.setCursorPos({ rowId: s.id }).catch(() => {});
     render();
@@ -1159,41 +1162,39 @@
         '<div class="panel-empty">Aucune interaction enregistrée. Créez-en une pour démarrer le suivi.</div>');
     }
 
-    const last = list[0];
-    const others = list.slice(1);
-    const whoLast = cols.ContactPartenaire ? contactNamesFor(refIdsFromValue(last[cols.ContactPartenaire])) : [];
-
-    const lastHtml =
-      '<div class="tl-last" data-interaction="' + last.id + '">' +
-        '<div class="tl-last-head">' +
-          (cols.Type && last[cols.Type] ? '<span class="type-pill">' + escapeHtml(formatValue(last[cols.Type])) + '</span>' : '') +
-          '<span class="tl-date">' + escapeHtml(cols.Date ? formatDate(last[cols.Date]) : '') + '</span>' +
-          '<span class="tl-who">' + escapeHtml(whoLast.join(', ')) + '</span>' +
-          (linkedVia('interactions', last, s.id) ? '<span class="via-pill">' + escapeHtml(linkedVia('interactions', last, s.id)) + '</span>' : '') +
-          '<span class="tl-badge">Dernier CR</span>' +
-        '</div>' +
-        '<div class="tl-objet">' + escapeHtml(cols.Objet ? formatValue(last[cols.Objet]) || 'Sans objet' : 'Sans objet') + '</div>' +
-        '<div class="tl-cr" id="tl-cr">' + (cols.CR ? normalizeCrToHtml(last[cols.CR]) : '') + '</div>' +
-        '<div class="tl-pj" id="tl-pj"></div>' +
-      '</div>';
-
-    const othersHtml = others.map(i => {
+    // Une frise nue : une ligne par échange, sans aperçu de compte rendu.
+    // L'échange sur lequel on clique s'ouvre sur place ; de là, un bouton mène
+    // à sa fiche complète. Montrer le dernier compte rendu d'entrée de jeu
+    // noyait la cadence du suivi, qui est ce que la frise a à donner à voir.
+    const body = list.map(i => {
+      const ouvert = i.id === interactionOuverte;
       const who = cols.ContactPartenaire ? contactNamesFor(refIdsFromValue(i[cols.ContactPartenaire])) : [];
-      const title = [cols.Type && formatValue(i[cols.Type]), cols.Objet && formatValue(i[cols.Objet])].filter(Boolean).join(' · ');
-      return '<div class="tl-item" data-interaction="' + i.id + '">' +
+      const title = [cols.Type && formatValue(i[cols.Type]), cols.Objet && formatValue(i[cols.Objet])]
+        .filter(Boolean).join(' · ');
+      const cr = cols.CR ? normalizeCrToHtml(i[cols.CR]) : '';
+      return '<div class="tl-item' + (ouvert ? ' open' : '') + '" data-interaction="' + i.id + '">' +
         '<div class="tl-when">' + escapeHtml(cols.Date ? formatDate(i[cols.Date]) : '') + '</div>' +
         '<div class="tl-body">' +
           '<div class="tl-title">' + escapeHtml(title || 'Sans objet') +
             (linkedVia('interactions', i, s.id) ? ' <span class="via-pill">' + escapeHtml(linkedVia('interactions', i, s.id)) + '</span>' : '') +
           '</div>' +
-          '<div class="tl-excerpt">' + escapeHtml(who.length ? who.join(', ') + ' — ' : '') +
-            escapeHtml(excerpt(cols.CR ? i[cols.CR] : '', 110)) + '</div>' +
+          (who.length ? '<div class="tl-meta">' + escapeHtml(who.join(', ')) + '</div>' : '') +
+          (ouvert
+            ? '<div class="tl-preview">' +
+                (cr
+                  ? '<div class="tl-cr" id="tl-cr">' + cr + '</div>'
+                  : '<div class="tl-preview-empty">Pas de compte rendu.</div>') +
+                '<div class="tl-pj" id="tl-pj"></div>' +
+                '<button type="button" class="tl-open-btn" data-open-interaction="' + i.id + '">' +
+                  'Ouvrir la fiche complète →</button>' +
+              '</div>'
+            : '') +
         '</div>' +
       '</div>';
     }).join('');
 
     return panelShell('Historique des échanges', list.length, 'btn-new-interaction-2', '+ Interaction',
-      '<div class="timeline">' + lastHtml + othersHtml + '</div>');
+      '<div class="timeline">' + body + '</div>');
   }
 
   function bindPanelEvents(s) {
@@ -1217,11 +1218,21 @@
         if (rec) openOpportuniteModal(rec, s);
       });
     });
+    // Un clic sur la ligne déplie son aperçu (et le replie au clic suivant) ;
+    // c'est le bouton de l'aperçu qui ouvre la fiche complète. Les pièces
+    // jointes, elles, s'ouvrent pour elles-mêmes.
     document.querySelectorAll('[data-interaction]').forEach(el => {
       el.addEventListener('click', (e) => {
-        // Attachment chips inside the last-CR block open the file, not the modal.
-        if (e.target.closest('.pj-chip')) return;
-        const rec = rel('interactions').records.find(i => i.id === Number(el.dataset.interaction));
+        if (e.target.closest('.pj-chip') || e.target.closest('[data-open-interaction]')) return;
+        const id = Number(el.dataset.interaction);
+        interactionOuverte = interactionOuverte === id ? null : id;
+        render();
+      });
+    });
+    document.querySelectorAll('[data-open-interaction]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const rec = rel('interactions').records.find(i => i.id === Number(btn.dataset.openInteraction));
         if (rec) openInteractionModal(rec, s);
       });
     });
@@ -1229,14 +1240,14 @@
     // Images and attachments of the last compte-rendu need authenticated
     // URLs, fetched after the synchronous render.
     const crEl = document.getElementById('tl-cr');
+    const pjEl = document.getElementById('tl-pj');
     if (crEl) {
       resolveImagesIn(crEl);
       if (crEl.scrollHeight > crEl.clientHeight + 4) crEl.classList.add('clipped');
-      const iCols = rel('interactions').cols;
-      const last = interactionsOf(s.id)[0];
-      const pjEl = document.getElementById('tl-pj');
-      if (last && iCols.PJ && pjEl) renderPjChips(attachmentIdsFromValue(last[iCols.PJ]), pjEl);
     }
+    const iCols = rel('interactions').cols;
+    const ouverte = rel('interactions').records.find(i => i.id === interactionOuverte);
+    if (ouverte && iCols.PJ && pjEl) renderPjChips(attachmentIdsFromValue(ouverte[iCols.PJ]), pjEl);
   }
 
   async function renderPjChips(ids, container) {
