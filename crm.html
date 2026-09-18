@@ -6,8 +6,8 @@
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-<link rel="stylesheet" href="./common.css?v=20260918a">
-<script src="./common.js?v=20260918a"></script>
+<link rel="stylesheet" href="./common.css?v=20260918b">
+<script src="./common.js?v=20260918b"></script>
 <style>
   /* ---------- Sidebar ---------- */
   .filter-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
@@ -394,7 +394,7 @@
         <button class="filter-chip" data-filter="relancer" type="button">À relancer</button>
       </div>
       <div class="list-controls">
-        <span></span>
+        <button class="filter-toggle-btn" id="btn-new-structure" type="button">+ Structure</button>
         <button class="filter-toggle-btn" id="filter-toggle" type="button">Filtres ▾</button>
       </div>
       <div class="filter-panel" id="filter-panel" hidden>
@@ -524,6 +524,11 @@
   let current = null;         // selected structure (mapped record)
   let related = {};           // key -> { tableId, cols, records, error }
   let statutChoices = [];     // choix de la colonne Statut, dans l'ordre du document
+  // Les colonnes de la table Structures qui portent une liste : même règle que
+  // pour les tables liées, Grist refusant ['L', …] sur une colonne à valeur
+  // unique (et la cellule s'affiche alors en rose).
+  let structListCols = [];
+  let structureAOuvrir = null; // structure créée ici, à ouvrir dès qu'elle arrive
   // Par défaut, tout sauf les prospects — comme les autres widgets.
   let filterMode = 'partenaires';
   let query = '';
@@ -831,6 +836,24 @@
   // travaillent sur des enregistrements bruts (vrais colIds Grist) ; on les
   // reconstruit à partir des enregistrements mappés (rôle -> colId) pour
   // qu'une valeur Choice en cours d'utilisation ailleurs remonte quand même.
+  // La ligne creee arrive par l'abonnement Grist, pas par le code qui l'ecrit,
+  // et l'abonnement peut la livrer avant comme apres que la creation rende son
+  // identifiant. Les deux ordres doivent marcher, sinon la structure est creee
+  // puis perdue de vue. Le filtre par defaut masque les prospects et une
+  // nouvelle structure n'est pas forcement un partenaire : on passe sur
+  // « Tous » pour ne pas la creer dans le vide.
+  function ouvrirNouvelleStructure(id) {
+    const deja = structures.find(s => s.id === id);
+    if (!deja) { structureAOuvrir = id; return; }
+    structureAOuvrir = null;
+    setFilterMode('tous');
+    selectStructure(deja);
+  }
+
+  function structColValue(colId, values) {
+    return colValue({ listCols: structListCols }, colId, values);
+  }
+
   function rawStructures() {
     return structures.map(x => {
       const o = { id: x.id };
@@ -1467,10 +1490,14 @@
 
   // ---- Structure ----
 
+  // `s` absent : creation d'une ligne dans la table Structures. Meme
+  // formulaire que la fiche, mais rien n'est enregistre avant le clic sur
+  // « Creer » — une structure a moitie saisie n'a pas a exister.
   function openStructureModal(s) {
+    const isNew = !s;
     const typeActeur = structField(s, 'TypeActeur');
     const html =
-      modalHeadHtml('Fiche structure') +
+      modalHeadHtml(isNew ? 'Nouvelle structure' : 'Fiche structure') +
       '<div class="form-modal-grid">' +
         textField('m-nom', 'Nom', structField(s, 'Nom'), true) +
         areaField('m-description', 'Description', structField(s, 'Description'), true) +
@@ -1486,11 +1513,19 @@
         textField('m-requipe', 'Équipe / activité', structField(s, 'RechercheEquipeActivite')) +
         textField('m-rlabo', 'Laboratoire', structField(s, 'RechercheEquipeLabo')) +
       '</div>' +
-      '<div class="form-modal-actions"><button class="btn-primary" data-close>Terminé</button></div>';
+      '<div class="form-modal-actions">' +
+        (isNew
+          ? '<button class="btn-secondary" data-close>Annuler</button>' +
+            '<button class="btn-primary" id="m-create">Créer</button>'
+          : '<button class="btn-primary" data-close>Terminé</button>') +
+      '</div>';
 
     openModal(html, () => {
       const saver = createRecordSaver(setModalStatus);
-      const bind = (elId, role, transform) => bindField(saver, structTableId, s.id, elId, mappings[role], transform);
+      const bind = (elId, role, transform) => {
+        if (isNew) return; // rien ne s'enregistre avant la creation
+        bindField(saver, structTableId, s.id, elId, mappings[role], transform);
+      };
       bind('m-nom', 'Nom');
       bind('m-description', 'Description');
       bind('m-type', 'TypeActeur');
@@ -1509,17 +1544,47 @@
 
       // Activité, Pilier SequoIA et Axe SequoIA : une structure peut porter
       // plusieurs valeurs (ChoiceList), donc un sélecteur multiple plutôt
-      // qu'un champ à valeur unique.
-      const multiFields = [
-        ['m-activite', 'Activite'],
-        ['m-pilier', 'PilierSequoia'],
-        ['m-axe', 'AxeSequoia']
-      ];
-      multiFields.forEach(([elId, role]) => {
-        renderChoiceListPicker(
-          document.getElementById(elId), structTableId, mappings[role], raw, choiceListValues(s[role]),
-          (values) => saver(structTableId, s.id, mappings[role], ['L', ...values])
-        );
+      // qu'un champ à valeur unique — sauf si le document a fait de la colonne
+      // un choix simple, auquel cas il n'en accepte qu'une.
+      const choixSaisis = {}; // rôle -> valeurs retenues
+      [['m-activite', 'Activite'], ['m-pilier', 'PilierSequoia'], ['m-axe', 'AxeSequoia']]
+        .forEach(([elId, role]) => {
+          const colId = mappings[role];
+          if (!colId) return;
+          choixSaisis[role] = choiceListValues(s && s[role]);
+          renderChoiceListPicker(
+            document.getElementById(elId), structTableId, colId, raw, choixSaisis[role],
+            (values) => {
+              choixSaisis[role] = values;
+              if (!isNew) saver(structTableId, s.id, colId, structColValue(colId, values));
+            }, { single: !structListCols.includes(colId) });
+        });
+
+      if (!isNew) return;
+
+      document.getElementById('m-nom').focus();
+      document.getElementById('m-create').addEventListener('click', async () => {
+        const nom = document.getElementById('m-nom').value.trim();
+        if (!nom) { document.getElementById('m-nom').focus(); return; }
+        const fields = {};
+        const set = (role, valeur) => { if (mappings[role]) fields[mappings[role]] = valeur; };
+        set('Nom', nom);
+        [['m-description', 'Description'], ['m-type', 'TypeActeur'], ['m-categorie', 'Categorie'],
+         ['m-taille', 'Taille'], ['m-site', 'SiteWeb'], ['m-logo', 'Logo'],
+         ['m-rstructure', 'RechercheStructure'], ['m-requipe', 'RechercheEquipeActivite'],
+         ['m-rlabo', 'RechercheEquipeLabo']].forEach(([elId, role]) => {
+          const el = document.getElementById(elId);
+          if (el) set(role, el.value.trim());
+        });
+        Object.entries(choixSaisis).forEach(([role, values]) => {
+          if (values.length) set(role, structColValue(mappings[role], values));
+        });
+        try {
+          setModalStatus('Création…');
+          const nouvelId = await addRecord(structTableId, fields);
+          if (nouvelId) ouvrirNouvelleStructure(nouvelId);
+          await closeModal();
+        } catch (err) { console.error(err); setModalStatus('Erreur à la création'); }
       });
     });
   }
@@ -2131,6 +2196,10 @@
     structures = mapRecords(records, maps);
     if (structTableId === null) {
       try { structTableId = await grist.getTable().getTableId(); } catch (err) { console.error(err); }
+      try {
+        const meta = await fetchColumnMeta(structTableId);
+        structListCols = meta.filter(m => /^(RefList|ChoiceList):?/.test(m.type || '')).map(m => m.id);
+      } catch (err) { console.error(err); }
     }
     if (!related.contacts) await loadRelated();
     if (current) {
@@ -2138,6 +2207,14 @@
       // row fell out of a filtered list — onRecord doesn't always re-fire).
       const fresh = structures.find(s => s.id === current.id);
       current = fresh || null;
+    }
+    // Une structure vient d'être créée depuis le widget : ouvrir sa fiche dès
+    // que Grist la livre. Le filtre par défaut masque les prospects, et une
+    // nouvelle structure n'est pas forcément un partenaire — d'où le passage
+    // sur « Tous », sinon elle serait créée puis introuvable.
+    if (structureAOuvrir !== null && structures.some(s => s.id === structureAOuvrir)) {
+      ouvrirNouvelleStructure(structureAOuvrir);
+      return;
     }
     render();
   });
@@ -2154,12 +2231,24 @@
     renderList();
   });
 
+  // Le mode de filtre et la pastille active vont ensemble : les separer
+  // laisserait la liste filtree d'un cote et l'affichage de l'autre.
+  function setFilterMode(mode) {
+    filterMode = mode;
+    document.querySelectorAll('.filter-chip').forEach(b =>
+      b.classList.toggle('active', b.dataset.filter === mode));
+  }
+
   document.getElementById('filter-chips').addEventListener('click', (e) => {
     const btn = e.target.closest('.filter-chip');
     if (!btn) return;
-    filterMode = btn.dataset.filter;
-    document.querySelectorAll('.filter-chip').forEach(b => b.classList.toggle('active', b === btn));
+    setFilterMode(btn.dataset.filter);
     renderList();
+  });
+
+  document.getElementById('btn-new-structure').addEventListener('click', () => {
+    if (!structTableId) { alert('Table des structures introuvable.'); return; }
+    openStructureModal(null);
   });
 
   document.getElementById('filter-toggle').addEventListener('click', () => {
