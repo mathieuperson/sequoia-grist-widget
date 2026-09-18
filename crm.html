@@ -6,8 +6,8 @@
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-<link rel="stylesheet" href="./common.css?v=20260918">
-<script src="./common.js?v=20260918"></script>
+<link rel="stylesheet" href="./common.css?v=20260918a">
+<script src="./common.js?v=20260918a"></script>
 <style>
   /* ---------- Sidebar ---------- */
   .filter-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
@@ -564,6 +564,13 @@
         // refuse l'autre forme, et la cellule s'affiche alors en rose dans la
         // table. L'écriture doit donc suivre le type réel de la colonne.
         const listCols = meta.filter(m => /^(RefList|ChoiceList):?/.test(m.type || '')).map(m => m.id);
+        // Vers quelle table pointe chaque colonne de référence : de quoi
+        // retrouver les colonnes qui visent les contacts sans les énumérer.
+        const refTargets = {};
+        meta.forEach(m => {
+          const cible = /^Ref(?:List)?:(.+)$/.exec(m.type || '');
+          if (cible) refTargets[m.id] = cible[1];
+        });
 
         // Discovered link columns beyond the primary one (Etablissement /
         // Laboratoire / Equipe Cluster…) double as editable multi-select
@@ -577,19 +584,21 @@
           linkCols: linkCols.length ? linkCols : [primary].filter(Boolean),
           extraEditableLinkCols,
           listCols,
+          refTargets,
           colLabels,
           records: recordsFromTableData(data),
           error: null
         };
       } catch (err) { /* try the next candidate */ }
     }
-    return { tableId: null, cols: {}, linkCols: [], extraEditableLinkCols: [], listCols: [], colLabels: {}, records: [], error: 'Table introuvable (' + conf.tableCandidates.join(' / ') + ')' };
+    return { tableId: null, cols: {}, linkCols: [], extraEditableLinkCols: [], listCols: [], refTargets: {}, colLabels: {}, records: [], error: 'Table introuvable (' + conf.tableCandidates.join(' / ') + ')' };
   }
 
   async function loadRelated() {
     const keys = Object.keys(RELATED);
     const results = await Promise.all(keys.map(resolveRelated));
     keys.forEach((k, i) => { related[k] = results[i]; });
+    contactsParStructure = {}; // les contacts d'une structure ont pu changer
     await loadStatusColors();
   }
 
@@ -620,13 +629,63 @@
   // Sélecteurs
   // ---------------------------------------------------------------------
 
-  function rel(key) { return related[key] || { tableId: null, cols: {}, linkCols: [], extraEditableLinkCols: [], listCols: [], colLabels: {}, records: [] }; }
+  function rel(key) { return related[key] || { tableId: null, cols: {}, linkCols: [], extraEditableLinkCols: [], listCols: [], refTargets: {}, colLabels: {}, records: [] }; }
 
   function linkedRecords(key, structureId) {
     const r = rel(key);
     const linkCols = r.linkCols && r.linkCols.length ? r.linkCols : [r.cols[RELATED[key].linkRole]].filter(Boolean);
     if (linkCols.length === 0 || structureId == null) return [];
     return r.records.filter(rec => linkCols.some(col => recordLinksTo(rec, col, structureId)));
+  }
+
+  // ---- Rattachement indirect, par un contact ----
+  //
+  // Une opportunité saisie depuis la fiche du Cluster, avec pour contact
+  // quelqu'un qui appartient aussi à l'Université de Rennes, concerne les deux
+  // structures : c'est la même affaire vue de deux côtés. Mais son lien passe
+  // par le contact, pas par une colonne de référence vers la structure, donc
+  // `linkedRecords` ne la voit pas. D'où ce second chemin.
+  let contactsParStructure = {}; // structureId -> Set d'ids de contacts
+
+  function contactIdsOf(structureId) {
+    if (!(structureId in contactsParStructure)) {
+      contactsParStructure[structureId] =
+        new Set(linkedRecords('contacts', structureId).map(c => c.id));
+    }
+    return contactsParStructure[structureId];
+  }
+
+  // Les colonnes de `key` qui pointent vers la table Contacts, relevées dans
+  // les métadonnées : ContactPartenaire, ContactCluster, et toute autre que le
+  // document ajouterait sans que le widget en sache le nom.
+  function contactColumnsOf(key) {
+    const r = rel(key);
+    const cible = rel('contacts').tableId;
+    if (!cible) return [];
+    return Object.keys(r.refTargets || {}).filter(col => r.refTargets[col] === cible);
+  }
+
+  // Les contacts de cette ligne qui appartiennent à la structure ouverte.
+  function contactsLinkingTo(key, rec, structureId) {
+    const ids = contactIdsOf(structureId);
+    if (!ids.size) return [];
+    const trouves = new Set();
+    contactColumnsOf(key).forEach(col => {
+      refIdsFromValue(rec[col]).forEach(id => { if (ids.has(id)) trouves.add(id); });
+    });
+    return Array.from(trouves);
+  }
+
+  // Les lignes rattachées à la structure par un de leurs contacts, hors celles
+  // que `deja` a déjà trouvées par une colonne de référence directe.
+  function recordsViaContacts(key, structureId, deja) {
+    const cols = contactColumnsOf(key);
+    if (!cols.length || structureId == null) return [];
+    const ids = contactIdsOf(structureId);
+    if (!ids.size) return [];
+    const vus = new Set(deja.map(x => x.id));
+    return rel(key).records.filter(rec => !vus.has(rec.id) &&
+      cols.some(col => refIdsFromValue(rec[col]).some(id => ids.has(id))));
   }
 
   // Which column attached this row to the open structure, when it isn't the
@@ -637,8 +696,11 @@
     const r = rel(key);
     const primary = r.cols[RELATED[key].linkRole];
     const via = (r.linkCols || []).find(col => recordLinksTo(rec, col, structureId));
-    if (!via || via === primary) return '';
-    return r.colLabels[via] || via;
+    if (via) return via === primary ? '' : (r.colLabels[via] || via);
+    // Aucune colonne ne désigne cette structure : la ligne est là par un de
+    // ses contacts. Le nommer, sinon elle a l'air mal classée.
+    const noms = contactNamesFor(contactsLinkingTo(key, rec, structureId));
+    return noms.length ? 'via ' + noms.join(', ') : '';
   }
 
   function contactsOf(id) {
@@ -663,7 +725,8 @@
 
   function opportunitesOf(id) {
     const cols = rel('opportunites').cols;
-    return linkedRecords('opportunites', id).sort((a, b) => {
+    const directes = linkedRecords('opportunites', id);
+    return directes.concat(recordsViaContacts('opportunites', id, directes)).sort((a, b) => {
       // Abandoned ones sink to the bottom whatever their amount — they're
       // history, not pipeline.
       const aa = cols.Statut && isAbandoned(a[cols.Statut]) ? 1 : 0;
