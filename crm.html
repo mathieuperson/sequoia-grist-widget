@@ -6,8 +6,8 @@
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-<link rel="stylesheet" href="./common.css?v=20260918k">
-<script src="./common.js?v=20260918k"></script>
+<link rel="stylesheet" href="./common.css?v=20260918l">
+<script src="./common.js?v=20260918l"></script>
 <style>
   /* ---------- Sidebar ---------- */
   .filter-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
@@ -467,6 +467,33 @@
   }
   .struct-pill:hover { border-color: var(--sequoia-green); background: var(--sequoia-green-light); }
   .head-tel { font-size: 12.5px; color: var(--text-muted); }
+  .pill-role {
+    margin-left: 5px; padding-left: 5px;
+    border-left: 1px solid var(--border);
+    color: var(--text-muted); font-weight: 500;
+  }
+  .fiche-gens { display: flex; flex-wrap: wrap; gap: 7px; padding: 14px 16px; }
+
+  /* ---- Journal d'un projet ---- */
+  .jr-form { display: flex; gap: 8px; align-items: flex-start; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+  .jr-form textarea {
+    flex: 1; resize: vertical;
+    border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 10px; font-size: 13px; font-family: inherit; line-height: 1.45;
+  }
+  .jr-form textarea:focus { outline: none; border-color: var(--sequoia-green); }
+  .jr-liste { display: flex; flex-direction: column; }
+  /* Une entrée par relance, la plus récente en tête : l'historique du projet
+     se lit comme un fil, pas comme un champ de texte à relire en entier. */
+  .jr-entree {
+    display: flex; gap: 12px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .jr-entree:last-child { border-bottom: none; }
+  .jr-date { font-size: 11.5px; color: var(--text-muted); min-width: 74px; flex-shrink: 0; padding-top: 1px; }
+  .jr-texte { font-size: 13px; line-height: 1.5; min-width: 0; }
+  .act-contacts { padding: 0 16px 12px; }
 
   /* ---- Actions d'une structure ---- */
   .act-row {
@@ -718,6 +745,7 @@
   let actionsFaitesVisibles = false; // historique des actions, replié par défaut
   let contactsTousVisibles = false;  // au-delà de six contacts, le reste est replié
   let contactOuvert = null;          // contact dont la fiche est affichée
+  let opportuniteOuverte = null;     // opportunité dont la fiche est affichée
   let vue = 'fiche';             // 'fiche' ou 'annuaire'
   let annuaireSel = new Set();   // contacts cochés dans l'annuaire
   // Par défaut, tout sauf les prospects — comme les autres widgets.
@@ -854,11 +882,25 @@
   // Les colonnes de `key` qui pointent vers la table Contacts, relevées dans
   // les métadonnées : ContactPartenaire, ContactCluster, et toute autre que le
   // document ajouterait sans que le widget en sache le nom.
-  function contactColumnsOf(key) {
+  function colonnesVers(key, tableCible) {
+    if (!tableCible) return [];
     const r = rel(key);
-    const cible = rel('contacts').tableId;
-    if (!cible) return [];
-    return Object.keys(r.refTargets || {}).filter(col => r.refTargets[col] === cible);
+    return Object.keys(r.refTargets || {}).filter(col => r.refTargets[col] === tableCible);
+  }
+
+  function contactColumnsOf(key) {
+    return colonnesVers(key, rel('contacts').tableId);
+  }
+
+  // Les lignes de `key` qui désignent la ligne `id` de la table `tableCible`.
+  // `colonneConnue` est celle que la configuration nomme : les métadonnées ne
+  // donnent le type d'une colonne que si le document l'expose, et une colonne
+  // dont on sait déjà le rôle n'a pas à dépendre de cet aller-retour.
+  function recordsPointingTo(key, tableCible, id, colonneConnue) {
+    const colonnes = colonnesVers(key, tableCible);
+    if (colonneConnue && !colonnes.includes(colonneConnue)) colonnes.push(colonneConnue);
+    if (!colonnes.length || id == null) return [];
+    return rel(key).records.filter(r => colonnes.some(col => refIdsFromValue(r[col]).includes(id)));
   }
 
   // Les contacts de cette ligne qui appartiennent à la structure ouverte.
@@ -1191,6 +1233,7 @@
     if (!current || current.id !== s.id) { interactionOuverte = null; contactsTousVisibles = false; }
     vue = 'fiche';
     contactOuvert = null;
+    opportuniteOuverte = null;
     current = s;
     grist.setCursorPos({ rowId: s.id }).catch(() => {});
     render();
@@ -1539,11 +1582,7 @@
       });
     });
     document.querySelectorAll('[data-opp]').forEach(el => {
-      el.addEventListener('click', () => {
-        const o = rel('opportunites').records.find(x => x.id === Number(el.dataset.opp));
-        const st = structuresOfContact(contactOuvert)[0] || current;
-        if (o && st) openOpportuniteModal(o, st);
-      });
+      el.addEventListener('click', () => ouvrirOpportunite(Number(el.dataset.opp)));
     });
     document.querySelectorAll('[data-action-done]').forEach(cb => {
       cb.addEventListener('change', async () => {
@@ -1557,10 +1596,312 @@
     bindCopyButtons();
   }
 
+  // ---------------------------------------------------------------------
+  // Fiche d'une opportunité
+  //
+  // Un projet ne se résume pas à ses champs : il a une histoire (ce qu'on a
+  // fait, quand), des gens, des actions à mener et des échanges. Le formulaire
+  // d'édition ne montrait que les champs ; cette fiche montre le reste.
+  // ---------------------------------------------------------------------
+
+  // Le journal vit dans la colonne Commentaire, une entrée par ligne, datée
+  // entre crochets. Pas de table supplémentaire à créer, et le texte reste
+  // lisible tel quel dans Grist. Ce qui ne suit pas ce format — un commentaire
+  // écrit à la main avant — est gardé comme une entrée sans date.
+  const MARQUE_JOURNAL = /^\s*\[(\d{4}-\d{2}-\d{2})\]\s?/;
+
+  function lireJournal(texte) {
+    const lignes = String(texte || '').split('\n');
+    const entrees = [];
+    lignes.forEach(ligne => {
+      const m = MARQUE_JOURNAL.exec(ligne);
+      if (m) entrees.push({ date: m[1], texte: ligne.replace(MARQUE_JOURNAL, '').trim() });
+      else if (ligne.trim() && entrees.length) entrees[entrees.length - 1].texte += '\n' + ligne.trim();
+      else if (ligne.trim()) entrees.push({ date: null, texte: ligne.trim() });
+    });
+    return entrees;
+  }
+
+  function ecrireJournal(texteExistant, nouvelleEntree) {
+    const jour = new Date().toISOString().slice(0, 10);
+    const ligne = '[' + jour + '] ' + nouvelleEntree.trim();
+    const avant = String(texteExistant || '').trim();
+    // La plus récente en tête : c'est ce qu'on vient chercher.
+    return avant ? ligne + '\n' + avant : ligne;
+  }
+
+  function ouvrirOpportunite(id) {
+    opportuniteOuverte = id;
+    vue = 'opportunite';
+    render();
+  }
+
+  function opportuniteFicheHtml() {
+    const r = rel('opportunites');
+    const o = r.records.find(x => x.id === opportuniteOuverte);
+    if (!o) return '<div class="placeholder">Cette opportunité n’existe plus.</div>';
+    const cols = r.cols;
+    const val = (role) => (cols[role] ? formatValue(o[cols[role]]) : '');
+    const sujet = val('Sujet') || 'Sans sujet';
+    const statut = val('Statut');
+    const montant = cols.Montant ? o[cols.Montant] : null;
+    const echeance = cols.Echeance ? o[cols.Echeance] : null;
+    const aCols = rel('actions').cols;
+
+    // Les structures rattachées, tous rôles confondus, avec le nom de la
+    // colonne quand ce n'est pas le partenaire principal.
+    const principal = cols[RELATED.opportunites.linkRole];
+    const rattachements = [];
+    (r.linkCols || []).forEach(col => {
+      refIdsFromValue(o[col]).forEach(id => {
+        const st = structures.find(x => x.id === id);
+        if (st) rattachements.push({ id, nom: structField(st, 'Nom') || 'Sans nom',
+          role: col === principal ? '' : (r.colLabels[col] || col) });
+      });
+    });
+    const gens = contactColumnsOf('opportunites').flatMap(col =>
+      refIdsFromValue(o[col]).map(id => ({ id, label: r.colLabels[col] || col })));
+    const nomsDeGens = new Map();
+    gens.forEach(g => { if (!nomsDeGens.has(g.id)) nomsDeGens.set(g.id, g.label); });
+
+    const actions = recordsPointingTo('actions', r.tableId, o.id, rel('actions').cols.Opportunite);
+    const actionsOuvertes = actions.filter(x => !actionEstFaite(x));
+    const echanges = recordsPointingTo('interactions', r.tableId, o.id, rel('interactions').cols.Opportunites)
+      .sort((x, y) => (Number(y[rel('interactions').cols.Date]) || 0) - (Number(x[rel('interactions').cols.Date]) || 0));
+    const journal = lireJournal(val('Commentaire'));
+
+    const entete =
+      '<div class="fiche-head">' +
+        '<div class="logo-frame">' + escapeHtml(initials(sujet)) + '</div>' +
+        '<div class="head-text">' +
+          '<h1 title="' + escapeHtml(sujet) + '">' + escapeHtml(sujet) + '</h1>' +
+          '<div class="head-meta">' + escapeHtml(choiceListValues(cols.Type ? o[cols.Type] : null).join(' · ')) + '</div>' +
+          '<div class="head-pills">' +
+            rattachements.map(x => '<button type="button" class="struct-pill" data-voir-structure="' + x.id + '">' +
+              escapeHtml(x.nom) + (x.role ? ' <span class="pill-role">' + escapeHtml(x.role) + '</span>' : '') +
+              '</button>').join('') +
+          '</div>' +
+        '</div>' +
+        '<div class="head-actions">' +
+          '<button class="btn-ghost" id="btn-retour-opp">← Retour</button>' +
+          '<button class="btn-primary" id="btn-edit-opp">✏️ Modifier</button>' +
+        '</div>' +
+      '</div>';
+
+    const kpis =
+      '<div class="kpi-row">' +
+        kpiHtml('Étape', statut
+          ? '<span class="status-pill" style="background:' + statusColor(statut) + ';color:' +
+            statusTextColor(statut) + '">' + escapeHtml(statut) + '</span>'
+          : '—', '', false, true,
+          statut ? statusProgressMarkup(statut, statutChoices, { label: false }) : '') +
+        kpiHtml('Montant', escapeHtml(formatMontantCompact(montant) || '—'), montant ? formatMontant(montant) : 'non chiffré') +
+        kpiHtml('Échéance', echeance ? escapeHtml(formatDate(echeance)) : '—',
+          echeance ? escapeHtml(formatDaysSince(echeance)) : 'aucune date de dépôt',
+          echeance ? daysSince(echeance) > 0 : false) +
+        kpiHtml('Actions', String(actionsOuvertes.length), 'en cours', actionsOuvertes.length > 0) +
+      '</div>';
+
+    const journalHtml =
+      '<div class="jr-form">' +
+        '<textarea id="jr-texte" rows="2" placeholder="Où en est-on ? (ex. relance envoyée pour caler une date)"></textarea>' +
+        '<button type="button" class="btn-primary" id="jr-ajouter">Noter</button>' +
+      '</div>' +
+      (journal.length
+        ? '<div class="jr-liste">' + journal.map(e =>
+            '<div class="jr-entree">' +
+              '<div class="jr-date">' + escapeHtml(e.date ? formatDate(inputValueToGristDate(e.date)) : 'sans date') + '</div>' +
+              '<div class="jr-texte">' + escapeHtml(e.texte).replace(/\n/g, '<br>') + '</div>' +
+            '</div>').join('') + '</div>'
+        : '<div class="panel-empty">Rien de noté pour l’instant.</div>');
+
+    const gensHtml = nomsDeGens.size
+      ? '<div class="fiche-gens">' + Array.from(nomsDeGens.entries()).map(([id, role]) => {
+          const c = rel('contacts').records.find(x => x.id === id);
+          return '<button type="button" class="struct-pill" data-voir-contact="' + id + '">' +
+            escapeHtml(c ? contactName(c) : '#' + id) +
+            '<span class="pill-role">' + escapeHtml(role) + '</span></button>';
+        }).join('') + '</div>'
+      : '<div class="panel-empty">Personne n’est rattaché à ce projet.</div>';
+
+    const actionsHtml =
+      (actions.length
+        ? actions.map(x => {
+            const due = aCols.Echeance ? x[aCols.Echeance] : null;
+            const retard = due && daysSince(due) > 0 && !actionEstFaite(x);
+            const qui = aCols.Contacts ? contactNamesFor(refIdsFromValue(x[aCols.Contacts])) : [];
+            return '<div class="act-row' + (actionEstFaite(x) ? ' fait' : '') + '">' +
+              '<input type="checkbox" data-action-done="' + x.id + '"' +
+                (actionEstFaite(x) ? ' checked' : '') + (aCols.Fait ? '' : ' disabled') + '>' +
+              '<div class="act-text">' +
+                '<div class="act-label">' + escapeHtml(aCols.Intitule ? formatValue(x[aCols.Intitule]) : 'Sans intitulé') + '</div>' +
+                (qui.length ? '<div class="act-sub">' + escapeHtml(qui.join(', ')) + '</div>' : '') +
+              '</div>' +
+              (due ? '<span class="act-due' + (retard ? ' retard' : '') + '">' + escapeHtml(formatDate(due)) + '</span>' : '') +
+            '</div>';
+          }).join('')
+        : '<div class="panel-empty">Aucune action.</div>') +
+      '<div class="act-form">' +
+        '<input id="opp-act-label" placeholder="Nouvelle action…">' +
+        '<input type="date" id="opp-act-due" title="Échéance">' +
+        '<button type="button" class="btn-mini" id="opp-act-ajouter">Ajouter</button>' +
+      '</div>' +
+      (aCols.Contacts
+        ? '<div class="form-field full act-contacts"><label>Assignée à</label><div id="opp-act-contacts"></div></div>'
+        : '');
+
+    const iCols = rel('interactions').cols;
+    const echangesHtml = echanges.length
+      ? '<div class="timeline">' + echanges.map(i =>
+          '<div class="tl-item" data-voir-interaction="' + i.id + '">' +
+            '<div class="tl-when">' + escapeHtml(iCols.Date ? formatDate(i[iCols.Date]) : '') + '</div>' +
+            '<div class="tl-body"><div class="tl-title">' +
+              escapeHtml([iCols.Type && formatValue(i[iCols.Type]), iCols.Objet && formatValue(i[iCols.Objet])]
+                .filter(Boolean).join(' · ') || 'Sans objet') + '</div></div>' +
+          '</div>').join('') + '</div>'
+      : '<div class="panel-empty">Aucun échange rattaché.</div>';
+
+    return '<div class="crm-inner">' + entete + kpis +
+      '<div class="crm-grid">' +
+        '<div class="crm-col">' +
+          panelShell('Journal', journal.length, null, null, journalHtml) +
+          panelShell('Personnes', nomsDeGens.size, null, null, gensHtml) +
+        '</div>' +
+        '<div class="crm-col">' +
+          (rel('actions').tableId ? panelShell('Actions', actionsOuvertes.length, null, null, actionsHtml) : '') +
+          panelShell('Échanges', echanges.length, null, null, echangesHtml) +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function bindOpportuniteFicheEvents() {
+    const r = rel('opportunites');
+    const o = r.records.find(x => x.id === opportuniteOuverte);
+    if (!o) return;
+    const cols = r.cols;
+    const structureDeReference = () => {
+      const ids = (r.linkCols || []).flatMap(col => refIdsFromValue(o[col]));
+      return structures.find(x => ids.includes(x.id)) || current;
+    };
+
+    const retour = document.getElementById('btn-retour-opp');
+    if (retour) retour.addEventListener('click', () => {
+      vue = 'fiche';
+      opportuniteOuverte = null;
+      if (current) render(); else { const st = structureDeReference(); if (st) selectStructure(st); else render(); }
+    });
+    const modifier = document.getElementById('btn-edit-opp');
+    if (modifier) modifier.addEventListener('click', () => openOpportuniteModal(o, structureDeReference()));
+
+    document.querySelectorAll('[data-voir-structure]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const st = structures.find(x => x.id === Number(btn.dataset.voirStructure));
+        if (st) selectStructure(st);
+      });
+    });
+    document.querySelectorAll('[data-voir-contact]').forEach(btn => {
+      btn.addEventListener('click', () => ouvrirContact(Number(btn.dataset.voirContact)));
+    });
+    document.querySelectorAll('[data-voir-interaction]').forEach(el => {
+      el.addEventListener('click', () => {
+        const i = rel('interactions').records.find(x => x.id === Number(el.dataset.voirInteraction));
+        const st = structureDeReference();
+        if (i && st) openInteractionModal(i, st);
+      });
+    });
+
+    // Le journal
+    const noter = document.getElementById('jr-ajouter');
+    if (noter && cols.Commentaire) {
+      const envoyer = async () => {
+        const zone = document.getElementById('jr-texte');
+        const texte = zone.value.trim();
+        if (!texte) { zone.focus(); return; }
+        try {
+          await updateRecord(r.tableId, o.id, {
+            [cols.Commentaire]: ecrireJournal(formatValue(o[cols.Commentaire]), texte)
+          });
+          zone.value = '';
+          await refreshRelated(true);
+          toast('Noté');
+        } catch (err) { console.error(err); toast('Erreur d’enregistrement', true); }
+      };
+      noter.addEventListener('click', envoyer);
+      document.getElementById('jr-texte').addEventListener('keydown', (e) => {
+        // Entrée envoie, Maj+Entrée passe à la ligne : le geste des messageries.
+        if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); envoyer(); }
+      });
+    } else if (noter) {
+      noter.disabled = true;
+      noter.title = 'Aucune colonne Commentaire dans la table des opportunités';
+    }
+
+    // Les actions du projet
+    document.querySelectorAll('[data-action-done]').forEach(cb => {
+      cb.addEventListener('change', async () => {
+        const a = rel('actions');
+        try {
+          await updateRecord(a.tableId, Number(cb.dataset.actionDone), { [a.cols.Fait]: cb.checked });
+          await refreshRelated(true);
+        } catch (err) { console.error(err); toast('Erreur d’enregistrement', true); }
+      });
+    });
+
+    const a = rel('actions');
+    let assignes = [];
+    const zoneContacts = document.getElementById('opp-act-contacts');
+    if (zoneContacts && a.cols.Contacts) {
+      // Proposés : les gens déjà sur le projet, puis ceux de ses structures.
+      const surLeProjet = contactColumnsOf('opportunites')
+        .flatMap(col => refIdsFromValue(o[col]));
+      const options = contactOptionsForRecord('opportunites', o, (structureDeReference() || {}).id);
+      const parId = new Map(options.map(x => [x.id, x]));
+      surLeProjet.forEach(id => {
+        if (parId.has(id)) return;
+        const c = rel('contacts').records.find(x => x.id === id);
+        if (c) parId.set(id, { id, label: contactName(c) });
+      });
+      renderLocalPicker(zoneContacts, Array.from(parId.values()), [], (next) => { assignes = next; });
+    }
+
+    const ajouter = document.getElementById('opp-act-ajouter');
+    if (ajouter) {
+      const creer = async () => {
+        const champ = document.getElementById('opp-act-label');
+        const label = champ.value.trim();
+        if (!label) { champ.focus(); return; }
+        const fields = {};
+        const pose = (colId, valeur) => { if (colId) fields[colId] = valeur; };
+        pose(a.cols.Intitule, label);
+        const due = document.getElementById('opp-act-due').value;
+        if (a.cols.Echeance && due) pose(a.cols.Echeance, inputValueToGristDate(due));
+        pose(a.cols.Opportunite, refListValue(a.tableId, a.cols.Opportunite, [o.id]));
+        const partenaires = cols.Partenaires ? refIdsFromValue(o[cols.Partenaires]) : [];
+        if (partenaires.length) pose(a.cols.Partenaires, refListValue(a.tableId, a.cols.Partenaires, partenaires));
+        if (assignes.length) pose(a.cols.Contacts, refListValue(a.tableId, a.cols.Contacts, assignes.map(c => c.id)));
+        try {
+          await addRecord(a.tableId, fields);
+          await refreshRelated(true);
+          toast('Action ajoutée');
+        } catch (err) { console.error(err); toast('Erreur à la création', true); }
+      };
+      ajouter.addEventListener('click', creer);
+      document.getElementById('opp-act-label').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); creer(); }
+      });
+    }
+  }
+
   function renderMain() {
     const main = document.getElementById('main');
     if (vue === 'annuaire') { main.innerHTML = annuaireHtml(); bindAnnuaireEvents(); return; }
     if (vue === 'contact') { main.innerHTML = contactFicheHtml(); bindContactFicheEvents(); return; }
+    if (vue === 'opportunite') {
+      main.innerHTML = opportuniteFicheHtml();
+      bindOpportuniteFicheEvents();
+      return;
+    }
     if (!current) {
       main.innerHTML = '<div class="placeholder">Sélectionnez une structure dans la liste</div>';
       return;
@@ -1942,11 +2283,10 @@
         ouvrirContact(Number(el.dataset.contact));
       });
     });
+    // Comme pour un contact : la ligne ouvre la fiche du projet, et le
+    // formulaire d'édition est derrière le bouton « Modifier » de cette fiche.
     document.querySelectorAll('[data-opp]').forEach(el => {
-      el.addEventListener('click', () => {
-        const rec = rel('opportunites').records.find(o => o.id === Number(el.dataset.opp));
-        if (rec) openOpportuniteModal(rec, s);
-      });
+      el.addEventListener('click', () => ouvrirOpportunite(Number(el.dataset.opp)));
     });
     // Un clic sur la ligne déplie son aperçu (et le replie au clic suivant) ;
     // c'est le bouton de l'aperçu qui ouvre la fiche complète. Les pièces

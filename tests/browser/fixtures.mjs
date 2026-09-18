@@ -126,7 +126,8 @@ export function crmConfig() {
         refCol('Partenaires', 'RefList:Structures', 'Partenaire(s)'),
         refCol('LaboratoireCluster', 'RefList:Structures', 'Laboratoire Cluster'),
         refCol('ContactPartenaire', 'RefList:Contacts', 'Contact(s) partenaire'),
-        refCol('ContactCluster', 'RefList:Contacts', 'Contact(s) cluster')
+        refCol('ContactCluster', 'RefList:Contacts', 'Contact(s) cluster'),
+        refCol('Opportunites', 'RefList:Opportunites', 'Opportunité(s)')
       ],
       Opportunites: [
         choiceCol('Statut', ['Prospection', 'Qualification', 'Montage',
