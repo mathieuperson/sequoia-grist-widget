@@ -6,8 +6,8 @@
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-<link rel="stylesheet" href="./common.css?v=20260918h">
-<script src="./common.js?v=20260918h"></script>
+<link rel="stylesheet" href="./common.css?v=20260918j">
+<script src="./common.js?v=20260918j"></script>
 <style>
   /* ---------- Sidebar ---------- */
   .filter-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
@@ -452,6 +452,8 @@
     color: var(--text-muted); cursor: pointer;
   }
   .pj-dropzone.dragover { border-color: var(--sequoia-green); background: var(--sequoia-green-light); }
+  .contacts-toggle { margin: 10px 16px; }
+
   /* ---- Actions d'une structure ---- */
   .act-row {
     display: flex; align-items: center; gap: 10px;
@@ -700,6 +702,7 @@
   let structureAOuvrir = null; // structure créée ici, à ouvrir dès qu'elle arrive
   let interactionOuverte = null; // échange dont l'aperçu est déplié dans la frise
   let actionsFaitesVisibles = false; // historique des actions, replié par défaut
+  let contactsTousVisibles = false;  // au-delà de six contacts, le reste est replié
   let vue = 'fiche';             // 'fiche' ou 'annuaire'
   let annuaireSel = new Set();   // contacts cochés dans l'annuaire
   // Par défaut, tout sauf les prospects — comme les autres widgets.
@@ -1170,7 +1173,7 @@
 
   function selectStructure(s) {
     // L'aperçu déplié appartient à la fiche ouverte, pas à la suivante.
-    if (!current || current.id !== s.id) interactionOuverte = null;
+    if (!current || current.id !== s.id) { interactionOuverte = null; contactsTousVisibles = false; }
     vue = 'fiche';
     current = s;
     grist.setCursorPos({ rowId: s.id }).catch(() => {});
@@ -1412,8 +1415,11 @@
 
         '<div class="crm-grid">' +
           '<div class="crm-col">' +
-            contactsPanelHtml(s) +
+            // Les opportunités passent devant : c'est l'état du partenariat,
+            // ce qu'on vient lire en premier. Avec vingt contacts, le pipe
+            // était repoussé hors de l'écran.
             oppsPanelHtml(s) +
+            contactsPanelHtml(s) +
           '</div>' +
           '<div class="crm-col">' +
             actionsPanelHtml(s) +
@@ -1456,9 +1462,16 @@
     const cols = r.cols;
     const list = contactsOf(s.id);
 
+    // Une structure académique peut porter vingt contacts : au-delà de six, la
+    // liste chassait tout le reste de la fiche. Les contacts principaux étant
+    // triés en tête, ce sont eux qu'on voit d'abord.
+    const SEUIL = 6;
+    const tronque = !contactsTousVisibles && list.length > SEUIL;
+    const affiches = tronque ? list.slice(0, SEUIL) : list;
+
     const body = list.length === 0
       ? '<div class="panel-empty">Aucun contact rattaché.</div>'
-      : list.map(c => {
+      : affiches.map(c => {
           const fonction = cols.Fonction ? formatValue(c[cols.Fonction]) : '';
           const email = cols.Email ? formatValue(c[cols.Email]) : '';
           const tel = cols.Telephone ? formatValue(c[cols.Telephone]) : '';
@@ -1482,6 +1495,12 @@
           '</div>';
         }).join('');
 
+    const bascule = list.length > SEUIL
+      ? '<button type="button" class="btn-mini contacts-toggle" id="btn-contacts-tous">' +
+          (tronque ? 'Voir les ' + (list.length - SEUIL) + ' autres contacts' : 'N’en montrer que ' + SEUIL) +
+        '</button>'
+      : '';
+
     // Copier d'un coup les adresses de la structure : c'est le geste le plus
     // frequent quand on vient chercher a qui ecrire.
     const adresses = emailsOfStructure(s.id);
@@ -1489,7 +1508,7 @@
       ? '<button class="btn-mini" id="btn-copy-emails" title="' + escapeHtml(adresses.join('; ')) + '">' +
           '⧉ ' + adresses.length + ' adresse' + (adresses.length > 1 ? 's' : '') + '</button>'
       : '';
-    return panelShell('Contacts', list.length, 'btn-new-contact', '+ Contact', body, action);
+    return panelShell('Contacts', list.length, 'btn-new-contact', '+ Contact', body + bascule, action);
   }
 
   // ---- Actions à mener pour cette structure ----
@@ -1646,6 +1665,12 @@
     if (newOpp) newOpp.addEventListener('click', () => openOpportuniteModal(null, s));
     const newInter2 = byId('btn-new-interaction-2');
     if (newInter2) newInter2.addEventListener('click', () => openInteractionModal(null, s));
+    const tousContacts = byId('btn-contacts-tous');
+    if (tousContacts) tousContacts.addEventListener('click', () => {
+      contactsTousVisibles = !contactsTousVisibles;
+      render();
+    });
+
     // ---- Actions de la fiche ----
     const bascule = byId('btn-actions-faites');
     if (bascule) bascule.addEventListener('click', () => {
@@ -2332,7 +2357,20 @@
         dateField('m-date', 'Date', isNew ? Math.floor(Date.now() / 1000) : rawGet('Date')) +
         selectField('m-type', 'Type', get('Type')) +
         dateField('m-echeance', 'Prochaine échéance', rawGet('ProchaineEcheance')) +
-        textField('m-suites', 'Suites à donner', get('Suites')) +
+        // « Suites à donner » est une note sur l'échange, pas une action : elle
+        // n'a jamais rien écrit dans la table des actions. Tant que celle-ci
+        // n'existe pas, le pilotage en déduit une ligne et le champ reste le
+        // seul moyen de noter une suite. Dès qu'elle existe, le champ le dit
+        // et renvoie au bloc qui, lui, crée une vraie action.
+        (rel('actions').tableId && !isNew
+          ? textField('m-suites', 'Suites à donner (note libre)', get('Suites')) +
+            '<div class="form-field full form-modal-note">Cette note reste sur l’échange. ' +
+            'Pour une action suivie — échéance, interlocuteurs, à cocher depuis le pilotage — ' +
+            'utilisez <strong>Actions de suivi</strong>, plus bas.' +
+            (get('Suites').trim()
+              ? ' <button type="button" class="btn-mini" id="suites-reprendre">Reprendre celle-ci comme action</button>'
+              : '') + '</div>'
+          : textField('m-suites', 'Suites à donner', get('Suites'))) +
         '<div class="form-field full"><label>Partenaire(s)</label><div id="m-ref-partenaires"></div></div>' +
         extraStructureFieldsHtml('interactions') +
         '<div class="form-field full"><label>Contact(s) partenaire</label><div id="m-ref-contacts"></div></div>' +
@@ -2514,6 +2552,31 @@
     const champ = document.getElementById('suivi-label');
     const echeance = document.getElementById('suivi-due');
     const bouton = document.getElementById('suivi-add');
+
+    // Reprendre une note « Suites à donner » déjà écrite : elle devient une
+    // action de la table, avec l'échéance de l'échange, et le champ se vide
+    // pour qu'elle ne figure pas deux fois dans le pilotage.
+    const reprise = document.getElementById('suites-reprendre');
+    if (reprise) reprise.addEventListener('click', async () => {
+      const note = document.getElementById('m-suites');
+      const texte = note.value.trim();
+      if (!texte) return;
+      reprise.disabled = true;
+      champ.value = texte;
+      const due = inter.cols.ProchaineEcheance ? i[inter.cols.ProchaineEcheance] : null;
+      if (due) echeance.value = gristDateToInputValue(due);
+      await creer();
+      try {
+        const vide = {};
+        if (inter.cols.Suites) vide[inter.cols.Suites] = '';
+        if (inter.cols.ProchaineEcheance) vide[inter.cols.ProchaineEcheance] = null;
+        await updateRecord(inter.tableId, i.id, vide);
+        note.value = '';
+        const echeanceEchange = document.getElementById('m-echeance');
+        if (echeanceEchange) echeanceEchange.value = '';
+        reprise.closest('.form-modal-note').remove();
+      } catch (err) { console.error(err); setModalStatus('Échange non mis à jour'); }
+    });
 
     async function creer() {
       const label = champ.value.trim();
