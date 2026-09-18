@@ -6,8 +6,8 @@
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-<link rel="stylesheet" href="./common.css?v=20260917a">
-<script src="./common.js?v=20260917a"></script>
+<link rel="stylesheet" href="./common.css?v=20260918">
+<script src="./common.js?v=20260918"></script>
 <style>
   /* ---------- Sidebar ---------- */
   .filter-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
@@ -501,6 +501,7 @@
         Type: ['Type'],
         Statut: ['Statut', 'Status', 'Etape'],
         AxeSequoia: ['AxeSequoia', 'Axe_Sequoia', 'Axe SequoIA', 'Axe'],
+        PilierSequoia: ['PilierSequoia', 'Pilier_Sequoia', 'Pilier SequoIA', 'Pilier'],
         Montant: ['Montant', 'Montant_€', 'Budget'],
         DateDebut: ['DateDebut', 'Date_Debut', 'Date de début'],
         Echeance: ['Echeance', 'Echéance', 'Date_fin'],
@@ -619,7 +620,7 @@
   // Sélecteurs
   // ---------------------------------------------------------------------
 
-  function rel(key) { return related[key] || { tableId: null, cols: {}, linkCols: [], extraEditableLinkCols: [], colLabels: {}, records: [] }; }
+  function rel(key) { return related[key] || { tableId: null, cols: {}, linkCols: [], extraEditableLinkCols: [], listCols: [], colLabels: {}, records: [] }; }
 
   function linkedRecords(key, structureId) {
     const r = rel(key);
@@ -1385,6 +1386,13 @@
   function bindField(saver, tableId, rowId, elId, colId, transform) {
     const el = document.getElementById(elId);
     if (!el || !colId) return;
+    // Un conteneur (le div d'un sélecteur à chips, par exemple) n'a pas de
+    // `value` : les événements de ses champs internes remonteraient jusqu'ici
+    // et feraient enregistrer `undefined` par-dessus la vraie valeur.
+    if (!['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName)) {
+      console.error('bindField : ' + elId + " n'est pas un champ de saisie");
+      return;
+    }
     const handler = () => saver(tableId, rowId, colId, transform ? transform(el) : el.value);
     el.addEventListener('input', handler);
     if (el.tagName === 'SELECT' || el.type === 'checkbox') el.addEventListener('change', handler);
@@ -1551,6 +1559,9 @@
     const isNew = !o;
     const get = (role) => (o && cols[role] ? formatValue(o[cols[role]]) : '');
     const rawGet = (role) => (o && cols[role] ? o[cols[role]] : null);
+    // Le libellé affiché est celui de la colonne dans le document, à défaut le
+    // nom du rôle : c'est le document qui nomme ses champs, pas le widget.
+    const libelle = (role) => (cols[role] && r.colLabels[cols[role]]) || role;
 
     const html =
       modalHeadHtml(isNew ? 'Nouvelle opportunité' : (get('Sujet') || 'Opportunité')) +
@@ -1560,8 +1571,15 @@
         // Le Type était un champ libre : un choix multiple à vocabulaire
         // fermé, comme dans le pilotage, évite les valeurs hors liste — que
         // Grist refuse — et laisse cumuler « CIFRE + ANR ».
-        choiceListFieldHtml('m-type', 'Type') +
-        textField('m-axe', 'Axe SequoIA', get('AxeSequoia')) +
+        choiceListFieldHtml('m-type', libelle('Type')) +
+        // Pilier et Axe SequoIA : chacun n'apparaît que si le document porte
+        // sa colonne, sous le nom qu'il lui donne — une colonne renommée dans
+        // Grist ne doit pas s'afficher sous un ancien libellé figé ici. Le
+        // vocabulaire vient de la colonne : en texte libre, le navigateur ne
+        // proposait que ce qui avait déjà été saisi, donc une valeur jamais
+        // tapée restait invisible.
+        (cols.PilierSequoia ? choiceListFieldHtml('m-pilier-opp', libelle('PilierSequoia')) : '') +
+        (cols.AxeSequoia ? choiceListFieldHtml('m-axe', libelle('AxeSequoia')) : '') +
         textField('m-montant', 'Montant (€)', rawGet('Montant') === null ? '' : rawGet('Montant'), false, 'number') +
         dateField('m-debut', 'Date de début', rawGet('DateDebut')) +
         dateField('m-echeance', 'Échéance', rawGet('Echeance')) +
@@ -1581,21 +1599,24 @@
     openModal(html, () => {
       populateChoiceSelect('m-statut', r.tableId, cols.Statut, r.records, get('Statut'));
 
-      // Le Type se saisit dans un sélecteur à vocabulaire fermé. Choix
-      // multiple si la colonne est une ChoiceList, valeur unique sinon :
-      // c'est le document qui décide, pas le widget. En édition, chaque
-      // changement s'enregistre aussitôt comme les autres champs ; à la
-      // création, la valeur est relue au moment du « Créer ».
-      const typeEstListe = isListCol(r, cols.Type);
-      let typeValues = choiceListValues(rawGet('Type'));
-      renderChoiceListPicker(
-        document.getElementById('m-type'), r.tableId, cols.Type, r.records, typeValues,
-        (values) => {
-          typeValues = values;
-          if (!isNew && cols.Type) {
-            saver(r.tableId, o.id, cols.Type, colValue(r, cols.Type, values));
-          }
-        }, { single: !typeEstListe });
+      // Type, Pilier et Axe se saisissent dans un sélecteur à vocabulaire
+      // fermé. Choix multiple si la colonne est une ChoiceList, valeur unique
+      // sinon : c'est le document qui décide, pas le widget. En édition,
+      // chaque changement s'enregistre aussitôt comme les autres champs ; à
+      // la création, les valeurs sont relues au moment du « Créer ».
+      const choixSaisis = {}; // rôle -> valeurs retenues
+      [['Type', 'm-type'], ['PilierSequoia', 'm-pilier-opp'], ['AxeSequoia', 'm-axe']]
+        .forEach(([role, elId]) => {
+          const colId = cols[role];
+          if (!colId) return;
+          choixSaisis[role] = choiceListValues(rawGet(role));
+          renderChoiceListPicker(
+            document.getElementById(elId), r.tableId, colId, r.records, choixSaisis[role],
+            (values) => {
+              choixSaisis[role] = values;
+              if (!isNew) saver(r.tableId, o.id, colId, colValue(r, colId, values));
+            }, { single: !isListCol(r, colId) });
+        });
 
       const getPartenaires = mountRefPicker('m-ref-partenaires',
         structurePickerOptions(), o, r.tableId, cols.Partenaires, isNew,
@@ -1615,8 +1636,9 @@
           const set = (role, value) => { if (cols[role]) fields[cols[role]] = value; };
           set('Sujet', sujet);
           set('Statut', document.getElementById('m-statut').value);
-          if (typeValues.length) set('Type', colValue(r, cols.Type, typeValues));
-          set('AxeSequoia', document.getElementById('m-axe').value.trim());
+          Object.entries(choixSaisis).forEach(([role, values]) => {
+            if (values.length) set(role, colValue(r, cols[role], values));
+          });
           const montant = document.getElementById('m-montant').value;
           set('Montant', montant === '' ? null : Number(montant));
           set('DateDebut', inputValueToGristDate(document.getElementById('m-debut').value));
@@ -1645,8 +1667,8 @@
       const bind = (elId, role, transform) => bindField(saver, r.tableId, o.id, elId, cols[role], transform);
       bind('m-sujet', 'Sujet');
       bind('m-statut', 'Statut');
-      bind('m-type', 'Type');
-      bind('m-axe', 'AxeSequoia');
+      // Type, Pilier et Axe ne sont pas des <input> : leurs sélecteurs
+      // enregistrent eux-mêmes à chaque changement, plus haut.
       bind('m-montant', 'Montant', asNumber);
       bind('m-debut', 'DateDebut', asDate);
       bind('m-echeance', 'Echeance', asDate);
