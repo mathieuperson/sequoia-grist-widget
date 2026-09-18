@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pilotage Partenariats &amp; Innovation — Cluster SequoIA</title>
-<link rel="stylesheet" href="./common.css?v=20260918l">
+<link rel="stylesheet" href="./common.css?v=20260918m">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="./common.js?v=20260918l"></script>
-<script src="./pilotage.js?v=20260918l"></script>
+<script src="./common.js?v=20260918m"></script>
+<script src="./pilotage.js?v=20260918m"></script>
 <style>
 /* Charte alignée sur common.css (vert #1f6b3f, fond #f4f6f5, police
    système). Seules les valeurs absentes de common.css sont ajoutées ici,
@@ -365,6 +365,71 @@ body { overflow: hidden; }
 .pil-quick-input:focus-visible { outline: 2px solid var(--sequoia-green); outline-offset: -1px; }
 .pil-quick-hint { flex-basis: 100%; font-family: var(--pil-mono); font-size: 10.5px; color: var(--text-muted); min-height: 14px; }
 .pil-act-filters { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+/* ---- Kanban des actions ---- */
+.pil-kfiltres { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.pil-kfiltres-note { font-size: 11.5px; color: var(--text-muted); }
+.pil-kgroupe { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
+.pil-kgroupe select {
+  border: 1px solid var(--pil-border); border-radius: 8px;
+  background: var(--pil-surface); padding: 4px 7px;
+  font-size: 12px; font-family: inherit; color: var(--text);
+}
+.pil-kanban {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(250px, 1fr);
+  gap: 12px;
+  align-items: start;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+.pil-kcol { background: var(--pil-surface-2); border-radius: 12px; min-width: 0; }
+.pil-kcol-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 11px 13px 7px;
+}
+.pil-kcol-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+.pil-kcol-count {
+  margin-left: auto; font-size: 11px; font-weight: 700;
+  background: var(--pil-surface); border-radius: 999px; padding: 1px 8px;
+}
+.pil-kcol-body { display: flex; flex-direction: column; gap: 8px; padding: 0 9px 11px; min-height: 60px; }
+.pil-kcol-body.survol { background: var(--sequoia-green-light); border-radius: 10px; }
+.pil-kcol-vide { font-size: 12px; color: var(--text-muted); font-style: italic; padding: 8px 4px; }
+/* Une carte par action : ce qu'il faut pour decider, rien de plus. */
+.pil-kc {
+  background: var(--pil-surface);
+  border: 1px solid var(--pil-border);
+  border-radius: 10px;
+  padding: 9px 11px;
+  cursor: grab;
+}
+.pil-kc.drag { opacity: 0.4; }
+.pil-kc.done .pil-kc-title { text-decoration: line-through; color: var(--text-muted); }
+.pil-kc-title { font-size: 13px; font-weight: 600; line-height: 1.35; }
+.pil-kc-urgent {
+  display: inline-block; margin-right: 6px;
+  background: var(--danger); color: #fff;
+  border-radius: 5px; padding: 0 5px;
+  font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em;
+  vertical-align: 1px;
+}
+.pil-kc-meta {
+  font-size: 11.5px; color: var(--text-muted); margin-top: 3px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pil-kc-foot { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.pil-kc-due { font-size: 11px; color: var(--text-muted); }
+.pil-kc-due.retard { color: var(--danger); font-weight: 700; }
+.pil-kc-due.aujourdhui { color: var(--sequoia-green-dark); font-weight: 700; }
+.pil-kc-move {
+  margin-left: auto; max-width: 128px;
+  border: 1px solid var(--pil-border); border-radius: 7px;
+  background: var(--pil-surface); font-size: 11px; padding: 2px 4px;
+  font-family: inherit;
+}
+.pil-kc-source { margin-left: auto; font-size: 10.5px; color: var(--text-muted); font-style: italic; }
+
 .pil-chip-btn {
   font: inherit; font-size: 12px; padding: 4px 10px; border-radius: 20px;
   border: 1px solid var(--border); background: var(--card-bg); color: var(--text); cursor: pointer;
@@ -455,6 +520,9 @@ body { overflow: hidden; }
       <button type="button" class="pil-nav-item" data-view="actions">
         <span>Mes actions</span><span class="pil-nav-count" id="nav-actions"></span>
       </button>
+      <button type="button" class="pil-nav-item" data-view="kanban">
+        <span>Tableau</span>
+      </button>
     </nav>
     <div class="pil-user">
       <span class="pil-avatar" id="user-initials">MB</span>
@@ -484,6 +552,7 @@ body { overflow: hidden; }
         <div id="proj-board"></div>
       </section>
       <section class="pil-view" id="view-actions" hidden aria-labelledby="act-title"></section>
+      <section class="pil-view" id="view-kanban" hidden aria-labelledby="kanban-title"></section>
     </div>
   </div>
 </div>
@@ -577,6 +646,7 @@ body { overflow: hidden; }
         // Toutes optionnelles : chaque colonne allume sa fonction le jour où
         // elle existe, et reste silencieuse sinon.
         Priorite: ['Priorite', 'Priorité', 'Importance'],
+        Statut: ['Statut', 'Status', 'Etat', 'État', 'Colonne', 'Avancement'],
         Duree: ['Duree_min', 'Duree', 'Durée', 'Durée (min)', 'Duree_minutes', 'Estimation'],
         Debut: ['Debut', 'Début', 'Date_debut', 'A_partir_de', 'Differee'],
         Recurrence: ['Recurrence', 'Récurrence', 'Repetition', 'Répétition']
@@ -602,6 +672,10 @@ body { overflow: hidden; }
   // deux réunions) et ligne au curseur clavier.
   let actionsCourtes = false;
   let voirTerminees = false; // l'historique des actions faites, replié par défaut
+  let statutActionChoices = [];   // colonnes du kanban, telles que le document les nomme
+  let kanbanPartenaires = [];     // filtre par partenaire
+  let kanbanUrgentes = false;     // n'afficher que les actions prioritaires
+  let kanbanGroupe = 'statut';    // statut | partenaire | priorite | echeance
   let actionCursor = null;
   // Filtres du Kanban, chacun un choix multiple. Vides = tout passe.
   const projectFilters = { dispositif: [], partenaire: [], equipe: [] };
@@ -668,6 +742,7 @@ body { overflow: hidden; }
     const results = await Promise.all(keys.map(resolveRelated));
     keys.forEach((k, i) => { related[k] = results[i]; });
     await loadOppChoices();
+    await loadActionChoices();
   }
 
   // Toutes les structures du document, pas seulement celles que la section
@@ -687,6 +762,29 @@ body { overflow: hidden; }
   // Les étapes du Kanban et les dispositifs du formulaire viennent des choix
   // réels des colonnes Statut et Type : rien n'est figé dans le widget, et le
   // jour où les étapes changent dans Grist, les colonnes suivent.
+  // Les colonnes du kanban viennent de la colonne Statut de la table des
+  // actions, dans l'ordre du document. Table facultative, donc chargement à
+  // part : l'absence d'opportunités ne doit pas priver le kanban de ses
+  // colonnes, et l'inverse non plus.
+  async function loadActionChoices() {
+    statutActionChoices = [];
+    const act = related.actions;
+    if (!act || !act.tableId || !act.cols.Statut) return;
+    try {
+      const { token, baseUrl } = await grist.docApi.getAccessToken({ readOnly: true });
+      const res = await fetch(baseUrl + '/tables/' + encodeURIComponent(act.tableId) +
+        '/columns?auth=' + encodeURIComponent(token));
+      if (!res.ok) return;
+      const colonnes = (await res.json()).columns || [];
+      const brut = colonnes.find(c => c.id === act.cols.Statut);
+      const wo = brut && brut.fields && brut.fields.widgetOptions;
+      if (!wo) return;
+      statutActionChoices = (JSON.parse(wo).choices || []).filter(Boolean).map(String);
+    } catch (err) {
+      console.error('loadActionChoices', err);
+    }
+  }
+
   async function loadOppChoices() {
     stageChoices = [];
     typeChoices = [];
@@ -894,6 +992,7 @@ body { overflow: hidden; }
         duree: Number(r[act.cols.Duree]) || null,
         start: r[act.cols.Debut] ?? null,
         recurrence: txt(formatValue(r[act.cols.Recurrence])),
+        statut: txt(formatValue(r[act.cols.Statut])),
         origin: (options.origin && options.origin['act:' + r.id]) || 'manuelle'
       }, contexte(project, partner, !direct));
     }) : [];
@@ -922,6 +1021,7 @@ body { overflow: hidden; }
           duree: null,
           start: null,
           recurrence: '',
+          statut: '',
           origin: (options.origin && options.origin[key]) || 'manuelle'
         }, contexte(project, partner, !direct));
       });
@@ -1476,12 +1576,212 @@ body { overflow: hidden; }
   }
 
   // ---------------------------------------------------------------------
+  // Rendu — Kanban des actions
+  //
+  // La liste dit quoi faire d'abord ; le kanban dit où en est chaque chose.
+  // Les colonnes viennent de la colonne Statut de la table des actions, dans
+  // l'ordre du document. Sans cette colonne, deux colonnes suffisent : à faire
+  // et terminé, portées par la case « Fait » qui existe déjà.
+  // ---------------------------------------------------------------------
+
+  const KANBAN_DEFAUT = ['À faire', 'Terminé'];
+
+  const KANBAN_GROUPES = [
+    { key: 'statut', label: 'Statut' },
+    { key: 'partenaire', label: 'Partenaire' },
+    { key: 'priorite', label: 'Priorité' },
+    { key: 'echeance', label: 'Échéance' }
+  ];
+
+  function kanbanColonnes(actions) {
+    if (kanbanGroupe === 'partenaire') {
+      const noms = Array.from(new Set((actions || []).map(a => a.partnerName || 'Interne')));
+      return noms.sort((a, b) => a.localeCompare(b, 'fr'));
+    }
+    if (kanbanGroupe === 'priorite') return PILOTAGE_PRIORITES.map(p => p.label);
+    if (kanbanGroupe === 'echeance') return PILOTAGE_URGENCES.map(u => u.label);
+    return statutActionChoices.length ? statutActionChoices : KANBAN_DEFAUT;
+  }
+
+  // La colonne d'arrivée : celle qui solde l'action. On la reconnaît à son
+  // nom, à défaut c'est la dernière — un kanban se lit de gauche à droite.
+  function estColonneFinale(label, colonnes) {
+    const k = normalizeKey(label);
+    if (/trait|fait|termin|done|fini|clos/.test(k)) return true;
+    return colonnes.indexOf(label) === colonnes.length - 1 &&
+      !colonnes.some(c => /trait|fait|termin|done|fini|clos/.test(normalizeKey(c)));
+  }
+
+  // Où placer une action : son statut s'il est renseigné et connu, sinon
+  // « terminé » si elle est cochée, sinon la première colonne.
+  function colonneDe(a, colonnes, now) {
+    if (kanbanGroupe === 'partenaire') return a.partnerName || 'Interne';
+    if (kanbanGroupe === 'priorite') return ((prioriteOf(a.priorite) || {}).label) || 'Normale';
+    if (kanbanGroupe === 'echeance') {
+      const u = PILOTAGE_URGENCES.find(x => x.key === urgenceOfAction(a, now === undefined ? today() : now));
+      return (u || PILOTAGE_URGENCES[PILOTAGE_URGENCES.length - 1]).label;
+    }
+    const statut = (a.statut || '').trim();
+    const trouve = colonnes.find(c => normalizeKey(c) === normalizeKey(statut));
+    if (trouve) return trouve;
+    if (a.done) return colonnes.find(c => estColonneFinale(c, colonnes)) || colonnes[colonnes.length - 1];
+    return colonnes[0];
+  }
+
+  function actionsDuKanban() {
+    return model.actions
+      .filter(a => a.source === 'table' || !a.done)
+      .filter(a => matchesQuery([a.label, a.partnerName, a.projectTitle]))
+      .filter(a => !kanbanPartenaires.length || kanbanPartenaires.includes(a.partnerName))
+      .filter(a => !kanbanUrgentes || (prioriteOf(a.priorite) || {}).key === 'haute');
+  }
+
+  function renderKanban() {
+    const actions = actionsDuKanban();
+    const now = today();
+    const colonnes = kanbanColonnes(actions);
+    // Déplacer une carte n'a de sens qu'entre des états : on ne change pas le
+    // partenaire d'une action en la glissant, et son échéance encore moins.
+    const deplacable = kanbanGroupe === 'statut';
+    const act = related.actions || { cols: {} };
+    const partenaires = Array.from(new Set(model.actions.map(a => a.partnerName).filter(Boolean)))
+      .sort((a, b) => a.localeCompare(b, 'fr'));
+
+    const carte = (a) => {
+      const prio = prioriteOf(a.priorite);
+      const urgence = urgenceOf(a.due, now);
+      const deTable = a.source === 'table';
+      return '<article class="pil-kc' + (a.done ? ' done' : '') + '" draggable="' + (deTable && deplacable ? 'true' : 'false') +
+          '" data-carte="' + H(a.id) + '">' +
+        '<div class="pil-kc-title">' +
+          (prio && prio.key === 'haute' ? '<span class="pil-kc-urgent">urgent</span>' : '') +
+          H(a.label) + '</div>' +
+        '<div class="pil-kc-meta">' + H(a.partnerName || 'Interne') +
+          (a.projectTitle ? ' · ' + H(a.projectTitle) : '') + '</div>' +
+        '<div class="pil-kc-foot">' +
+          '<span class="pil-kc-due ' + urgence + '">' + H(dueLabel(a.due, now)) + '</span>' +
+          (deTable && deplacable
+            ? '<select class="pil-kc-move" data-move="' + H(a.id) + '" aria-label="Déplacer « ' + H(a.label) + ' »">' +
+                colonnes.map(c => '<option' + (c === colonneDe(a, colonnes, now) ? ' selected' : '') + '>' + H(c) + '</option>').join('') +
+              '</select>'
+            : (deTable ? '' :
+              '<span class="pil-kc-source" title="Cette action vient d’un échange : reprenez-la dans vos actions pour la déplacer">issue d’un échange</span>')) +
+        '</div>' +
+      '</article>';
+    };
+
+    const colonnesHtml = colonnes.map(c => {
+      const dedans = actions.filter(a => colonneDe(a, colonnes, now) === c);
+      return '<section class="pil-kcol" data-colonne="' + H(c) + '">' +
+        '<div class="pil-kcol-head"><span class="pil-kcol-title">' + H(c) + '</span>' +
+          '<span class="pil-kcol-count">' + dedans.length + '</span></div>' +
+        '<div class="pil-kcol-body"' + (deplacable ? ' data-drop="' + H(c) + '"' : '') + '>' +
+          (dedans.length ? dedans.map(carte).join('') : '<div class="pil-kcol-vide">Rien ici</div>') +
+        '</div>' +
+      '</section>';
+    }).join('');
+
+    const filtres =
+      '<div class="pil-kfiltres">' +
+        '<label class="pil-kgroupe">Grouper par ' +
+          '<select id="kanban-groupe">' +
+            KANBAN_GROUPES.map(g => '<option value="' + g.key + '"' +
+              (g.key === kanbanGroupe ? ' selected' : '') + '>' + H(g.label) + '</option>').join('') +
+          '</select>' +
+        '</label>' +
+        msFilterMarkup('ms-kpartenaire', 'Partenaire', 'Tous les partenaires') +
+        '<button type="button" class="pil-chip-btn' + (kanbanUrgentes ? ' on' : '') + '" id="flt-urgentes"' +
+          ' aria-pressed="' + (kanbanUrgentes ? 'true' : 'false') + '">Urgentes seulement</button>' +
+        // La note suit ce qui décide vraiment des colonnes : les choix de la
+        // colonne. Une colonne Statut présente mais sans choix définis ne
+        // donne rien non plus.
+        (statutActionChoices.length || kanbanGroupe !== 'statut' ? '' :
+          '<span class="pil-kfiltres-note">Deux colonnes par défaut. Pour les vôtres ' +
+          '(à faire, en cours, traité), donnez à la table des actions une colonne ' +
+          '« Statut » de type Choix, avec ces valeurs.</span>') +
+      '</div>';
+
+    return '<div class="pil-view-head"><div>' +
+        '<h1 class="pil-h1" id="kanban-title">Tableau des actions</h1>' +
+        '<p class="pil-sub">' + (statusMsg ? '<span class="pil-status">' + H(statusMsg) + '</span>' : '') +
+          actions.length + ' action' + (actions.length > 1 ? 's' : '') + ' affichée' + (actions.length > 1 ? 's' : '') +
+          ' · glissez une carte d’une colonne à l’autre</p>' +
+      '</div>' +
+      '<button type="button" class="pil-btn primary" id="btn-action-kanban">+ Nouvelle action</button>' +
+      '</div>' + filtres +
+      '<div class="pil-kanban">' + colonnesHtml + '</div>' +
+      '<div class="pil-kdata" hidden data-partenaires="' + H(partenaires.join('|')) + '"></div>';
+  }
+
+  // Déplacer une carte : le statut suit la colonne, et la case « Fait » suit
+  // le statut — une action dans « traité » qui resterait à cocher se
+  // retrouverait dans la liste des choses à faire.
+  async function deplacerAction(id, colonne) {
+    const act = related.actions;
+    const a = model.actions.find(x => x.id === id);
+    if (!a || a.source !== 'table' || !act.tableId) return;
+    const colonnes = kanbanColonnes();
+    const finale = estColonneFinale(colonne, colonnes);
+    const fields = {};
+    if (act.cols.Statut) fields[act.cols.Statut] = colonne;
+    if (act.cols.Fait) fields[act.cols.Fait] = finale;
+    if (act.cols.FaitLe) fields[act.cols.FaitLe] = finale ? inDays(0) : null;
+    if (!Object.keys(fields).length) return;
+    try {
+      setStatus('Déplacement…');
+      await updateRecord(act.tableId, a.rowId, fields);
+      await refresh();
+      setStatus('Action déplacée ✓');
+    } catch (err) { console.error(err); setStatus('Erreur d’enregistrement'); }
+  }
+
+  function bindKanban() {
+    const hote = el('view-kanban');
+    const data = hote.querySelector('.pil-kdata');
+    const partenaires = data && data.dataset.partenaires ? data.dataset.partenaires.split('|').filter(Boolean) : [];
+    const ms = createMultiSelect(hote.querySelector('#ms-kpartenaire'), {
+      values: partenaires,
+      selected: kanbanPartenaires,
+      labelAll: 'Tous les partenaires',
+      onChange: (choisis) => { kanbanPartenaires = choisis; render(); }
+    });
+    if (!ms) return;
+
+    const groupe = hote.querySelector('#kanban-groupe');
+    if (groupe) groupe.addEventListener('change', () => { kanbanGroupe = groupe.value; render(); });
+
+    hote.querySelectorAll('[data-move]').forEach(sel => {
+      sel.addEventListener('change', () => deplacerAction(sel.dataset.move, sel.value));
+    });
+
+    // Glisser-déposer : le sélecteur de chaque carte reste le chemin sûr
+    // (tactile, clavier), celui-ci est le raccourci à la souris.
+    hote.querySelectorAll('[data-carte]').forEach(carte => {
+      carte.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData('text/plain', carte.dataset.carte);
+        carte.classList.add('drag');
+      });
+      carte.addEventListener('dragend', () => carte.classList.remove('drag'));
+    });
+    hote.querySelectorAll('[data-drop]').forEach(zone => {
+      zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('survol'); });
+      zone.addEventListener('dragleave', () => zone.classList.remove('survol'));
+      zone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        zone.classList.remove('survol');
+        const id = e.dataTransfer.getData('text/plain');
+        if (id) deplacerAction(id, zone.dataset.drop);
+      });
+    });
+  }
+
+  // ---------------------------------------------------------------------
   // Rendu global et navigation
   // ---------------------------------------------------------------------
-  const VIEWS = { dashboard: renderDashboard, projets: null, actions: renderActions };
+  const VIEWS = { dashboard: renderDashboard, projets: null, actions: renderActions, kanban: renderKanban };
   // ?vue=kanban ou ?vue=actions : la même URL sert aussi de widget dédié à
   // une seule vue, barre latérale masquée.
-  const VIEW_ALIASES = { kanban: 'projets', projects: 'projets', todo: 'actions', actions: 'actions' };
+  const VIEW_ALIASES = { projects: 'projets', todo: 'actions', actions: 'actions', tableau: 'kanban' };
   const singleView = VIEW_ALIASES[view] || ((view in VIEWS) ? view : null);
   const locked = !!new URLSearchParams(location.search).get('vue');
   if (locked) {
@@ -1499,6 +1799,7 @@ body { overflow: hidden; }
       renderProjets();
     } else {
       el('view-' + view).innerHTML = VIEWS[view]();
+      if (view === 'kanban') bindKanban();
     }
     document.querySelectorAll('.pil-nav-item[data-view]').forEach(b => {
       const active = b.dataset.view === view;
@@ -2427,6 +2728,11 @@ body { overflow: hidden; }
       voirTerminees = !voirTerminees;
       return render();
     }
+    if (e.target.closest('#flt-urgentes')) {
+      kanbanUrgentes = !kanbanUrgentes;
+      return render();
+    }
+    if (e.target.closest('#btn-action-kanban')) return openActionModal();
     if (e.target.closest('#flt-courtes')) {
       actionsCourtes = !actionsCourtes;
       return render();
