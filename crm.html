@@ -6,8 +6,8 @@
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-<link rel="stylesheet" href="./common.css?v=20260918j">
-<script src="./common.js?v=20260918j"></script>
+<link rel="stylesheet" href="./common.css?v=20260918k">
+<script src="./common.js?v=20260918k"></script>
 <style>
   /* ---------- Sidebar ---------- */
   .filter-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
@@ -454,6 +454,20 @@
   .pj-dropzone.dragover { border-color: var(--sequoia-green); background: var(--sequoia-green-light); }
   .contacts-toggle { margin: 10px 16px; }
 
+  /* Fiche d'un contact : ses structures sont des boutons, on y va d'un clic. */
+  .struct-pill {
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--sequoia-green-dark);
+    border-radius: 10px;
+    padding: 2px 10px;
+    font-size: 11.5px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .struct-pill:hover { border-color: var(--sequoia-green); background: var(--sequoia-green-light); }
+  .head-tel { font-size: 12.5px; color: var(--text-muted); }
+
   /* ---- Actions d'une structure ---- */
   .act-row {
     display: flex; align-items: center; gap: 10px;
@@ -703,6 +717,7 @@
   let interactionOuverte = null; // échange dont l'aperçu est déplié dans la frise
   let actionsFaitesVisibles = false; // historique des actions, replié par défaut
   let contactsTousVisibles = false;  // au-delà de six contacts, le reste est replié
+  let contactOuvert = null;          // contact dont la fiche est affichée
   let vue = 'fiche';             // 'fiche' ou 'annuaire'
   let annuaireSel = new Set();   // contacts cochés dans l'annuaire
   // Par défaut, tout sauf les prospects — comme les autres widgets.
@@ -1175,6 +1190,7 @@
     // L'aperçu déplié appartient à la fiche ouverte, pas à la suivante.
     if (!current || current.id !== s.id) { interactionOuverte = null; contactsTousVisibles = false; }
     vue = 'fiche';
+    contactOuvert = null;
     current = s;
     grist.setCursorPos({ rowId: s.id }).catch(() => {});
     render();
@@ -1322,10 +1338,7 @@
     // Ouvrir la fiche du contact depuis l'annuaire
     document.querySelectorAll('.ann-nom').forEach(cell => {
       cell.addEventListener('click', () => {
-        const id = Number(cell.closest('[data-ann]').dataset.ann);
-        const c = rel('contacts').records.find(x => x.id === id);
-        const st = structures.find(x => contactsOf(x.id).some(y => y.id === id));
-        if (c && st) openContactModal(c, st);
+        ouvrirContact(Number(cell.closest('[data-ann]').dataset.ann));
       });
     });
     bindCopyButtons();
@@ -1341,9 +1354,213 @@
     });
   }
 
+  // ---------------------------------------------------------------------
+  // Fiche d'un contact
+  //
+  // Un contact traverse le CRM : il est sur des échanges, des opportunités,
+  // des actions, et parfois dans plusieurs structures. Jusqu'ici on ne pouvait
+  // que l'éditer depuis la fiche d'une structure, sans jamais voir ce qui le
+  // concerne. Les rattachements sont trouvés par les colonnes qui pointent
+  // vers la table Contacts, relevées dans les métadonnées : aucune liste de
+  // noms de colonnes n'est figée ici.
+  // ---------------------------------------------------------------------
+
+  function recordsForContact(key, contactId) {
+    const colonnes = contactColumnsOf(key);
+    if (!colonnes.length || contactId == null) return [];
+    return rel(key).records.filter(r =>
+      colonnes.some(col => refIdsFromValue(r[col]).includes(contactId)));
+  }
+
+  // Les structures auxquelles le contact appartient, via les colonnes de la
+  // table Contacts qui pointent vers Structures.
+  function structuresOfContact(contactId) {
+    const c = rel('contacts');
+    const rec = c.records.find(x => x.id === contactId);
+    if (!rec) return [];
+    const ids = new Set();
+    (c.linkCols || []).forEach(col => refIdsFromValue(rec[col]).forEach(id => ids.add(id)));
+    return Array.from(ids).map(id => structures.find(x => x.id === id)).filter(Boolean);
+  }
+
+  function ouvrirContact(id) {
+    contactOuvert = id;
+    vue = 'contact';
+    render();
+  }
+
+  function contactFicheHtml() {
+    const c = rel('contacts').records.find(x => x.id === contactOuvert);
+    if (!c) return '<div class="placeholder">Ce contact n’existe plus.</div>';
+    const cols = rel('contacts').cols;
+    const val = (role) => (cols[role] ? formatValue(c[cols[role]]) : '');
+    const nom = contactName(c);
+    const adresses = emailsOfContact(c);
+    const struct = structuresOfContact(c.id);
+    const iCols = rel('interactions').cols;
+    const oCols = rel('opportunites').cols;
+    const aCols = rel('actions').cols;
+
+    const interactions = recordsForContact('interactions', c.id)
+      .sort((x, y) => (Number(y[iCols.Date]) || 0) - (Number(x[iCols.Date]) || 0));
+    const opportunites = recordsForContact('opportunites', c.id);
+    const actions = recordsForContact('actions', c.id);
+    const actionsOuvertes = actions.filter(x => !actionEstFaite(x));
+    const dernier = interactions.length && iCols.Date ? Number(interactions[0][iCols.Date]) || null : null;
+
+    const meta = [val('Fonction')].filter(Boolean);
+
+    const entete =
+      '<div class="fiche-head">' +
+        '<div class="logo-frame">' + escapeHtml(initials(nom)) + '</div>' +
+        '<div class="head-text">' +
+          '<h1>' + escapeHtml(nom) +
+            (cols.ContactPrincipal && c[cols.ContactPrincipal]
+              ? ' <span class="star" title="Contact principal">★</span>' : '') + '</h1>' +
+          '<div class="head-meta">' + escapeHtml(meta.join(' · ')) + '</div>' +
+          '<div class="head-pills">' +
+            struct.map(st => '<button type="button" class="struct-pill" data-voir-structure="' + st.id + '">' +
+              escapeHtml(structField(st, 'Nom') || 'Sans nom') + '</button>').join('') +
+            (adresses.length
+              ? '<span class="site-link">' + escapeHtml(adresses.join(', ')) + '</span>' +
+                '<button class="copy-btn" data-copy-email="' + escapeHtml(adresses.join('; ')) + '"' +
+                ' title="Copier">⧉</button>'
+              : '') +
+            (val('Telephone') ? '<span class="head-tel">' + escapeHtml(val('Telephone')) + '</span>' : '') +
+            linkedinLink(c) +
+          '</div>' +
+        '</div>' +
+        '<div class="head-actions">' +
+          '<button class="btn-ghost" id="btn-retour-structure">← Retour</button>' +
+          '<button class="btn-primary" id="btn-edit-contact">✏️ Modifier</button>' +
+        '</div>' +
+      '</div>';
+
+    const kpis =
+      '<div class="kpi-row">' +
+        kpiHtml('Dernier échange', dernier ? escapeHtml(formatDaysSince(dernier)) : '—',
+          dernier ? formatDate(dernier) : 'Aucun échange') +
+        kpiHtml('Échanges', String(interactions.length), 'où il figure') +
+        kpiHtml('Opportunités', String(opportunites.length), 'où il est contact') +
+        kpiHtml('Actions', String(actionsOuvertes.length), 'en cours', actionsOuvertes.length > 0) +
+      '</div>';
+
+    const oppsHtml = opportunites.length
+      ? opportunites.map(o => {
+          const statut = oCols.Statut ? formatValue(o[oCols.Statut]) : '';
+          return '<div class="opp-row" data-opp="' + o.id + '">' +
+            '<div class="o-text">' +
+              '<div class="o-title">' + escapeHtml(oCols.Sujet ? formatValue(o[oCols.Sujet]) || 'Sans sujet' : 'Sans sujet') + '</div>' +
+              (statut ? '<span class="status-pill" style="background:' + statusColor(statut) +
+                ';color:' + statusTextColor(statut) + '">' + escapeHtml(statut) + '</span>' : '') +
+              (statut ? ' ' + statusProgressMarkup(statut, statutChoices, { label: false }) : '') +
+            '</div>' +
+            '<div class="o-amount">' + escapeHtml(formatMontantCompact(oCols.Montant ? o[oCols.Montant] : null)) + '</div>' +
+          '</div>';
+        }).join('')
+      : '<div class="panel-empty">Aucune opportunité.</div>';
+
+    const actionsHtml = actions.length
+      ? actions.map(x => {
+          const due = aCols.Echeance ? x[aCols.Echeance] : null;
+          const retard = due && daysSince(due) > 0 && !actionEstFaite(x);
+          return '<div class="act-row' + (actionEstFaite(x) ? ' fait' : '') + '">' +
+            '<input type="checkbox" data-action-done="' + x.id + '"' +
+              (actionEstFaite(x) ? ' checked' : '') + (aCols.Fait ? '' : ' disabled') + '>' +
+            '<div class="act-text"><div class="act-label">' +
+              escapeHtml(aCols.Intitule ? formatValue(x[aCols.Intitule]) : 'Sans intitulé') + '</div></div>' +
+            (due ? '<span class="act-due' + (retard ? ' retard' : '') + '">' +
+              escapeHtml(formatDate(due)) + '</span>' : '') +
+          '</div>';
+        }).join('')
+      : '<div class="panel-empty">Aucune action.</div>';
+
+    const echangesHtml = interactions.length
+      ? '<div class="timeline">' + interactions.map(i => {
+          const titre = [iCols.Type && formatValue(i[iCols.Type]), iCols.Objet && formatValue(i[iCols.Objet])]
+            .filter(Boolean).join(' · ');
+          const avec = structuresOfInteraction(i);
+          return '<div class="tl-item" data-voir-interaction="' + i.id + '">' +
+            '<div class="tl-when">' + escapeHtml(iCols.Date ? formatDate(i[iCols.Date]) : '') + '</div>' +
+            '<div class="tl-body">' +
+              '<div class="tl-title">' + escapeHtml(titre || 'Sans objet') + '</div>' +
+              (avec ? '<div class="tl-meta">' + escapeHtml(avec) + '</div>' : '') +
+            '</div>' +
+          '</div>';
+        }).join('') + '</div>'
+      : '<div class="panel-empty">Aucun échange.</div>';
+
+    return '<div class="crm-inner">' + entete + kpis +
+      '<div class="crm-grid">' +
+        '<div class="crm-col">' +
+          panelShell('Opportunités', opportunites.length, null, null, oppsHtml) +
+          (rel('actions').tableId ? panelShell('Actions', actionsOuvertes.length, null, null, actionsHtml) : '') +
+        '</div>' +
+        '<div class="crm-col">' +
+          panelShell('Échanges', interactions.length, null, null, echangesHtml) +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  // Les structures d'un échange, pour situer une ligne de la frise d'un
+  // contact : sur sa fiche, l'échange n'est plus vu depuis une structure.
+  function structuresOfInteraction(i) {
+    const r = rel('interactions');
+    const ids = new Set();
+    (r.linkCols || []).forEach(col => refIdsFromValue(i[col]).forEach(id => ids.add(id)));
+    return Array.from(ids)
+      .map(id => { const st = structures.find(x => x.id === id); return st ? structField(st, 'Nom') : ''; })
+      .filter(Boolean).join(', ');
+  }
+
+  function bindContactFicheEvents() {
+    const c = rel('contacts').records.find(x => x.id === contactOuvert);
+    const retour = document.getElementById('btn-retour-structure');
+    if (retour) retour.addEventListener('click', () => {
+      vue = 'fiche';
+      if (current) render(); else { const st = structuresOfContact(contactOuvert)[0]; if (st) selectStructure(st); else render(); }
+    });
+    const modifier = document.getElementById('btn-edit-contact');
+    if (modifier && c) modifier.addEventListener('click', () => {
+      openContactModal(c, structuresOfContact(c.id)[0] || current);
+    });
+    document.querySelectorAll('[data-voir-structure]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const st = structures.find(x => x.id === Number(btn.dataset.voirStructure));
+        if (st) selectStructure(st);
+      });
+    });
+    document.querySelectorAll('[data-voir-interaction]').forEach(el => {
+      el.addEventListener('click', () => {
+        const i = rel('interactions').records.find(x => x.id === Number(el.dataset.voirInteraction));
+        const st = structuresOfContact(contactOuvert)[0] || current;
+        if (i && st) openInteractionModal(i, st);
+      });
+    });
+    document.querySelectorAll('[data-opp]').forEach(el => {
+      el.addEventListener('click', () => {
+        const o = rel('opportunites').records.find(x => x.id === Number(el.dataset.opp));
+        const st = structuresOfContact(contactOuvert)[0] || current;
+        if (o && st) openOpportuniteModal(o, st);
+      });
+    });
+    document.querySelectorAll('[data-action-done]').forEach(cb => {
+      cb.addEventListener('change', async () => {
+        const a = rel('actions');
+        try {
+          await updateRecord(a.tableId, Number(cb.dataset.actionDone), { [a.cols.Fait]: cb.checked });
+          await refreshRelated(true);
+        } catch (err) { console.error(err); toast('Erreur d’enregistrement', true); }
+      });
+    });
+    bindCopyButtons();
+  }
+
   function renderMain() {
     const main = document.getElementById('main');
     if (vue === 'annuaire') { main.innerHTML = annuaireHtml(); bindAnnuaireEvents(); return; }
+    if (vue === 'contact') { main.innerHTML = contactFicheHtml(); bindContactFicheEvents(); return; }
     if (!current) {
       main.innerHTML = '<div class="placeholder">Sélectionnez une structure dans la liste</div>';
       return;
@@ -1716,11 +1933,13 @@
       copierAdresses(emailsOfStructure(s.id), structField(s, 'Nom')));
     bindCopyButtons();
 
+    // Un clic sur un contact ouvre sa fiche — comme pour une structure, le
+    // formulaire d'édition est derrière le bouton « Modifier » de la fiche.
+    // Les boutons de la ligne (copie, LinkedIn) gardent leur propre geste.
     document.querySelectorAll('[data-contact]').forEach(el => {
       el.addEventListener('click', (e) => {
-        if (e.target.closest('.li-btn')) return; // le lien s'ouvre pour lui-meme
-        const rec = rel('contacts').records.find(c => c.id === Number(el.dataset.contact));
-        if (rec) openContactModal(rec, s);
+        if (e.target.closest('.li-btn') || e.target.closest('.copy-btn')) return;
+        ouvrirContact(Number(el.dataset.contact));
       });
     });
     document.querySelectorAll('[data-opp]').forEach(el => {
