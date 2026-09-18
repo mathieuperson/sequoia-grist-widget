@@ -6,8 +6,8 @@
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-<link rel="stylesheet" href="./common.css?v=20260918d">
-<script src="./common.js?v=20260918d"></script>
+<link rel="stylesheet" href="./common.css?v=20260918e">
+<script src="./common.js?v=20260918e"></script>
 <style>
   /* ---------- Sidebar ---------- */
   .filter-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
@@ -194,6 +194,74 @@
     padding: 2px 9px; border-radius: 20px;
     font-size: 11px; font-weight: 600; color: #fff;
   }
+
+  /* ---- Copie d'adresses ---- */
+  /* Discret tant qu'on ne survole pas la ligne : la fiche n'a pas a etre
+     constellee de boutons, mais l'adresse doit partir en un clic. */
+  .copy-btn {
+    border: 1px solid transparent;
+    background: none;
+    color: var(--text-muted);
+    border-radius: 7px;
+    padding: 3px 7px;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    opacity: 0.35;
+    transition: opacity 0.12s ease;
+  }
+  .contact-row:hover .copy-btn, .ann-row:hover .copy-btn, .copy-btn:focus { opacity: 1; }
+  .copy-btn:hover {
+    opacity: 1;
+    color: var(--sequoia-green-dark);
+    border-color: var(--sequoia-green);
+    background: var(--sequoia-green-light);
+  }
+  .btn-ghost {
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+    color: var(--sequoia-green-dark);
+    border-radius: 8px;
+    padding: 4px 10px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .btn-ghost:hover { border-color: var(--sequoia-green); background: var(--sequoia-green-light); }
+
+  /* ---- Annuaire ---- */
+  .annuaire {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .annuaire-head {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border);
+  }
+  .annuaire-head h2 { font-size: 17px; margin: 0 0 3px; }
+  .annuaire-sub { margin: 0; font-size: 12.5px; color: var(--text-muted); }
+  .annuaire-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .annuaire-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .annuaire-table th {
+    text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;
+    color: var(--text-muted); font-weight: 700;
+    padding: 8px 10px; border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; background: var(--card-bg);
+  }
+  .annuaire-table td { padding: 7px 10px; border-bottom: 1px solid var(--border); }
+  .annuaire-table tr:last-child td { border-bottom: none; }
+  .ann-row:hover { background: #f7faf8; }
+  .ann-check { width: 34px; }
+  .ann-check input { cursor: pointer; }
+  .ann-nom { font-weight: 600; cursor: pointer; }
+  .ann-nom:hover { color: var(--sequoia-green-dark); text-decoration: underline; }
+  .ann-mail { color: var(--text-muted); }
+  .ann-copie { width: 40px; text-align: right; }
+  .ann-sans-adresse { color: var(--text-muted); }
+  .ann-vide { color: var(--border); }
 
   /* ---- Timeline ---- */
   .timeline { padding: 4px 0; }
@@ -395,6 +463,7 @@
       </div>
       <div class="list-controls">
         <button class="filter-toggle-btn" id="btn-new-structure" type="button">+ Structure</button>
+        <button class="filter-toggle-btn" id="btn-annuaire" type="button">Annuaire</button>
         <button class="filter-toggle-btn" id="filter-toggle" type="button">Filtres ▾</button>
       </div>
       <div class="filter-panel" id="filter-panel" hidden>
@@ -530,6 +599,8 @@
   let structListCols = [];
   let structureAOuvrir = null; // structure créée ici, à ouvrir dès qu'elle arrive
   let interactionOuverte = null; // échange dont l'aperçu est déplié dans la frise
+  let vue = 'fiche';             // 'fiche' ou 'annuaire'
+  let annuaireSel = new Set();   // contacts cochés dans l'annuaire
   // Par défaut, tout sauf les prospects — comme les autres widgets.
   let filterMode = 'partenaires';
   let query = '';
@@ -883,10 +954,16 @@
     return haystack.includes(query);
   }
 
+  // Les structures retenues par les filtres de la barre laterale, dans l'ordre
+  // affiche. La liste et l'annuaire lisent la meme chose.
+  function structuresFiltrees() {
+    return structures.filter(matchesFilters)
+      .sort((a, b) => structField(a, 'Nom').localeCompare(structField(b, 'Nom'), 'fr'));
+  }
+
   function renderList() {
     const listEl = document.getElementById('list');
-    const visible = structures.filter(matchesFilters)
-      .sort((a, b) => structField(a, 'Nom').localeCompare(structField(b, 'Nom'), 'fr'));
+    const visible = structuresFiltrees();
 
     document.getElementById('list-count').textContent =
       visible.length + (visible.length > 1 ? ' structures' : ' structure');
@@ -965,6 +1042,7 @@
   function selectStructure(s) {
     // L'aperçu déplié appartient à la fiche ouverte, pas à la suivante.
     if (!current || current.id !== s.id) interactionOuverte = null;
+    vue = 'fiche';
     current = s;
     grist.setCursorPos({ rowId: s.id }).catch(() => {});
     render();
@@ -985,8 +1063,154 @@
     };
   }
 
+  // ---------------------------------------------------------------------
+  // Annuaire : les contacts des structures retenues par les filtres de la
+  // liste, a plat, pour en copier les adresses d'un bloc. Les filtres sont
+  // ceux de la barre laterale — type d'acteur, pilier, axe, recherche : une
+  // seule facon de filtrer dans le widget, et l'annuaire suit ce que la liste
+  // montre deja.
+  // ---------------------------------------------------------------------
+
+  function annuaireLignes() {
+    const cols = rel('contacts').cols;
+    const lignes = [];
+    structuresFiltrees().forEach(s => {
+      contactsOf(s.id).forEach(c => {
+        lignes.push({
+          id: c.id,
+          nom: contactName(c),
+          fonction: cols.Fonction ? formatValue(c[cols.Fonction]) : '',
+          structure: structField(s, 'Nom') || 'Sans nom',
+          adresses: emailsOfContact(c),
+          principal: !!(cols.ContactPrincipal && c[cols.ContactPrincipal])
+        });
+      });
+    });
+    // Un contact rattache a deux structures retenues apparaitrait deux fois :
+    // une seule ligne, mais qui nomme les deux.
+    const parId = new Map();
+    lignes.forEach(l => {
+      const deja = parId.get(l.id);
+      if (deja) deja.structure += ', ' + l.structure;
+      else parId.set(l.id, l);
+    });
+    return Array.from(parId.values())
+      .sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
+  }
+
+  function annuaireHtml() {
+    const lignes = annuaireLignes();
+    const avecAdresse = lignes.filter(l => l.adresses.length);
+    const coches = lignes.filter(l => annuaireSel.has(l.id) && l.adresses.length);
+    const cible = coches.length ? coches : avecAdresse;
+    // Compter les adresses et non les lignes : une cellule peut en porter deux,
+    // et le bouton doit annoncer ce qui partira vraiment.
+    const nbAdresses = new Set(cible.flatMap(l => l.adresses)).size;
+    const critères = [
+      filterMode === 'partenaires' ? 'partenaires' : (filterMode === 'tous' ? null : filterMode),
+      activeFilters.type, activeFilters.pilier, activeFilters.axe,
+      query ? '« ' + query + ' »' : null
+    ].filter(Boolean);
+
+    const corps = lignes.length === 0
+      ? '<div class="panel-empty">Aucun contact pour ces filtres.</div>'
+      : '<table class="annuaire-table"><thead><tr>' +
+          '<th class="ann-check"><input type="checkbox" id="ann-tout" title="Tout cocher"></th>' +
+          '<th>Contact</th><th>Fonction</th><th>Structure</th><th>Adresse</th><th></th>' +
+        '</tr></thead><tbody>' +
+        lignes.map(l =>
+          '<tr class="ann-row' + (l.adresses.length ? '' : ' ann-sans-adresse') + '" data-ann="' + l.id + '">' +
+            '<td class="ann-check"><input type="checkbox" data-ann-check="' + l.id + '"' +
+              (annuaireSel.has(l.id) ? ' checked' : '') + (l.adresses.length ? '' : ' disabled') + '></td>' +
+            '<td class="ann-nom">' + escapeHtml(l.nom) +
+              (l.principal ? ' <span class="star" title="Contact principal">★</span>' : '') + '</td>' +
+            '<td>' + escapeHtml(l.fonction) + '</td>' +
+            '<td>' + escapeHtml(l.structure) + '</td>' +
+            '<td class="ann-mail">' + (l.adresses.length
+              ? escapeHtml(l.adresses.join(', '))
+              : '<span class="ann-vide">—</span>') + '</td>' +
+            '<td class="ann-copie">' + (l.adresses.length
+              ? '<button class="copy-btn" data-copy-email="' + escapeHtml(l.adresses.join('; ')) + '" title="Copier">⧉</button>'
+              : '') + '</td>' +
+          '</tr>').join('') +
+        '</tbody></table>';
+
+    return '<div class="annuaire">' +
+      '<div class="annuaire-head">' +
+        '<div>' +
+          '<h2>Annuaire</h2>' +
+          '<p class="annuaire-sub">' + lignes.length + ' contact' + (lignes.length > 1 ? 's' : '') +
+            ' · ' + new Set(avecAdresse.flatMap(l => l.adresses)).size + ' adresse' +
+            (new Set(avecAdresse.flatMap(l => l.adresses)).size > 1 ? 's' : '') +
+            (critères.length ? ' · filtres : ' + escapeHtml(critères.join(', ')) : ' · aucun filtre') +
+            '</p>' +
+        '</div>' +
+        '<div class="annuaire-actions">' +
+          (annuaireSel.size ? '<button class="btn-ghost" id="ann-vider">Décocher</button>' : '') +
+          '<button class="btn-primary" id="ann-copier"' + (nbAdresses ? '' : ' disabled') + '>' +
+            '⧉ Copier ' + nbAdresses + ' adresse' + (nbAdresses > 1 ? 's' : '') +
+            (coches.length ? ' · ' + coches.length + ' coché' + (coches.length > 1 ? 's' : '') : '') + '</button>' +
+        '</div>' +
+      '</div>' +
+      corps +
+    '</div>';
+  }
+
+  function bindAnnuaireEvents() {
+    const lignes = annuaireLignes();
+    const tout = document.getElementById('ann-tout');
+    if (tout) {
+      const avecAdresse = lignes.filter(l => l.adresses.length);
+      tout.checked = avecAdresse.length > 0 && avecAdresse.every(l => annuaireSel.has(l.id));
+      tout.addEventListener('change', () => {
+        if (tout.checked) avecAdresse.forEach(l => annuaireSel.add(l.id));
+        else annuaireSel.clear();
+        renderMain();
+      });
+    }
+    document.querySelectorAll('[data-ann-check]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const id = Number(cb.dataset.annCheck);
+        if (cb.checked) annuaireSel.add(id); else annuaireSel.delete(id);
+        renderMain();
+      });
+    });
+    const vider = document.getElementById('ann-vider');
+    if (vider) vider.addEventListener('click', () => { annuaireSel.clear(); renderMain(); });
+    const copier = document.getElementById('ann-copier');
+    if (copier) {
+      copier.addEventListener('click', () => {
+        const coches = lignes.filter(l => annuaireSel.has(l.id) && l.adresses.length);
+        const cible = (coches.length ? coches : lignes.filter(l => l.adresses.length));
+        const adresses = Array.from(new Set(cible.flatMap(l => l.adresses)));
+        copierAdresses(adresses, coches.length ? 'sélection' : 'annuaire filtré');
+      });
+    }
+    // Ouvrir la fiche du contact depuis l'annuaire
+    document.querySelectorAll('.ann-nom').forEach(cell => {
+      cell.addEventListener('click', () => {
+        const id = Number(cell.closest('[data-ann]').dataset.ann);
+        const c = rel('contacts').records.find(x => x.id === id);
+        const st = structures.find(x => contactsOf(x.id).some(y => y.id === id));
+        if (c && st) openContactModal(c, st);
+      });
+    });
+    bindCopyButtons();
+  }
+
+  // Les boutons ⧉ sont les memes partout : fiche, annuaire.
+  function bindCopyButtons() {
+    document.querySelectorAll('[data-copy-email]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        copierAdresses(String(btn.dataset.copyEmail).split(/\s*;\s*/).filter(Boolean));
+      });
+    });
+  }
+
   function renderMain() {
     const main = document.getElementById('main');
+    if (vue === 'annuaire') { main.innerHTML = annuaireHtml(); bindAnnuaireEvents(); return; }
     if (!current) {
       main.innerHTML = '<div class="placeholder">Sélectionnez une structure dans la liste</div>';
       return;
@@ -1083,11 +1307,12 @@
     '</div>';
   }
 
-  function panelShell(title, count, addId, addLabel, bodyHtml) {
+  function panelShell(title, count, addId, addLabel, bodyHtml, actionHtml) {
     return '<div class="panel">' +
       '<div class="panel-head">' +
         '<h2>' + escapeHtml(title) + '</h2>' +
         (count !== null ? '<span class="count">' + count + '</span>' : '') +
+        (actionHtml || '') +
         (addId ? '<button class="btn-add" id="' + addId + '">' + escapeHtml(addLabel) + '</button>' : '') +
       '</div>' +
       '<div class="panel-body">' + bodyHtml + '</div>' +
@@ -1108,17 +1333,31 @@
           const tel = cols.Telephone ? formatValue(c[cols.Telephone]) : '';
           const sub = [fonction, email || tel].filter(Boolean).join(' · ');
           const principal = cols.ContactPrincipal && c[cols.ContactPrincipal];
+          // Une cellule peut porter deux adresses : le bouton les copie
+          // toutes, separees comme le groupe.
+          const adressesContact = emailsOfContact(c);
           return '<div class="contact-row" data-contact="' + c.id + '">' +
             '<div class="avatar">' + escapeHtml(initials(contactName(c))) + '</div>' +
             '<div class="c-text">' +
               '<div class="c-name">' + escapeHtml(contactName(c)) + '</div>' +
               '<div class="c-sub">' + escapeHtml(sub) + '</div>' +
             '</div>' +
+            (adressesContact.length
+              ? '<button class="copy-btn" data-copy-email="' + escapeHtml(adressesContact.join('; ')) + '"' +
+                ' title="Copier ' + escapeHtml(adressesContact.join(', ')) + '">⧉</button>'
+              : '') +
             (principal ? '<span class="star" title="Contact principal">★</span>' : '') +
           '</div>';
         }).join('');
 
-    return panelShell('Contacts', list.length, 'btn-new-contact', '+ Contact', body);
+    // Copier d'un coup les adresses de la structure : c'est le geste le plus
+    // frequent quand on vient chercher a qui ecrire.
+    const adresses = emailsOfStructure(s.id);
+    const action = adresses.length
+      ? '<button class="btn-ghost" id="btn-copy-emails" title="' + escapeHtml(adresses.join('; ')) + '">' +
+          '⧉ ' + adresses.length + ' adresse' + (adresses.length > 1 ? 's' : '') + '</button>'
+      : '';
+    return panelShell('Contacts', list.length, 'btn-new-contact', '+ Contact', body, action);
   }
 
   function oppsPanelHtml(s) {
@@ -1205,6 +1444,10 @@
     if (newOpp) newOpp.addEventListener('click', () => openOpportuniteModal(null, s));
     const newInter2 = byId('btn-new-interaction-2');
     if (newInter2) newInter2.addEventListener('click', () => openInteractionModal(null, s));
+    const copyEmails = byId('btn-copy-emails');
+    if (copyEmails) copyEmails.addEventListener('click', () =>
+      copierAdresses(emailsOfStructure(s.id), structField(s, 'Nom')));
+    bindCopyButtons();
 
     document.querySelectorAll('[data-contact]').forEach(el => {
       el.addEventListener('click', () => {
@@ -1952,6 +2195,56 @@
   // Contacts proposés par un sélecteur : ceux de la structure ouverte pour
   // les contacts partenaire, tout le carnet pour les contacts cluster (ce
   // sont des gens du cluster, pas du partenaire).
+  // ---- Adresses ----
+  // Une adresse peut etre saisie avec des espaces, en majuscules, ou plusieurs
+  // dans la meme cellule separees par une virgule ou un point-virgule : on
+  // deplie, on nettoie, et on ecarte ce qui ne ressemble pas a une adresse
+  // plutot que de copier un « a demander » dans un champ « A ».
+  function emailsOfContact(c) {
+    const cols = rel('contacts').cols;
+    if (!cols.Email) return [];
+    return String(formatValue(c[cols.Email]) || '')
+      .split(/[;,\s]+/)
+      .map(x => x.trim())
+      .filter(x => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x));
+  }
+
+  function emailsOfStructure(structureId) {
+    const vues = new Set();
+    contactsOf(structureId).forEach(c => emailsOfContact(c).forEach(a => vues.add(a)));
+    return Array.from(vues);
+  }
+
+  // Le point-virgule est ce qu'attend Outlook, qui est le client d'ici ;
+  // Thunderbird et Gmail l'acceptent aussi.
+  function joindreAdresses(adresses) {
+    return adresses.join('; ');
+  }
+
+  // Copie, et dit ce qui s'est passe. Si le presse-papier est refuse par
+  // l'iframe, on montre le texte pour qu'il reste recuperable a la main.
+  async function copierAdresses(adresses, quoi) {
+    const liste = Array.isArray(adresses) ? adresses : [adresses];
+    if (!liste.length) { toast('Aucune adresse à copier', true); return; }
+    const texte = joindreAdresses(liste);
+    if (await copierTexte(texte)) {
+      toast(liste.length === 1 ? liste[0] + ' copiée' : liste.length + ' adresses copiées' + (quoi ? ' — ' + quoi : ''));
+      return;
+    }
+    openModal(
+      modalHeadHtml('Copie impossible depuis ce cadre') +
+      '<div class="form-modal-grid">' +
+        '<div class="form-field full"><label>Adresses — sélectionnez puis Ctrl+C</label>' +
+        '<textarea id="m-adresses" rows="6" readonly>' + escapeHtml(texte) + '</textarea></div>' +
+      '</div>' +
+      '<div class="form-modal-actions"><button class="btn-primary" data-close>Fermer</button></div>',
+      () => {
+        const zone = document.getElementById('m-adresses');
+        zone.focus();
+        zone.select();
+      });
+  }
+
   function contactPickerOptions(structureId, scope) {
     const list = scope === 'all' ? rel('contacts').records : contactsOf(structureId);
     return list
@@ -2307,8 +2600,14 @@
 
   document.getElementById('search').addEventListener('input', (e) => {
     query = e.target.value.trim().toLowerCase();
-    renderList();
+    filtresChanges();
   });
+
+  // Un filtre a change : la liste evidemment, mais aussi l'annuaire, qui lit
+  // les memes filtres. Passer par renderList() seul l'aurait laisse en arriere.
+  function filtresChanges() {
+    if (vue === 'annuaire') render(); else renderList();
+  }
 
   // Le mode de filtre et la pastille active vont ensemble : les separer
   // laisserait la liste filtree d'un cote et l'affichage de l'autre.
@@ -2322,7 +2621,15 @@
     const btn = e.target.closest('.filter-chip');
     if (!btn) return;
     setFilterMode(btn.dataset.filter);
-    renderList();
+    filtresChanges();
+  });
+
+  // L'annuaire suit les memes filtres que la liste : changer un filtre doit
+  // donc le redessiner, d'ou le passage par render() plutot que renderList().
+  document.getElementById('btn-annuaire').addEventListener('click', () => {
+    vue = vue === 'annuaire' ? 'fiche' : 'annuaire';
+    document.getElementById('btn-annuaire').classList.toggle('active', vue === 'annuaire');
+    render();
   });
 
   document.getElementById('btn-new-structure').addEventListener('click', () => {
@@ -2342,14 +2649,14 @@
       if (el) el.value = '';
     });
     updateFilterPanelUI();
-    renderList();
+    filtresChanges();
   });
   Object.keys(PANEL_FILTERS).forEach(key => {
     const el = document.getElementById('filter-' + key);
     if (el) el.addEventListener('change', () => {
       activeFilters[key] = el.value;
       updateFilterPanelUI();
-      renderList();
+      filtresChanges();
     });
   });
   document.getElementById('active-chips').addEventListener('click', (e) => {
@@ -2360,7 +2667,7 @@
     const el = document.getElementById('filter-' + key);
     if (el) el.value = '';
     updateFilterPanelUI();
-    renderList();
+    filtresChanges();
   });
 
   document.getElementById('btn-refresh').addEventListener('click', () => refreshRelated(true));

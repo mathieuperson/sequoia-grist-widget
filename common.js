@@ -1008,3 +1008,54 @@ function createMultiSelect(root, conf) {
     close() { panel.hidden = true; }
   };
 }
+
+// ---------- Presse-papier ----------
+
+// Un widget Grist vit dans une iframe, et l'API presse-papier moderne y est
+// souvent refusée (permission non déléguée, ou contexte jugé non sécurisé).
+// D'où le repli sur la vieille méthode : un textarea hors écran, sélectionné,
+// puis execCommand('copy') — dépréciée mais encore honorée partout, et seule
+// à marcher dans ce cadre. Retourne true si la copie a eu lieu, pour que
+// l'appelant puisse proposer autre chose sinon.
+async function copierTexte(texte) {
+  if (!texte) return false;
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(texte);
+      return true;
+    }
+  } catch (err) { /* iframe sans la permission : on tente le repli */ }
+  try {
+    const zone = document.createElement('textarea');
+    zone.value = texte;
+    zone.setAttribute('readonly', '');
+    zone.style.position = 'fixed';
+    zone.style.top = '-1000px';
+    zone.style.opacity = '0';
+    document.body.appendChild(zone);
+    zone.select();
+    zone.setSelectionRange(0, texte.length); // iOS ignore select() seul
+    const ok = document.execCommand('copy');
+    document.body.removeChild(zone);
+    return ok;
+  } catch (err) {
+    console.error('copierTexte', err);
+    return false;
+  }
+}
+
+// Message bref, en bas de l'écran : une copie réussie ne mérite pas une
+// fenêtre, mais ne rien dire laisserait douter que le clic a porté.
+let toastTimer = null;
+function toast(message, erreur) {
+  let el = document.getElementById('toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'toast';
+    document.body.appendChild(el);
+  }
+  el.className = 'toast' + (erreur ? ' toast-error' : '') + ' show';
+  el.textContent = message;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.classList.remove('show'); }, 2600);
+}
