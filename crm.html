@@ -2838,10 +2838,15 @@
             }, { single: !isListCol(r, colId) });
         });
 
+      // Ajouter un partenaire rend aussitôt ses contacts taguables.
+      const structuresChoisies = () => new Set([s.id,
+        ...getPartenaires().map(c => c.id),
+        ...Object.values(getExtraLinks).flatMap(g => g().map(c => c.id))]);
+      const rafraichir = () => getContacts.setOptions(contactOptionsForStructures(structuresChoisies()));
       const getPartenaires = mountRefPicker('m-ref-partenaires',
         structurePickerOptions(), o, r.tableId, cols.Partenaires, isNew,
-        [{ id: s.id, label: structField(s, 'Nom') || 'Sans nom' }], structureChip);
-      const getExtraLinks = mountExtraStructureLinks('opportunites', o, r.tableId, isNew);
+        [{ id: s.id, label: structField(s, 'Nom') || 'Sans nom' }], structureChip, rafraichir);
+      const getExtraLinks = mountExtraStructureLinks('opportunites', o, r.tableId, isNew, rafraichir);
       const getContacts = mountRefPicker('m-ref-contacts',
         contactOptionsForRecord('opportunites', o, s.id), o, r.tableId, cols.ContactPartenaire, isNew,
         null, contactChip);
@@ -2990,10 +2995,20 @@
     openModal(html, () => {
       populateChoiceSelect('m-type', r.tableId, cols.Type, r.records, get('Type'));
 
+      // Ajouter un partenaire rend aussitôt ses contacts et ses opportunités
+      // taguables, sans fermer ni rouvrir l'échange.
+      const structuresChoisies = () => new Set([s.id,
+        ...getPartenaires().map(c => c.id),
+        ...Object.values(getExtraLinks).flatMap(g => g().map(c => c.id))]);
+      const rafraichir = () => {
+        const ids = structuresChoisies();
+        getContacts.setOptions(contactOptionsForStructures(ids));
+        getOpportunites.setOptions(opportuniteOptionsForStructures(ids));
+      };
       const getPartenaires = mountRefPicker('m-ref-partenaires',
         structurePickerOptions(), i, r.tableId, cols.Partenaires, isNew,
-        [{ id: s.id, label: structField(s, 'Nom') || 'Sans nom' }], structureChip);
-      const getExtraLinks = mountExtraStructureLinks('interactions', i, r.tableId, isNew);
+        [{ id: s.id, label: structField(s, 'Nom') || 'Sans nom' }], structureChip, rafraichir);
+      const getExtraLinks = mountExtraStructureLinks('interactions', i, r.tableId, isNew, rafraichir);
       const getContacts = mountRefPicker('m-ref-contacts',
         contactOptionsForRecord('interactions', i, s.id), i, r.tableId, cols.ContactPartenaire, isNew,
         null, contactChip);
@@ -3278,6 +3293,13 @@
       (rel(key).linkCols || []).forEach(col =>
         refIdsFromValue(record[col]).forEach(id => structIds.add(id)));
     }
+    return contactOptionsForStructures(structIds);
+  }
+
+  // Les contacts de plusieurs structures, sans doublon. Sert aussi a
+  // rafraichir la liste d'une popup quand on y ajoute un partenaire : ses
+  // contacts doivent devenir taguables sans fermer ni rouvrir la fiche.
+  function contactOptionsForStructures(structIds) {
     const vus = new Set();
     const options = [];
     structIds.forEach(id => contactsOf(id).forEach(c => {
@@ -3309,13 +3331,17 @@
   // puis celle de la fiche ouverte. Sur un document qui en compte des
   // centaines, proposer tout le catalogue ne sert personne.
   function opportunitePickerOptions(record, structureId) {
-    const r = rel('opportunites');
-    const cols = r.cols;
     const structIds = new Set([structureId]);
     if (record) {
       (rel('interactions').linkCols || []).forEach(col =>
         refIdsFromValue(record[col]).forEach(id => structIds.add(id)));
     }
+    return opportuniteOptionsForStructures(structIds);
+  }
+
+  function opportuniteOptionsForStructures(structIds) {
+    const r = rel('opportunites');
+    const cols = r.cols;
     const vues = new Set();
     const options = [];
     r.records.forEach(o => {
@@ -3368,11 +3394,11 @@
   }
 
   // Renvoie { colId: getChips } pour lire leur contenu au moment du "Créer".
-  function mountExtraStructureLinks(relKey, record, tableId, isNew) {
+  function mountExtraStructureLinks(relKey, record, tableId, isNew, onChips) {
     const r = rel(relKey);
     const getters = {};
     (r.extraEditableLinkCols || []).forEach(colId => {
-      getters[colId] = mountRefPicker(extraStructureFieldId(colId), structurePickerOptions(), record, tableId, colId, isNew, null, structureChip);
+      getters[colId] = mountRefPicker(extraStructureFieldId(colId), structurePickerOptions(), record, tableId, colId, isNew, null, structureChip, onChips);
     });
     return getters;
   }
@@ -3388,10 +3414,12 @@
   // liste proposee. Sans lui, une telle valeur ne s'affichait pas — et le
   // premier changement du champ l'effacait, puisque l'enregistrement reecrit
   // la colonne entiere a partir des seules pastilles visibles.
-  function mountRefPicker(elId, options, record, tableId, colId, isNew, defaultChipsWhenNew, resoudre) {
+  // `onChips(next)` est prevenu de chaque changement de selection ; l'accesseur
+  // renvoye porte `setOptions(liste)` pour changer ce qui est propose.
+  function mountRefPicker(elId, options, record, tableId, colId, isNew, defaultChipsWhenNew, resoudre, onChips) {
     let chips = [];
     const el = document.getElementById(elId);
-    if (!el) return () => chips;
+    if (!el) { const vide = () => chips; vide.setOptions = () => {}; return vide; }
     let proposees = options;
     if (record && colId) {
       const parId = {};
@@ -3408,21 +3436,29 @@
     } else {
       chips = defaultChipsWhenNew || [];
     }
-    renderLocalPicker(el, proposees, chips, (next) => {
+    const picker = renderLocalPicker(el, proposees, chips, (next) => {
       chips = next;
       if (!isNew && colId && record) {
         updateRecord(tableId, record.id, { [colId]: refListValue(tableId, colId, next.map(c => c.id)) })
           .then(() => setModalStatus('Enregistré ✓'))
           .catch(err => { console.error(err); setModalStatus('Erreur d’enregistrement'); });
       }
+      if (onChips) onChips(next);
     });
-    return () => chips;
+    const getChips = () => chips;
+    // Les pastilles deja posees restent proposables, comme au montage.
+    getChips.setOptions = (liste) => {
+      const ids = new Set(liste.map(o => o.id));
+      picker.setOptions(liste.concat(chips.filter(c => !ids.has(c.id)))
+        .sort((x, y) => String(x.label).localeCompare(String(y.label), 'fr')));
+    };
+    return getChips;
   }
 
   // Lightweight chip picker over a fixed option list (no cross-table
   // autocomplete needed: the options are contacts already loaded).
   function renderLocalPicker(container, options, initialChips, onChange) {
-    if (!container) return;
+    if (!container) return { setOptions() {} };
     let chips = [...(initialChips || [])];
     const datalistId = 'dl-' + Math.random().toString(36).slice(2);
 
@@ -3465,6 +3501,7 @@
       input.addEventListener('change', tryAdd);
     }
     paint();
+    return { setOptions(next) { options = next; paint(); } };
   }
 
   // ---- Compte-rendu ----

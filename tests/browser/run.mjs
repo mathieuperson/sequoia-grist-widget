@@ -904,14 +904,38 @@ async function testCrmPartenairesMultiStructures(browser) {
   await page.waitForTimeout(100);
   ok(await page.locator('#m-ref-partenaires .ref-chip').count() === 2, 'Zenika a été ajoutée en 2e partenaire');
 
+  // Ses contacts deviennent taguables sans rouvrir la popup.
+  const contactsProposes = () => page.locator('#m-ref-contacts datalist option')
+    .evaluateAll(els => els.map(e => e.value));
+  ok((await contactsProposes()).includes('Paul Martin'),
+    'ajouter Zenika propose aussitôt ses contacts (Paul Martin) dans Contact(s) partenaire');
+  await page.fill('#m-ref-contacts .ref-input', 'Paul Martin');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(100);
+
   await page.click('#m-create');
   await page.waitForTimeout(300);
   let actions = await userActions(page);
   const add = actions.find(a => a[0] === 'AddRecord' && a[1] === 'Interactions');
   ok(!!add && JSON.stringify(add[3].Partenaires) === JSON.stringify(['L', 1, 2]),
     "l'interaction est créée avec les 2 structures (Partenaires = [\"L\", 1, 2])");
+  ok(!!add && JSON.stringify(add[3].ContactPartenaire) === JSON.stringify(['L', 12]),
+    "le contact de Zenika est enregistré sur l'interaction (ContactPartenaire = [\"L\", 12])");
   await page.click('.form-modal-actions [data-close]');
   await page.waitForTimeout(250);
+
+  // ---- Opportunité : ajouter un partenaire propose aussi ses contacts ----
+  await page.click('#btn-new-opp');
+  await page.waitForTimeout(150);
+  ok(!(await contactsProposes()).includes('Paul Martin'),
+    "sans Zenika, l'opportunité ne propose pas ses contacts");
+  await page.fill('#m-ref-partenaires .ref-input', 'Zenika');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(100);
+  ok((await contactsProposes()).includes('Paul Martin'),
+    "ajouter Zenika à l'opportunité propose aussitôt Paul Martin");
+  await page.click('.form-modal-actions [data-close]');
+  await page.waitForTimeout(200);
 
   // Elle doit apparaître sur la fiche Zenika aussi, sans y avoir été créée —
   // c'est exactement le scénario "réunion avec 2 partenaires" du bug rapporté.
