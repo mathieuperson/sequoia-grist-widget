@@ -2866,9 +2866,6 @@
           set('DateDebut', inputValueToGristDate(document.getElementById('m-debut').value));
           set('Echeance', inputValueToGristDate(document.getElementById('m-echeance').value));
           set('Commentaire', document.getElementById('m-commentaire').value.trim());
-          const oppChips = getOpportunites();
-          if (oppChips.length) set('Opportunites',
-            refListValue(r.tableId, cols.Opportunites, oppChips.map(o => o.id)));
           const contactChips = getContacts();
           const clusterChips = getClusterContacts();
           if (contactChips.length) set('ContactPartenaire',
