@@ -30,6 +30,10 @@ async function shot(name, { width = 1440, height = 1000, vue = null, apres = nul
     const tableId = decodeURIComponent(new URL(r.request().url()).pathname.split('/tables/')[1].split('/')[0]);
     r.fulfill({ contentType: 'application/json', body: JSON.stringify({ columns: (cfg.columnsMeta || {})[tableId] || [] }) });
   });
+  // Hors ligne : marked et DOMPurify remplacés par des doublures.
+  await page.route('**/cdn.jsdelivr.net/**', (r) => r.fulfill({ contentType: 'application/javascript',
+    body: 'window.marked = { parse: (s) => s }; window.DOMPurify = { sanitize: (s) => s };' }));
+  await page.route('**/attachments/**', (r) => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ fileName: 'CR_signe.pdf', fileSize: 2048 }) }));
   await page.goto('file://' + path.join(REPO, 'espace.html') + (vue ? '?vue=' + vue : ''));
   await page.waitForSelector('.es-inner');
   if (apres) await apres(page);
@@ -49,7 +53,11 @@ await shot('espace-projet-fiche', { vue: 'projets', apres: async (p) => {
   await p.click('.es-pcard >> text=VisionMer');
   await p.click('.es-sheet-tabs [data-tab="echanges"]');
 } });
-await shot('espace-partenaires', { vue: 'partenaires' });
+await shot('espace-partenaires', { vue: 'partenaires', height: 1100, apres: async (p) => {
+  await p.click('.pa-item >> text=Thales'); await p.click('[data-deplier]');
+} });
+await shot('espace-partenaires-globale', { vue: 'partenaires', apres: (p) => p.click('[data-set="partenaires.mode"][data-val="tableau"]') });
+await shot('espace-partenaires-cartes', { vue: 'partenaires', apres: (p) => p.click('[data-set="partenaires.mode"][data-val="cartes"]') });
 await shot('espace-partenaires-graphe', { vue: 'partenaires', apres: (p) => p.click('[data-set="partenaires.mode"][data-val="graphe"]') });
 await shot('espace-contacts', { vue: 'contacts' });
 await shot('espace-actions', { vue: 'actions' });

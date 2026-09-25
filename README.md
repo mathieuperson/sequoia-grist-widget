@@ -189,8 +189,13 @@ relations), sur le modèle de données du Cluster. Aucun code n'en est repris.
 - **Liens** : plutôt que d'envoyer des fichiers dans Grist, un projet porte des liens vers les documents là où ils
   vivent (drive, dépôt). Il faut pour cela une colonne texte `Liens` dans la table Opportunités, une ligne par
   lien, `Libellé | https://…`. L'onglet reste masqué tant que la colonne n'existe pas.
-- **Partenaires** : cartes (projets, contacts, échanges, ancienneté du dernier échange), filtres
-  Partenaires / Prospects / Équipes, et graphe structures ↔ projets.
+- **Partenaires** : quatre vues. **Fiche** (par défaut, comme le CRM) : la liste des structures à gauche, à droite
+  la fiche 360° — en-tête (logo, piliers, axes, site), indicateurs (dernier contact et seuil de relance à 90 j,
+  échanges, projets, prochaine action), projets, contacts (copie des adresses), actions (ajout rapide) et
+  historique des échanges dont chaque **compte rendu se déplie en entier**, avec suites et pièces jointes ; « Tout
+  déplier » les lit à la suite. **Vue globale** : un tableau triable de toutes les structures (projets actifs,
+  montant, contacts, échanges, dernier contact, actions, prochaine action). **Cartes** et **Graphe**. Filtres
+  Partenaires / À relancer / Prospects / Équipes / Tous. Cliquer une structure n'importe où dans l'Espace ouvre sa fiche.
 - **Contacts** : tableau triable et graphe contacts ↔ structures.
 - **Actions** : kanban par `Statut` si la colonne existe (glisser une carte change le statut), sinon par
   urgence ; calendrier mensuel avec les échéances de projet.
