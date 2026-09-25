@@ -1,5 +1,5 @@
 // Estampille les liens vers les fichiers partagés (common.css, common.js,
-// pilotage.js, espace.js) d'un numéro de version.
+// pilotage.js, espace.js, finance.js) d'un numéro de version.
 //
 // Pourquoi : un widget vit dans une iframe Grist, et son HTML est rechargé
 // quand on rafraîchit la page — mais pas ses sous-ressources. Sans
@@ -17,7 +17,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const REPO = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const PARTAGES = ['common.css', 'common.js', 'pilotage.js', 'espace.js'];
+const PARTAGES = ['common.css', 'common.js', 'pilotage.js', 'espace.js', 'finance.js'];
 
 // Deux passages le même jour donneraient la même date, donc la même URL, donc
 // le cache qu'on cherchait justement à contourner. À défaut de valeur donnée,

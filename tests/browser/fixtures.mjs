@@ -401,3 +401,75 @@ export function espaceConfig() {
   ];
   return cfg;
 }
+
+// Un export SIFAC fictif (CSV, séparateur « ; », en-têtes tronqués comme SIFAC
+// les écrit) pour l'exercice `annee` du PFI SEQUOIA-IA. Chaque entrée :
+// [flux, libellé, tiers, code tiers, compte d'exécution, étapes…] où une étape
+// est [type, mois, montant] — E engagement, F facture, P paiement, R report.
+export function sifacCsv(annee) {
+  const entete = ['Programme de financement', 'Numéro de flux', 'Libellé du flux', 'Rubrique de la pièce', 'Nom du tiers',
+    'Numéro du tiers fournisseur', 'Compte général', 'Libellé compte général', 'Date initiale', 'Montant engagé HTR',
+    'Montant HTR des SF', 'Montant réceptionné non factur', 'Date comptable du CSF', 'Numéro de facture',
+    'Date comptable facture', 'Texte facture', 'Montant facturé HTR', 'Montant payé', 'Date de paiement', 'Report',
+    'Élément d’OTP', 'Compte d’exécution budgétaire'];
+  const flux = [
+    ['4500012001', 'Serveur GPU — plateforme IA', 'Dell Technologies', 'F10021', 'IG', ['E', 2, 48000], ['F', 4, 48000], ['P', 5, 48000]],
+    ['4500012002', 'Licences logicielles', 'Mathworks', 'F10340', 'FG', ['E', 1, 6200], ['F', 1, 6200], ['P', 2, 6200]],
+    ['4500012003', 'Organisation journée IA & sécurité', 'Traiteur Breizh', 'F20077', 'FG', ['E', 3, 3400], ['F', 3, 3350], ['P', 4, 3350]],
+    ['4500012004', 'Missions conférences NeurIPS', 'Agence Voyages Campus', 'F30112', 'FG', ['E', 5, 9800], ['F', 6, 7200]],
+    ['4500012005', 'Stockage données — baie NAS', 'Econocom', 'F10988', 'IG', ['E', 6, 21500]],
+    ['4500012006', 'Prestation communication', 'Studio Graphique Ouest', 'F40210', 'FG', ['E', 4, 5400], ['F', 7, 5400], ['P', 8, 5400]],
+    ['PAIE-2026-01', 'Salaire ingénieur de recherche', '', '', '', ['E', 1, 4300], ['P', 1, 4300]],
+    ['PAIE-2026-02', 'Salaire ingénieur de recherche', '', '', '', ['E', 2, 4300], ['P', 2, 4300]],
+    ['PAIE-2026-03', 'Salaire ingénieur de recherche', '', '', '', ['E', 3, 4300], ['P', 3, 4300]],
+    ['PAIE-2026-04', 'Salaire post-doctorant', '', '', '', ['E', 4, 3900], ['P', 4, 3900]],
+    ['PAIE-2026-05', 'Salaire post-doctorant', '', '', '', ['E', 5, 3900], ['P', 5, 3900]],
+    ['4500011890', 'Écrans et postes de travail', 'Dell Technologies', 'F10021', 'IG', ['R', 1, 7800], ['F', 2, 7800], ['P', 3, 7800]]
+  ];
+  const d = (m) => '15/' + String(m).padStart(2, '0') + '/' + annee;
+  const lignes = [entete.join(';'), 'Sous-total;;;;;;;;;123456'];
+  flux.forEach(([num, lib, tiers, code, cex, ...etapes]) => {
+    etapes.forEach(([type, mois, montant], i) => {
+      const c = new Array(entete.length).fill('');
+      c[0] = 'SEQUOIA-IA'; c[1] = num; c[2] = lib; c[4] = tiers; c[5] = code; c[6] = cex === 'IG' ? '2183' : cex === 'FG' ? '6064' : '6411';
+      c[7] = cex === 'IG' ? 'Matériel informatique' : cex === 'FG' ? 'Fournitures' : 'Rémunérations'; c[20] = 'SEQ-OTP-01'; c[21] = cex;
+      if (type === 'E') { c[3] = 'Commande'; c[8] = d(mois); c[9] = String(montant).replace('.', ','); }
+      if (type === 'F') { c[3] = 'Facture'; c[13] = 'FA-' + num.slice(-4) + '-' + i; c[14] = d(mois); c[16] = String(montant).replace('.', ','); }
+      if (type === 'P') { c[3] = 'Paiement'; c[17] = String(montant).replace('.', ','); c[18] = d(mois); }
+      if (type === 'R') { c[3] = 'Report'; c[8] = '15/11/' + (annee - 1); c[19] = String(montant).replace('.', ','); }
+      lignes.push(c.map(v => (/[;"]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v)).join(';'));
+    });
+  });
+  return lignes.join('\n');
+}
+
+// Le document de l'Espace avec les tables Finance déjà créées : quatre lignes
+// budgétaires pour l'année en cours, et des dépenses/écritures vides (l'import
+// SIFAC les remplit pendant le test).
+export function espaceFinanceConfig() {
+  const cfg = espaceConfig();
+  const annee = new Date().getFullYear();
+  const colonnes = {
+    Budget_lignes: ['Libelle', 'Exercice', 'Categorie', 'Montant_prevu', 'Financeur', 'PFI', 'Notes'],
+    Depenses: ['Flux', 'Libelle', 'Fournisseur', 'Code_tiers', 'Compte', 'Libelle_compte', 'Categorie', 'Statut', 'Montant',
+      'Montant_engage', 'Montant_facture', 'Montant_paye', 'Date_engagement', 'Date_facture', 'Date_paiement', 'PFI', 'OTP',
+      'Source', 'Orpheline', 'Budget_ligne', 'Opportunite', 'Notes'],
+    Sifac_lignes: ['PFI', 'Exercice', 'Flux', 'Libelle_flux', 'Rubrique', 'Tiers', 'Code_tiers', 'Compte', 'Libelle_compte',
+      'Compte_execution', 'OTP', 'Date_engagement', 'Montant_engage', 'Montant_service_fait', 'Date_service_fait', 'Num_facture',
+      'Date_facture', 'Montant_facture', 'Montant_paye', 'Date_paiement', 'Report']
+  };
+  Object.entries(colonnes).forEach(([t, cols]) => { cfg.tables[t] = { colIds: cols, data: { id: [] } }; });
+  const b = [['Personnel — ingénieur & post-doc', 'Personnel', 60000, 'ANR'], ['Équipement de calcul', 'Investissement', 70000, 'Région Bretagne'],
+    ['Fonctionnement & événements', 'Fonctionnement', 18000, 'ANR'], ['Missions', 'Fonctionnement', 8000, 'ANR']];
+  cfg.tables.Budget_lignes.data = {
+    id: b.map((_, i) => 601 + i), Libelle: b.map(x => x[0]), Exercice: b.map(() => annee), Categorie: b.map(x => x[1]),
+    Montant_prevu: b.map(x => x[2]), Financeur: b.map(x => x[3]), PFI: b.map(() => 'SEQUOIA-IA'), Notes: b.map(() => '')
+  };
+  // Une dépense manuelle (devis signé que SIFAC ne voit pas encore).
+  cfg.tables.Depenses.data = { id: [701] };
+  const manuelle = { Flux: '', Libelle: 'Devis école d’été SequoIA', Fournisseur: 'Palais du Grand Large', Categorie: 'Fonctionnement', Statut: 'Engagé',
+    Montant: 2500, Montant_engage: 2500, Montant_facture: 0, Montant_paye: 0, Date_engagement: Date.UTC(annee, 6, 1) / 1000,
+    PFI: 'SEQUOIA-IA', Source: 'Manuelle', Orpheline: false, Budget_ligne: 603 };
+  colonnes.Depenses.forEach(c => { cfg.tables.Depenses.data[c] = [c in manuelle ? manuelle[c] : null]; });
+  return cfg;
+}

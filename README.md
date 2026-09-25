@@ -8,7 +8,7 @@ Widgets personnalisés Grist pour le CRM SequoIA (déployés via GitHub Pages).
 |---|---|---|---|
 | **Pilotage Partenariats & Innovation** | `/pilotage.html` | Structures | Complet (lit et écrit Interactions / Opportunités / Actions) |
 | **CRM SequoIA — fiche 360** | `/crm.html` | Structures | Complet (lit et écrit Contacts / Interactions / Opportunités) |
-| **Espace SequoIA** | `/espace.html` | Structures | Complet (lit tout ; écrit Actions et Opportunités) |
+| **Espace SequoIA** | `/espace.html` | Structures | Complet (lit tout ; écrit Actions, Opportunités et les tables Finance) |
 | Dashboard financement CIFRE | `/cifre-financement.html` | Thèses (ou toute table de thèses doctorales) | Lecture |
 | Cartographie | `/cartographie.html` | Structures | Complet (`allowSelectBy`, suit la sélection Grist) |
 
@@ -195,7 +195,14 @@ relations), sur le modèle de données du Cluster. Aucun code n'en est repris.
 - **Actions** : kanban par `Statut` si la colonne existe (glisser une carte change le statut), sinon par
   urgence ; calendrier mensuel avec les échéances de projet.
 
-`espace.html?vue=projets` (ou `partenaires`, `contacts`, `actions`) ouvre directement une vue. La logique pure vit
+- **Finance** : suivi budgétaire à partir des exports SIFAC — synthèse par exercice (prévu, engagé, facturé,
+  payé, reste, courbe de consommation, catégories, lignes budgétaires), dépenses ventilables sur les lignes
+  budgétaires et les projets, écritures brutes pour recouper SIFAC, import `.xlsx` / `.csv`. Trois tables
+  (`Budget_lignes`, `Depenses`, `Sifac_lignes`) que le widget crée d'un clic. Attendu, circuit de travail et
+  règles de calcul : **[docs/espace-finance.md](docs/espace-finance.md)**. Logique pure dans `finance.js`
+  (`tests/finance.test.mjs`) ; lecture des `.xlsx` par `vendor/read-excel-file-5.8.8.min.js` (MIT).
+
+`espace.html?vue=projets` (ou `partenaires`, `contacts`, `actions`, `finance`) ouvre directement une vue. La logique pure vit
 dans `espace.js`, testée par `tests/espace.test.mjs`.
 
 ### CRM SequoIA — fiche 360 (`crm.html`)

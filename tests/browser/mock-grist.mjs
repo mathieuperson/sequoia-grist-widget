@@ -156,6 +156,12 @@ export function buildMockScript(cfg) {
         const retValues = [];
         (actions || []).forEach(action => {
           const [verb, tid, rowId, fields] = action;
+          // Création de table (l'Espace crée ses tables Finance d'un clic).
+          if (verb === 'AddTable') {
+            CFG.tables[tid] = { colIds: (rowId || []).map(c => c.id), data: { id: [] } };
+            retValues.push({ table_id: tid });
+            return;
+          }
           const t = CFG.tables[tid];
           if (!t) throw new Error('mock: no such table ' + tid);
           t.data.id = t.data.id || [];
@@ -187,6 +193,42 @@ export function buildMockScript(cfg) {
               t.data.id.splice(idx, 1);
               t.colIds.forEach(c => { if (t.data[c]) t.data[c].splice(idx, 1); });
             }
+            retValues.push(null);
+          } else if (verb === 'BulkAddRecord') {
+            // [verb, table, [null…], { col: [valeurs…] }]
+            const n = rowId.length;
+            const ids = [];
+            Object.keys(fields || {}).forEach(k => { if (!t.colIds.includes(k)) t.colIds.push(k); });
+            for (let i = 0; i < n; i++) {
+              const id = nextId(t);
+              t.data.id.push(id);
+              ids.push(id);
+              t.colIds.forEach(c => {
+                t.data[c] = t.data[c] || [];
+                while (t.data[c].length < t.data.id.length - 1) t.data[c].push(null);
+                t.data[c].push(fields && c in fields ? fields[c][i] : null);
+              });
+            }
+            retValues.push(ids);
+          } else if (verb === 'BulkUpdateRecord') {
+            rowId.forEach((id, i) => {
+              const idx = t.data.id.indexOf(id);
+              if (idx < 0) return;
+              Object.keys(fields || {}).forEach(k => {
+                if (!t.colIds.includes(k)) t.colIds.push(k);
+                t.data[k] = t.data[k] || [];
+                t.data[k][idx] = fields[k][i];
+              });
+            });
+            retValues.push(null);
+          } else if (verb === 'BulkRemoveRecord') {
+            rowId.forEach(id => {
+              const idx = t.data.id.indexOf(id);
+              if (idx >= 0) {
+                t.data.id.splice(idx, 1);
+                t.colIds.forEach(c => { if (t.data[c]) t.data[c].splice(idx, 1); });
+              }
+            });
             retValues.push(null);
           } else {
             retValues.push(null);

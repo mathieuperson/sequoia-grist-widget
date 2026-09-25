@@ -4,11 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Espace SequoIA — Cluster SequoIA</title>
-<link rel="stylesheet" href="./common.css?v=20260925a">
+<link rel="stylesheet" href="./common.css?v=20260925b">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="./common.js?v=20260925a"></script>
-<script src="./pilotage.js?v=20260925a"></script>
-<script src="./espace.js?v=20260925a"></script>
+<script src="./common.js?v=20260925b"></script>
+<script src="./pilotage.js?v=20260925b"></script>
+<script src="./espace.js?v=20260925b"></script>
+<script src="./finance.js?v=20260925b"></script>
+<script src="./vendor/read-excel-file-5.8.8.min.js"></script>
 <style>
 /* Une application à onglets, dans la charte de common.css : fond gris
    clair, cartes blanches arrondies, barre d'onglets en pastilles, fiche
@@ -341,6 +343,35 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .es-x:hover { color: var(--es-late); }
 
 .es-status { font-size: 12px; color: var(--text-muted); }
+
+/* ---------- Finance ---------- */
+.fi-setup { border-color: #b7d7c2; background: #f3faf5; }
+.fi-setup.warn, .fi-trier.warn { border-color: #f3d19c; background: #fffaf0; }
+.fi-setup p { margin: 0 0 8px; font-size: 13.5px; }
+.fi-setup ul { margin: 0 0 12px; padding-left: 18px; font-size: 13px; line-height: 1.7; }
+.fi-trier { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; padding: 10px 14px; border: 1px solid #b7d7c2; background: #f3faf5; border-radius: 10px; }
+.fi-jauge { display: inline-block; width: 90px; height: 7px; border-radius: 4px; background: var(--es-sep); overflow: hidden; vertical-align: middle; }
+.fi-jauge span { display: block; height: 100%; border-radius: 4px; }
+.fi-pct { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.fi-cat { margin: 4px 0 14px; }
+.fi-cat-head { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 6px; }
+.fi-cat-head i { width: 10px; height: 10px; border-radius: 3px; }
+.fi-cat-head span { margin-left: auto; color: var(--text-muted); font-size: 12px; }
+.fi-bars { display: flex; flex-direction: column; gap: 3px; }
+.fi-bar { height: 8px; border-radius: 4px; min-width: 2px; }
+.fi-bar.prevu { background: repeating-linear-gradient(45deg, #dfe5e2 0 5px, #eef1ef 5px 10px); }
+.fi-table td, .fi-table th { padding: 8px 10px; }
+.fi-table tfoot td { font-weight: 650; border-top: 1px solid var(--border); background: var(--es-surface-2); }
+.fi-table .fi-neg { color: var(--es-late); font-weight: 600; }
+.fi-table tr.fi-orph td { background: #fffaf0; }
+.fi-sel { height: 28px; max-width: 180px; font-size: 12px; }
+.fi-top .es-hbar { grid-template-columns: 150px 1fr auto; }
+.fi-drop { display: block; border: 1.5px dashed #b7c4bd; border-radius: 12px; padding: 26px; text-align: center; cursor: pointer; font-size: 13.5px; color: var(--text-muted); background: var(--es-surface-2); }
+.fi-drop:hover, .fi-drop.over { border-color: var(--sequoia-green); color: var(--text); background: var(--sequoia-green-light); }
+.fi-drop b { color: var(--sequoia-green-dark); }
+.fi-info { grid-template-columns: repeat(3, 1fr); }
+.fi-plan { margin: 14px 0 0; padding-left: 18px; font-size: 13.5px; line-height: 1.7; }
+@media (max-width: 720px) { .fi-info { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 720px) {
   .es-tabs { margin-left: 0; width: 100%; }
   .es-hero h1 { font-size: 24px; }
@@ -368,6 +399,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
       <button class="es-tab" data-vue="partenaires" type="button">Partenaires</button>
       <button class="es-tab" data-vue="contacts" type="button">Contacts</button>
       <button class="es-tab" data-vue="actions" type="button">Actions</button>
+      <button class="es-tab" data-vue="finance" type="button">Finance</button>
     </nav>
     <div id="pop-host"></div>
   </header>
@@ -471,6 +503,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     partenaires: { q: '', mode: 'cartes', filtre: 'partenaires', type: '' },
     contacts: { q: '', mode: 'tableau', tri: 'nom', asc: true },
     actions: { q: '', mode: 'kanban', miennes: false, faites: false, mois: null },
+    finance: { sous: 'synthese', exercice: null, pfi: '', q: '', statut: '', categorie: '', affect: '', nouvelle: false },
     sheet: null // { kind, id, tab }
   };
 
@@ -561,6 +594,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
       catch (err) { console.error('Structures illisibles', err); }
     }
     D = construire(structures);
+    await chargerFinance(force);
   }
 
   // ---------------------------------------------------------------------
@@ -1291,6 +1325,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     else if (s.kind === 'structure' && D.sById.has(s.id)) f = ficheStructure(D.sById.get(s.id), s.tab || 'projets');
     else if (s.kind === 'contact' && D.cById.has(s.id)) f = ficheContact(D.cById.get(s.id), s.tab || 'echanges');
     else if (s.kind === 'action' && D.aById.has(s.id)) f = ficheAction(D.aById.get(s.id));
+    else if (s.kind === 'depense' && F) { const d = F.depenses.find(x => x.id === s.id); if (d) f = ficheDepense(d); }
     if (!f) { ui.sheet = null; return renderSheet(); }
     const actif = s.tab || (f.tabs[0] || [])[0];
     sheet.innerHTML = '<div class="es-sheet-head">' + f.head + '</div>' +
@@ -1307,12 +1342,386 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
   }
 
   // ---------------------------------------------------------------------
+  // Vue : finance (suivi budgétaire, import SIFAC)
+  // ---------------------------------------------------------------------
+  // Trois tables facultatives (Budget_lignes, Depenses, Sifac_lignes), dont
+  // les colonnes portent les noms fixés par finance.js : c'est l'espace qui
+  // les crée, il n'a pas à deviner leur nom.
+  const FN = window.finance;
+  let F = null; // { tables: { budget, depenses, ecritures }, budget, depenses, ecritures, colsManquantes }
+
+  async function chargerFinance(force) {
+    const tables = {};
+    const colsManquantes = [];
+    for (const cle of Object.keys(FN.FIN_TABLES)) {
+      const def = FN.FIN_TABLES[cle];
+      if (force) invalidateTableCache(def.tableId);
+      try {
+        const data = await fetchTableCached(def.tableId);
+        const presentes = dataColumns(data);
+        def.colonnes.forEach(c => { if (!presentes.includes(c.id)) colsManquantes.push(def.tableId + '.' + c.id); });
+        tables[cle] = { tableId: def.tableId, records: recordsFromTableData(data), cols: presentes };
+      } catch (err) { tables[cle] = null; }
+    }
+    const rec = (cle) => (tables[cle] ? tables[cle].records : []);
+    const num = (v) => Number(v) || 0;
+    const ref = (v) => (typeof v === 'number' && v > 0 ? v : null);
+    const budget = rec('budget').map(r => ({
+      id: r.id, libelle: txt(r.Libelle) || 'Sans libellé', exercice: num(r.Exercice) || null,
+      categorie: txt(r.Categorie), prevu: num(r.Montant_prevu), financeur: txt(r.Financeur), pfi: txt(r.PFI), notes: txt(r.Notes)
+    }));
+    const depenses = rec('depenses').map(r => ({
+      id: r.id, flux: txt(r.Flux), libelle: txt(r.Libelle), fournisseur: txt(r.Fournisseur), codeTiers: txt(r.Code_tiers),
+      compte: txt(r.Compte), libelleCompte: txt(r.Libelle_compte), categorie: txt(r.Categorie), statut: txt(r.Statut),
+      montant: num(r.Montant), engage: num(r.Montant_engage), facture: num(r.Montant_facture), paye: num(r.Montant_paye),
+      dateEngagement: r.Date_engagement || null, dateFacture: r.Date_facture || null, datePaiement: r.Date_paiement || null,
+      pfi: txt(r.PFI), otp: txt(r.OTP), source: txt(r.Source) || 'Manuelle', orpheline: !!r.Orpheline,
+      budgetLigne: ref(r.Budget_ligne), projet: ref(r.Opportunite), notes: txt(r.Notes)
+    }));
+    const ecritures = rec('ecritures').map(r => ({
+      id: r.id, pfi: txt(r.PFI), exercice: num(r.Exercice) || null, flux: txt(r.Flux), libelleFlux: txt(r.Libelle_flux),
+      rubrique: txt(r.Rubrique), tiers: txt(r.Tiers), codeTiers: txt(r.Code_tiers), compte: txt(r.Compte),
+      libelleCompte: txt(r.Libelle_compte), compteExecution: txt(r.Compte_execution), otp: txt(r.OTP),
+      dateEngagement: r.Date_engagement || null, engage: num(r.Montant_engage), serviceFait: num(r.Montant_service_fait),
+      dateServiceFait: r.Date_service_fait || null, numFacture: txt(r.Num_facture), dateFacture: r.Date_facture || null,
+      facture: num(r.Montant_facture), paye: num(r.Montant_paye), datePaiement: r.Date_paiement || null, report: num(r.Report)
+    }));
+    // Les exercices qu'une dépense touche : ceux de ses écritures, ou l'année
+    // de sa première date pour une dépense saisie à la main.
+    const exercicesFlux = new Map();
+    ecritures.forEach(e => {
+      const k = e.pfi + '|' + e.flux;
+      if (!exercicesFlux.has(k)) exercicesFlux.set(k, new Set());
+      if (e.exercice) exercicesFlux.get(k).add(e.exercice);
+    });
+    depenses.forEach(d => {
+      const s = exercicesFlux.get(d.pfi + '|' + d.flux);
+      const an = (ts) => (ts ? new Date(ts * 1000).getUTCFullYear() : null);
+      d.exercices = s && s.size ? Array.from(s) : [an(d.dateEngagement || d.dateFacture || d.datePaiement)].filter(Boolean);
+    });
+    F = { tables, budget, depenses, ecritures, colsManquantes, bById: new Map(budget.map(b => [b.id, b])) };
+  }
+
+  function exercicesConnus() {
+    const s = new Set([new Date().getFullYear()]);
+    F.budget.forEach(b => { if (b.exercice) s.add(b.exercice); });
+    F.ecritures.forEach(e => { if (e.exercice) s.add(e.exercice); });
+    F.depenses.forEach(d => d.exercices.forEach(a => s.add(a)));
+    return Array.from(s).sort((a, b) => b - a);
+  }
+  const eur = (n) => (Number(n) || 0).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+  const eur2 = (n) => (Number(n) || 0).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
+  const pct = (x) => (x === null || x === undefined ? '—' : Math.round(x * 100) + ' %');
+  const STATUT_COULEUR = { 'Engagé': '#f59e0b', 'Livré': '#3b82f6', 'Payé': '#16a34a' };
+  const CAT_COULEUR = { Personnel: '#8c62b3', Fonctionnement: '#4fa5d8', Investissement: '#4cae8c' };
+  function badgeStatutDepense(s) {
+    return s ? '<span class="es-badge"><i style="background:' + (STATUT_COULEUR[s] || '#94a3b8') + '"></i>' + H(s) + '</span>' : '';
+  }
+  function jauge(taux) {
+    if (taux === null || taux === undefined) return '<span class="es-muted">—</span>';
+    const w = Math.min(100, taux * 100);
+    const coul = taux > 1 ? 'var(--es-late)' : taux > 0.9 ? 'var(--es-warn)' : 'var(--sequoia-green)';
+    return '<span class="fi-jauge" title="' + pct(taux) + '"><span style="width:' + w.toFixed(1) + '%;background:' + coul + '"></span></span> <span class="fi-pct">' + pct(taux) + '</span>';
+  }
+
+  function financeFiltresPfi(liste, champ) {
+    const pfi = ui.finance.pfi;
+    return pfi ? liste.filter(x => (x[champ || 'pfi'] || '') === pfi) : liste;
+  }
+
+  function vueFinance() {
+    const f = ui.finance;
+    const manquantes = Object.keys(FN.FIN_TABLES).filter(k => !F.tables[k]);
+    const exos = exercicesConnus();
+    if (!f.exercice || !exos.includes(Number(f.exercice))) f.exercice = exos.includes(new Date().getFullYear()) ? new Date().getFullYear() : exos[0];
+    const pfis = Array.from(new Set(F.budget.map(b => b.pfi).concat(F.ecritures.map(e => e.pfi), F.depenses.map(d => d.pfi)).filter(Boolean))).sort();
+    const toolbar = '<div class="es-toolbar"><h1>Finance</h1>' +
+      '<select class="es-select" data-set="finance.exercice" aria-label="Exercice">' + exos.map(a => '<option value="' + a + '"' + (Number(f.exercice) === a ? ' selected' : '') + '>Exercice ' + a + '</option>').join('') + '</select>' +
+      (pfis.length > 1 ? '<select class="es-select" data-set="finance.pfi" aria-label="PFI"><option value="">Tous les PFI</option>' + pfis.map(p => '<option' + (p === f.pfi ? ' selected' : '') + '>' + H(p) + '</option>').join('') + '</select>' : '') +
+      '<span class="grow"></span><div class="es-seg">' + [['synthese', 'Synthèse'], ['depenses', 'Dépenses'], ['ecritures', 'Écritures SIFAC'], ['import', 'Import SIFAC']].map(([k, l]) =>
+        '<button type="button" data-set="finance.sous" data-val="' + k + '" class="' + (f.sous === k ? 'on' : '') + '">' + l + '</button>').join('') + '</div></div>';
+    let alerte = '';
+    if (manquantes.length) {
+      alerte = '<div class="es-card fi-setup"><div class="es-card-head"><h3>Mettre en place l’espace Finance</h3></div><div class="es-card-body">' +
+        '<p>Le suivi budgétaire s’appuie sur trois tables du document. ' + (manquantes.length === 3 ? 'Aucune n’existe encore.' : 'Il en manque ' + manquantes.length + '.') + '</p><ul>' +
+        Object.keys(FN.FIN_TABLES).map(k => { const t = FN.FIN_TABLES[k]; return '<li><b>' + H(t.tableId) + '</b> — ' + H(t.titre) + (F.tables[k] ? ' <span class="es-muted">(présente)</span>' : '') + '</li>'; }).join('') +
+        '</ul><button type="button" class="es-btn primary" data-fin-creer>Créer les tables manquantes</button> <span class="es-muted" style="font-size:12px">Ajoute ' + manquantes.length + ' table(s) au document, avec leurs colonnes. Rien d’existant n’est modifié.</span></div></div>';
+    } else if (F.colsManquantes.length) {
+      alerte = '<div class="es-card fi-setup warn"><div class="es-card-body">Colonnes attendues absentes du document : <b>' + H(F.colsManquantes.join(', ')) +
+        '</b>. Les écritures qui les visent échoueront ; ajoutez-les dans Grist (même identifiant).</div></div>';
+    }
+    let corps = '';
+    if (!manquantes.length) {
+      corps = f.sous === 'depenses' ? financeDepenses() : f.sous === 'ecritures' ? financeEcritures() : f.sous === 'import' ? financeImport() : financeSynthese();
+    }
+    return '<div class="es-inner">' + toolbar + alerte + corps + '</div>';
+  }
+
+  function courbeFinance(exo, budgetTotal) {
+    const ecr = financeFiltresPfi(F.ecritures);
+    const man = financeFiltresPfi(F.depenses).filter(d => d.source !== 'SIFAC');
+    const src = ecr.concat(man.map(d => ({ dateEngagement: d.dateEngagement, engage: d.engage, datePaiement: d.datePaiement, paye: d.paye })));
+    const eng = FN.cumulMensuel(src, exo, 'dateEngagement', 'engage', nowTs());
+    const pay = FN.cumulMensuel(src, exo, 'datePaiement', 'paye', nowTs());
+    const W = 560, Hh = 200, pl = 8, pr = 8, pt = 12, pb = 22;
+    const max = Math.max(1, budgetTotal, ...eng.filter(v => v !== null), ...pay.filter(v => v !== null)) * 1.08;
+    const x = (i) => pl + (i + 0.5) * (W - pl - pr) / 12;
+    const y = (v) => pt + (Hh - pt - pb) * (1 - v / max);
+    const trace = (serie, coul, tiret) => {
+      const pts = serie.map((v, i) => (v === null ? null : x(i).toFixed(1) + ',' + y(v).toFixed(1))).filter(Boolean);
+      return pts.length ? '<polyline points="' + pts.join(' ') + '" fill="none" stroke="' + coul + '" stroke-width="2.4"' + (tiret ? ' stroke-dasharray="5 4"' : '') + '/>' +
+        serie.map((v, i) => (v === null ? '' : '<circle cx="' + x(i).toFixed(1) + '" cy="' + y(v).toFixed(1) + '" r="2.6" fill="' + coul + '"><title>' + H(ESPACE_MOIS_COURTS[i] + ' : ' + eur(v)) + '</title></circle>')).join('') : '';
+    };
+    const ligneBudget = budgetTotal > 0 ? '<line x1="' + pl + '" x2="' + (W - pr) + '" y1="' + y(budgetTotal).toFixed(1) + '" y2="' + y(budgetTotal).toFixed(1) +
+      '" stroke="var(--es-late)" stroke-dasharray="3 4" opacity=".7"/><text x="' + (W - pr) + '" y="' + (y(budgetTotal) - 4).toFixed(1) + '" text-anchor="end">budget ' + H(formatMontantCompact(budgetTotal)) + '</text>' : '';
+    return '<svg viewBox="0 0 ' + W + ' ' + Hh + '" role="img" aria-label="Consommation cumulée">' +
+      '<line x1="0" x2="' + W + '" y1="' + (Hh - pb) + '" y2="' + (Hh - pb) + '" stroke="var(--border)"/>' + ligneBudget +
+      trace(eng, '#f59e0b', true) + trace(pay, 'var(--sequoia-green)') +
+      ESPACE_MOIS_COURTS.map((m, i) => '<text x="' + x(i).toFixed(1) + '" y="' + (Hh - 6) + '" text-anchor="middle">' + H(m) + '</text>').join('') + '</svg>' +
+      '<div class="es-graph-legend" style="padding:6px 0 0"><span><i style="background:#f59e0b"></i>Engagé cumulé</span><span><i style="background:var(--sequoia-green)"></i>Payé cumulé</span>' +
+      (budgetTotal > 0 ? '<span><i style="background:var(--es-late)"></i>Budget prévu</span>' : '') + '</div>';
+  }
+
+  function financeSynthese() {
+    const exo = Number(ui.finance.exercice);
+    const budget = financeFiltresPfi(F.budget).filter(b => b.exercice === exo);
+    const depensesExo = financeFiltresPfi(F.depenses).filter(d => d.exercices.includes(exo));
+    const t = FN.totauxExercice(financeFiltresPfi(F.ecritures), financeFiltresPfi(F.depenses).filter(d => d.source !== 'SIFAC'), exo);
+    const prevu = budget.reduce((s, b) => s + b.prevu, 0);
+    const cons = FN.consommationBudget(budget, depensesExo);
+    const orphelines = depensesExo.filter(d => d.orpheline).length;
+    const kpi = (lbl, val, sub, cls) => '<div class="es-card es-kpi"><div class="lbl">' + H(lbl) + '</div><div class="val">' + val + '</div><div class="sub' + (cls ? ' ' + cls : '') + '">' + sub + '</div></div>';
+    const kpis = '<div class="es-kpis">' +
+      kpi('Budget prévu', H(eur(prevu)), H(budget.length + ' ligne(s) budgétaire(s)')) +
+      kpi('Engagé', H(eur(t.engage)), (prevu ? jauge(t.engage / prevu) : 'commandes et engagements') + (t.report ? '<br>dont ' + H(eur(t.report)) + ' de reports' : '')) +
+      kpi('Facturé', H(eur(t.facture)), 'service fait et facturé') +
+      kpi('Payé', H(eur(t.paye)), prevu ? pct(t.paye / prevu) + ' du budget' : 'décaissé') +
+      kpi('Reste à engager', H(eur(prevu - t.engage)), prevu - t.engage < 0 ? 'dépassement' : 'budget − engagé', prevu - t.engage < 0 ? 'alerte' : '') +
+      '</div>';
+    // Par catégorie : prévu / engagé / payé côte à côte.
+    const cats = FN.FIN_CATEGORIES.map(c => ({ c, prevu: budget.filter(b => b.categorie === c).reduce((s, b) => s + b.prevu, 0), ...t.parCategorie[c] }));
+    const maxC = Math.max(1, ...cats.map(c => Math.max(c.prevu, c.engage)));
+    const catsHtml = cats.map(c => '<div class="fi-cat"><div class="fi-cat-head"><i style="background:' + CAT_COULEUR[c.c] + '"></i><b>' + H(c.c) + '</b><span>' +
+      H(eur(c.engage)) + ' engagé' + (c.prevu ? ' / ' + H(eur(c.prevu)) + ' prévu' : '') + '</span></div>' +
+      '<div class="fi-bars"><div class="fi-bar prevu" style="width:' + (c.prevu / maxC * 100).toFixed(1) + '%" title="Prévu ' + H(eur(c.prevu)) + '"></div>' +
+      '<div class="fi-bar engage" style="width:' + (c.engage / maxC * 100).toFixed(1) + '%;background:' + CAT_COULEUR[c.c] + '99" title="Engagé ' + H(eur(c.engage)) + '"></div>' +
+      '<div class="fi-bar paye" style="width:' + (c.paye / maxC * 100).toFixed(1) + '%;background:' + CAT_COULEUR[c.c] + '" title="Payé ' + H(eur(c.paye)) + '"></div></div></div>').join('');
+    const lignesHtml = '<div class="es-table-wrap"><table class="es-table fi-table"><thead><tr><th>Ligne budgétaire</th><th>Catégorie</th><th class="num">Prévu</th><th class="num">Engagé</th><th class="num">Payé</th><th class="num">Reste</th><th>Consommation</th><th></th></tr></thead><tbody>' +
+      (cons.lignes.length ? cons.lignes.map(l => '<tr data-fin-ligne="' + l.ligne.id + '"><td class="ttl">' + H(l.ligne.libelle) + (l.ligne.financeur ? '<div class="es-muted" style="font-weight:400;font-size:12px">' + H(l.ligne.financeur) + '</div>' : '') +
+        '</td><td>' + H(l.ligne.categorie) + '</td><td class="num">' + H(eur(l.ligne.prevu)) + '</td><td class="num">' + H(eur(l.engage)) + '</td><td class="num">' + H(eur(l.paye)) +
+        '</td><td class="num' + (l.reste < 0 ? ' fi-neg' : '') + '">' + H(eur(l.reste)) + '</td><td>' + jauge(l.taux) + '</td><td><button type="button" class="es-x" data-fin-suppr-ligne="' + l.ligne.id + '" aria-label="Supprimer la ligne">×</button></td></tr>').join('')
+        : '<tr><td colspan="8" class="es-empty">Aucune ligne budgétaire pour ' + exo + '. Ajoutez-en une ci-dessous.</td></tr>') +
+      '</tbody></table></div>' +
+      '<form class="es-form" data-fin-ajout-ligne><input class="grow" name="libelle" placeholder="Nouvelle ligne (ex. Missions, Équipement GPU…)" required>' +
+      '<select class="es-select" name="categorie">' + FN.FIN_CATEGORIES.map(c => '<option' + (c === 'Fonctionnement' ? ' selected' : '') + '>' + c + '</option>').join('') + '</select>' +
+      '<input name="prevu" type="number" min="0" step="100" placeholder="Montant prévu" required style="width:140px"><input name="financeur" placeholder="Financeur" style="width:140px">' +
+      '<button class="es-btn primary" type="submit">Ajouter à ' + exo + '</button></form>';
+    const aTrier = cons.nonAffectees.nb
+      ? '<div class="fi-trier"><b>' + cons.nonAffectees.nb + ' dépense(s)</b> de ' + exo + ' (' + H(eur(cons.nonAffectees.montant)) + ') ne sont rattachées à aucune ligne budgétaire. ' +
+        '<button type="button" class="es-btn" data-fin-voir="non-affectees">Les trier</button></div>' : '';
+    const orph = orphelines ? '<div class="fi-trier warn"><b>' + orphelines + ' dépense(s)</b> ne figurent plus dans le dernier export SIFAC (annulées ou déplacées ?). <button type="button" class="es-btn" data-fin-voir="orphelines">Voir</button></div>' : '';
+    const top = FN.topFournisseurs(depensesExo, 8);
+    const maxT = Math.max(1, ...top.map(x => x.montant));
+    const topHtml = top.length ? top.map(x => '<div class="es-hbar"><span class="nom" title="' + H(x.nom) + '">' + H(x.nom) + '</span><div class="track"><div class="fill" style="width:' +
+      (x.montant / maxT * 100).toFixed(1) + '%;background:#9cc3ab"></div></div><span class="n" style="width:auto">' + H(formatMontantCompact(x.montant)) + '</span></div>').join('') : '<div class="es-empty">Aucune dépense.</div>';
+    return kpis + aTrier + orph +
+      '<div class="es-grid-2"><div class="es-card es-chart"><div class="es-card-head"><h3>Consommation ' + exo + '</h3><span class="aside">cumul mois par mois</span></div><div class="es-card-body">' + courbeFinance(exo, prevu) + '</div></div>' +
+      '<div class="es-card"><div class="es-card-head"><h3>Par catégorie</h3><span class="aside">prévu · engagé · payé</span></div><div class="es-card-body">' + catsHtml + '</div></div></div>' +
+      '<div class="es-grid-2"><div class="es-card"><div class="es-card-head"><h3>Lignes budgétaires ' + exo + '</h3></div><div class="es-card-body">' + lignesHtml + '</div></div>' +
+      '<div class="es-card"><div class="es-card-head"><h3>Principaux fournisseurs</h3><span class="aside">' + exo + '</span></div><div class="es-card-body fi-top">' + topHtml + '</div></div></div>';
+  }
+
+  function financeDepenses() {
+    const f = ui.finance;
+    const exo = Number(f.exercice);
+    let liste = financeFiltresPfi(F.depenses).filter(d => d.exercices.includes(exo) || (f.affect === 'orphelines' && d.orpheline));
+    liste = liste.filter(d =>
+      (!f.statut || d.statut === f.statut) && (!f.categorie || d.categorie === f.categorie) &&
+      (f.affect !== 'non-affectees' || (!d.budgetLigne && !d.orpheline)) && (f.affect !== 'orphelines' || d.orpheline) &&
+      correspond(f.q, [d.flux, d.libelle, d.fournisseur, d.libelleCompte, d.notes, (F.bById.get(d.budgetLigne) || {}).libelle]));
+    liste.sort((a, b) => (Number(b.dateEngagement || b.dateFacture || 0)) - (Number(a.dateEngagement || a.dateFacture || 0)));
+    const lignesBudget = F.budget.filter(b => b.exercice === exo || !b.exercice);
+    const projets = D.projets.slice().sort((a, b) => a.title.localeCompare(b.title, 'fr'));
+    const tot = (k) => liste.reduce((s, d) => s + (Number(d[k]) || 0), 0);
+    const MAX = 400;
+    const toolbar = '<div class="es-toolbar"><input class="es-search" data-q="finance" placeholder="Rechercher un flux, un fournisseur, un libellé…" value="' + H(f.q) + '">' +
+      '<select class="es-select" data-set="finance.statut"><option value="">Tous statuts</option>' + ['Engagé', 'Livré', 'Payé'].map(s => '<option' + (s === f.statut ? ' selected' : '') + '>' + s + '</option>').join('') + '</select>' +
+      '<select class="es-select" data-set="finance.categorie"><option value="">Toutes catégories</option>' + FN.FIN_CATEGORIES.map(s => '<option' + (s === f.categorie ? ' selected' : '') + '>' + s + '</option>').join('') + '</select>' +
+      '<select class="es-select" data-set="finance.affect"><option value="">Toutes</option><option value="non-affectees"' + (f.affect === 'non-affectees' ? ' selected' : '') + '>À trier (sans ligne)</option><option value="orphelines"' + (f.affect === 'orphelines' ? ' selected' : '') + '>Absentes de SIFAC</option></select>' +
+      '<span class="grow"></span><span class="es-count">' + liste.length + ' dépense(s)</span><button type="button" class="es-btn" data-fin-nouvelle>+ Dépense manuelle</button></div>';
+    const optLignes = (sel) => '<option value="">—</option>' + lignesBudget.map(b => '<option value="' + b.id + '"' + (b.id === sel ? ' selected' : '') + '>' + H(b.libelle) + '</option>').join('');
+    const optProjets = (sel) => '<option value="">—</option>' + projets.map(p => '<option value="' + p.id + '"' + (p.id === sel ? ' selected' : '') + '>' + H(p.title.length > 40 ? p.title.slice(0, 39) + '…' : p.title) + '</option>').join('');
+    const nouvelle = f.nouvelle ? '<div class="es-card"><div class="es-card-body"><form class="es-form" data-fin-ajout-depense style="margin:0">' +
+      '<input class="grow" name="libelle" placeholder="Libellé" required><input name="fournisseur" placeholder="Fournisseur" style="width:160px">' +
+      '<select class="es-select" name="categorie">' + FN.FIN_CATEGORIES.map(c => '<option' + (c === 'Fonctionnement' ? ' selected' : '') + '>' + c + '</option>').join('') + '</select>' +
+      '<select class="es-select" name="statut"><option>Engagé</option><option>Livré</option><option>Payé</option></select>' +
+      '<input name="montant" type="number" step="0.01" placeholder="Montant" required style="width:120px"><input name="date" type="date" required>' +
+      '<select class="es-select" name="ligne">' + optLignes(null) + '</select><button class="es-btn primary" type="submit">Enregistrer</button></form>' +
+      '<div class="es-muted" style="font-size:12px;margin-top:6px">Pour ce que SIFAC ne voit pas encore (devis signé, mission à venir). Elle ne sera jamais touchée par un import.</div></div></div>' : '';
+    const table = '<div class="es-card es-table-wrap"><table class="es-table fi-table"><thead><tr><th>Date</th><th>Libellé</th><th>Catégorie</th><th>Statut</th><th class="num">Engagé</th><th class="num">Facturé</th><th class="num">Payé</th><th>Ligne budgétaire</th><th>Projet</th></tr></thead><tbody>' +
+      liste.slice(0, MAX).map(d => '<tr data-open="depense:' + d.id + '"' + (d.orpheline ? ' class="fi-orph"' : '') + '><td class="num">' + H(formatDate(d.dateEngagement || d.dateFacture || d.datePaiement)) +
+        '</td><td class="ttl">' + H(d.libelle || '(sans libellé)') + '<div class="es-muted" style="font-weight:400;font-size:12px">' + H([d.fournisseur, d.flux ? 'flux ' + d.flux : 'saisie manuelle'].filter(Boolean).join(' · ')) +
+        (d.orpheline ? ' · <b style="color:var(--es-warn)">absente du dernier import</b>' : '') + '</div></td><td>' + H(d.categorie) + '</td><td>' + badgeStatutDepense(d.statut) +
+        '</td><td class="num">' + H(eur2(d.engage)) + '</td><td class="num">' + H(eur2(d.facture)) + '</td><td class="num">' + H(eur2(d.paye)) +
+        '</td><td><select class="es-select fi-sel" data-fin-affecter="' + d.id + '" aria-label="Ligne budgétaire">' + optLignes(d.budgetLigne) + '</select></td>' +
+        '<td><select class="es-select fi-sel" data-fin-projet="' + d.id + '" aria-label="Projet">' + optProjets(d.projet) + '</select></td></tr>').join('') +
+      '</tbody><tfoot><tr><td></td><td class="ttl">Total</td><td></td><td></td><td class="num">' + H(eur2(tot('engage'))) + '</td><td class="num">' + H(eur2(tot('facture'))) + '</td><td class="num">' + H(eur2(tot('paye'))) + '</td><td colspan="2"></td></tr></tfoot></table>' +
+      (liste.length ? '' : '<div class="es-empty">Aucune dépense pour ces filtres.</div>') +
+      (liste.length > MAX ? '<div class="es-empty">' + (liste.length - MAX) + ' dépenses de plus : affinez la recherche.</div>' : '') + '</div>';
+    return toolbar + nouvelle + table +
+      '<div class="es-count">Vue groupée : une ligne par flux, tous exercices confondus (une commande engagée en ' + (exo - 1) + ' et payée en ' + exo + ' reste une seule dépense). Pour des totaux exacts année par année, voir « Écritures SIFAC ».</div>';
+  }
+
+  function financeEcritures() {
+    const f = ui.finance;
+    const exo = Number(f.exercice);
+    const liste = financeFiltresPfi(F.ecritures).filter(e => e.exercice === exo &&
+      correspond(f.q, [e.flux, e.libelleFlux, e.tiers, e.numFacture, e.libelleCompte, e.rubrique]))
+      .sort((a, b) => (a.flux.localeCompare(b.flux)) || ((a.dateEngagement || 0) - (b.dateEngagement || 0)));
+    const tot = (k) => liste.reduce((s, e) => s + (Number(e[k]) || 0), 0);
+    const MAX = 500;
+    return '<div class="es-toolbar"><input class="es-search" data-q="finance" placeholder="Rechercher un flux, un tiers, une facture…" value="' + H(f.q) + '">' +
+      '<span class="grow"></span><span class="es-count">' + liste.length + ' écriture(s) sur ' + exo + '</span></div>' +
+      '<div class="es-card es-table-wrap"><table class="es-table fi-table"><thead><tr><th>Flux</th><th>Libellé</th><th>Tiers</th><th>Rubrique</th><th class="num">Engagé</th><th class="num">Facturé</th><th class="num">Payé</th><th class="num">Report</th><th class="num">Facture</th><th class="num">Paiement</th></tr></thead><tbody>' +
+      liste.slice(0, MAX).map(e => '<tr><td>' + H(e.flux) + '</td><td>' + H(e.libelleFlux) + '</td><td>' + H(e.tiers) + '</td><td>' + H(e.rubrique) +
+        '</td><td class="num">' + H(e.engage ? eur2(e.engage) : '') + '</td><td class="num">' + H(e.facture ? eur2(e.facture) : '') + '</td><td class="num">' + H(e.paye ? eur2(e.paye) : '') +
+        '</td><td class="num">' + H(e.report ? eur2(e.report) : '') + '</td><td class="num">' + H(e.numFacture ? e.numFacture + ' · ' + formatDate(e.dateFacture) : '') + '</td><td class="num">' + H(formatDate(e.datePaiement)) + '</td></tr>').join('') +
+      '</tbody><tfoot><tr><td></td><td class="ttl">Total</td><td></td><td></td><td class="num">' + H(eur2(tot('engage'))) + '</td><td class="num">' + H(eur2(tot('facture'))) + '</td><td class="num">' + H(eur2(tot('paye'))) + '</td><td class="num">' + H(eur2(tot('report'))) + '</td><td colspan="2"></td></tr></tfoot></table>' +
+      (liste.length ? '' : '<div class="es-empty">Aucune écriture importée pour ' + exo + '.</div>') + (liste.length > MAX ? '<div class="es-empty">' + (liste.length - MAX) + ' écritures de plus : affinez la recherche.</div>' : '') + '</div>' +
+      '<div class="es-count">Les écritures brutes, telles que SIFAC les exporte : chacune porte sa date et son montant, donc ces totaux se recoupent avec un relevé SIFAC de l’exercice.</div>';
+  }
+
+  // ---- Import ----
+  let apercu = null; // { nomFichier, pfi, exercice, ecritures, avertissements }
+
+  function planImport(a) {
+    // Les écritures du même PFI sur les autres exercices restent en place ; celles
+    // de l'exercice importé sont remplacées. Les dépenses sont recalculées sur
+    // l'ensemble, pour qu'un report d'un exercice sur l'autre retombe sur le même flux.
+    const remplacees = F.ecritures.filter(e => e.pfi === a.pfi && e.exercice === Number(a.exercice));
+    const autres = F.ecritures.filter(e => e.pfi === a.pfi && e.exercice !== Number(a.exercice));
+    const agregats = FN.agregerParFlux(autres.concat(a.ecritures));
+    const rappro = FN.rapprocher(agregats, F.depenses, a.pfi);
+    return { remplacees, agregats, rappro };
+  }
+
+  function financeImport() {
+    const intro = '<div class="es-card"><div class="es-card-body fi-import">' +
+      '<h3 style="margin:0 0 6px;font-size:15px">Importer un export SIFAC</h3>' +
+      '<p class="es-muted" style="margin:0 0 12px;font-size:13px">Un fichier par PFI et par exercice, au format Excel (.xlsx) ou CSV : l’état des dépenses du PFI tel que SIFAC l’exporte. ' +
+      'Réimporter le même PFI sur le même exercice remplace ses écritures ; les rattachements faits à la main (ligne budgétaire, projet, notes) sont conservés.</p>' +
+      '<label class="fi-drop"><input type="file" id="fin-fichier" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" hidden>' +
+      '<b>Choisir un fichier</b> ou le déposer ici</label></div></div>';
+    if (!apercu) return intro;
+    if (apercu.erreur) return intro + '<div class="es-card fi-setup warn"><div class="es-card-body"><b>' + H(apercu.nomFichier) + '</b> : ' + H(apercu.erreur) + '</div></div>';
+    const p = planImport(apercu);
+    const somme = (k) => apercu.ecritures.reduce((s, e) => s + (Number(e[k]) || 0), 0);
+    return intro + '<div class="es-card"><div class="es-card-head"><h3>Aperçu — ' + H(apercu.nomFichier) + '</h3></div><div class="es-card-body">' +
+      '<div class="es-info fi-info"><div><span>PFI</span><b>' + H(apercu.pfi) + '</b></div><div><span>Exercice</span><b><input type="number" id="fin-exo" value="' + H(apercu.exercice) + '" min="2000" max="2100" style="width:90px;font:inherit;font-weight:600;border:1px solid var(--border);border-radius:6px;padding:2px 6px"></b></div>' +
+      '<div><span>Écritures lues</span><b>' + apercu.ecritures.length + '</b></div><div><span>Flux</span><b>' + new Set(apercu.ecritures.map(e => e.flux)).size + '</b></div>' +
+      '<div><span>Engagé / facturé</span><b>' + H(eur(somme('engage'))) + ' / ' + H(eur(somme('facture'))) + '</b></div><div><span>Payé</span><b>' + H(eur(somme('paye'))) + '</b></div></div>' +
+      '<ul class="fi-plan"><li><b>' + p.remplacees.length + '</b> écriture(s) déjà présentes pour ' + H(apercu.pfi) + ' / ' + H(apercu.exercice) + ' seront remplacées par les <b>' + apercu.ecritures.length + '</b> du fichier.</li>' +
+      '<li><b>' + p.rappro.aCreer.length + '</b> nouvelle(s) dépense(s), <b>' + p.rappro.aMettreAJour.length + '</b> mise(s) à jour.</li>' +
+      (p.rappro.orphelines.length ? '<li><b>' + p.rappro.orphelines.length + '</b> dépense(s) absentes de SIFAC seront signalées (jamais supprimées).</li>' : '') + '</ul>' +
+      (apercu.avertissements.length ? '<div class="fi-trier warn">' + apercu.avertissements.map(H).join('<br>') + '</div>' : '') +
+      '<div style="display:flex;gap:8px;margin-top:12px"><button type="button" class="es-btn primary" data-fin-importer>Importer</button><button type="button" class="es-btn" data-fin-annuler>Annuler</button></div>' +
+      '<div class="es-muted" style="font-size:12px;margin-top:8px">L’exercice est deviné d’après les dates du fichier ; corrigez-le si besoin avant d’importer.</div></div></div>';
+  }
+
+  async function lireFichier(fichier) {
+    const nom = fichier.name || 'fichier';
+    try {
+      let lignes;
+      if (/\.csv$/i.test(nom) || fichier.type === 'text/csv') lignes = FN.lireCsv(await fichier.text());
+      else {
+        if (typeof window.readXlsxFile !== 'function') throw new Error('Lecteur Excel indisponible — exportez en CSV.');
+        lignes = await window.readXlsxFile(fichier);
+      }
+      const lu = FN.lireExportSifac(lignes);
+      apercu = Object.assign({ nomFichier: nom }, lu);
+    } catch (err) {
+      apercu = { nomFichier: nom, erreur: err && err.message ? err.message : String(err) };
+    }
+    render();
+  }
+
+  async function importer() {
+    if (!apercu || apercu.erreur) return;
+    const exo = Number(apercu.exercice);
+    if (!exo) { toast('Exercice invalide', true); return; }
+    const p = planImport(apercu);
+    const tE = FN.FIN_TABLES.ecritures.tableId, tD = FN.FIN_TABLES.depenses.tableId;
+    const actions = [];
+    if (p.remplacees.length) actions.push(['BulkRemoveRecord', tE, p.remplacees.map(e => e.id)]);
+    const nouvelles = apercu.ecritures.map(e => FN.champsEcriture(e, exo));
+    if (nouvelles.length) actions.push(['BulkAddRecord', tE, nouvelles.map(() => null), FN.enColonnes(nouvelles)]);
+    const aCreer = p.rappro.aCreer.map(FN.champsSifac);
+    if (aCreer.length) actions.push(['BulkAddRecord', tD, aCreer.map(() => null), FN.enColonnes(aCreer)]);
+    const maj = p.rappro.aMettreAJour.map(u => FN.champsSifac(u.agregat));
+    if (maj.length) actions.push(['BulkUpdateRecord', tD, p.rappro.aMettreAJour.map(u => u.id), FN.enColonnes(maj)]);
+    if (p.rappro.orphelines.length) actions.push(['BulkUpdateRecord', tD, p.rappro.orphelines, { Orpheline: p.rappro.orphelines.map(() => true) }]);
+    setStatus('Import en cours…');
+    try {
+      // Une seule transaction : un échec ne laisse jamais un exercice à moitié remplacé.
+      await grist.docApi.applyUserActions(actions);
+      apercu = null;
+      await chargerFinance(true);
+      ui.finance.exercice = exo;
+      ui.finance.sous = 'synthese';
+      render();
+      setStatus('Import terminé ✓');
+      toast('Import terminé : ' + nouvelles.length + ' écritures, ' + aCreer.length + ' nouvelles dépenses, ' + maj.length + ' mises à jour');
+    } catch (err) {
+      console.error(err);
+      toast('Import refusé par le document : ' + (err && err.message ? err.message : err), true);
+      setStatus('');
+    }
+  }
+
+  async function financeEcrire(actions, msg) {
+    try {
+      await grist.docApi.applyUserActions(actions);
+      await chargerFinance(true);
+      render();
+      setStatus(msg || 'Enregistré ✓');
+    } catch (err) {
+      console.error(err);
+      toast('Enregistrement impossible : ' + (err && err.message ? err.message : err), true);
+    }
+  }
+
+  function ficheDepense(d) {
+    const ecr = F.ecritures.filter(e => e.flux && e.flux === d.flux && e.pfi === d.pfi)
+      .sort((a, b) => (a.dateEngagement || a.dateFacture || 0) - (b.dateEngagement || b.dateFacture || 0));
+    const ligne = F.bById.get(d.budgetLigne);
+    const projet = d.projet ? D.pById.get(d.projet) : null;
+    const head = '<div class="es-sheet-top">' + badgeStatutDepense(d.statut) + (d.categorie ? '<span class="es-badge">' + H(d.categorie) + '</span>' : '') +
+      (d.orpheline ? '<span class="es-badge" style="background:#fef3c7">Absente du dernier import</span>' : '') +
+      '<button type="button" class="es-btn icon close" data-close aria-label="Fermer">✕</button></div>' +
+      '<h2>' + H(d.libelle || '(sans libellé)') + '</h2><div class="desc">' + H([d.fournisseur, d.flux ? 'flux ' + d.flux : 'saisie manuelle', d.pfi].filter(Boolean).join(' · ')) + '</div>' +
+      '<div class="es-pills">' + (ligne ? '<span class="es-pill">' + H(ligne.libelle) + ' <small>ligne budgétaire</small></span>' : '') +
+      (projet ? '<button type="button" class="es-pill" data-open="projet:' + projet.id + '">' + H(projet.title) + ' <small>projet</small></button>' : '') + '</div>';
+    const body = '<div class="es-info"><div><span>Montant</span><b>' + H(eur2(d.montant)) + '</b></div><div><span>Engagé</span><b>' + H(eur2(d.engage)) + '</b></div>' +
+      '<div><span>Facturé</span><b>' + H(eur2(d.facture)) + '</b></div><div><span>Payé</span><b>' + H(eur2(d.paye)) + '</b></div>' +
+      '<div><span>Engagement</span><b>' + H(formatDate(d.dateEngagement) || '—') + '</b></div><div><span>Paiement</span><b>' + H(formatDate(d.datePaiement) || '—') + '</b></div>' +
+      '<div><span>Compte</span><b>' + H([d.compte, d.libelleCompte].filter(Boolean).join(' — ') || '—') + '</b></div><div><span>OTP</span><b>' + H(d.otp || '—') + '</b></div></div>' +
+      '<div class="es-section"><h5>Notes</h5><form data-fin-notes="' + d.id + '"><textarea name="notes" rows="3" style="width:100%;font:inherit;font-size:13px;border:1px solid var(--border);border-radius:8px;padding:8px">' + H(d.notes) + '</textarea>' +
+      '<button class="es-btn" type="submit" style="margin-top:6px">Enregistrer la note</button></form></div>' +
+      (ecr.length ? '<div class="es-section"><h5>Écritures SIFAC (' + ecr.length + ')</h5><div class="es-list">' + ecr.map(e =>
+        '<div class="es-row"><span class="d">' + H(formatDate(e.datePaiement || e.dateFacture || e.dateEngagement) || '—') + '</span><div style="min-width:0;flex:1"><div class="t">' +
+        H([e.rubrique, e.numFacture && 'facture ' + e.numFacture].filter(Boolean).join(' · ') || 'Écriture') + '</div><div class="s">Exercice ' + H(e.exercice) + '</div></div><span class="r">' +
+        H([e.engage && 'engagé ' + eur2(e.engage), e.facture && 'facturé ' + eur2(e.facture), e.paye && 'payé ' + eur2(e.paye), e.report && 'report ' + eur2(e.report)].filter(Boolean).join(' · ')) + '</span></div>').join('') + '</div></div>' : '') +
+      (d.source !== 'SIFAC' ? '<div class="es-section"><button type="button" class="es-btn" data-fin-suppr-depense="' + d.id + '" style="color:var(--es-late)">Supprimer cette dépense manuelle</button></div>' : '');
+    return { head, tabs: [], body };
+  }
+
+  // ---------------------------------------------------------------------
   // Rendu
   // ---------------------------------------------------------------------
   function render() {
     if (!D) return;
     renderTop();
-    const vues = { dashboard: vueDashboard, projets: vueProjets, partenaires: vuePartenaires, contacts: vueContacts, actions: vueActions };
+    const vues = { dashboard: vueDashboard, projets: vueProjets, partenaires: vuePartenaires, contacts: vueContacts, actions: vueActions, finance: vueFinance };
     const main = $('main');
     const focus = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.q;
     const caret = focus ? document.activeElement.selectionStart : null;
@@ -1438,6 +1847,35 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
       return;
     }
     if (t.matches('[data-fait]')) return; // géré par « change »
+    if (t.closest('[data-fin-creer]')) {
+      const manquantes = Object.keys(FN.FIN_TABLES).filter(k => !F.tables[k]);
+      if (!confirm('Créer ' + manquantes.length + ' table(s) dans le document : ' + manquantes.map(k => FN.FIN_TABLES[k].tableId).join(', ') + ' ?')) return;
+      financeEcrire(FN.actionsCreationTables(manquantes), 'Tables créées ✓');
+      return;
+    }
+    const voir = t.closest('[data-fin-voir]');
+    if (voir) { Object.assign(ui.finance, { sous: 'depenses', affect: voir.dataset.finVoir, statut: '', categorie: '', q: '' }); render(); return; }
+    if (t.closest('[data-fin-nouvelle]')) { ui.finance.nouvelle = !ui.finance.nouvelle; render(); return; }
+    if (t.closest('[data-fin-annuler]')) { apercu = null; render(); return; }
+    if (t.closest('[data-fin-importer]')) { importer(); return; }
+    const supprLigne = t.closest('[data-fin-suppr-ligne]');
+    if (supprLigne) {
+      const b = F.bById.get(Number(supprLigne.dataset.finSupprLigne));
+      if (b && confirm('Supprimer la ligne budgétaire « ' + b.libelle + ' » ? Les dépenses rattachées redeviendront « à trier ».')) {
+        financeEcrire([['RemoveRecord', FN.FIN_TABLES.budget.tableId, b.id]], 'Ligne supprimée');
+      }
+      return;
+    }
+    const supprDep = t.closest('[data-fin-suppr-depense]');
+    if (supprDep) {
+      if (confirm('Supprimer cette dépense manuelle ?')) {
+        ui.sheet = null;
+        financeEcrire([['RemoveRecord', FN.FIN_TABLES.depenses.tableId, Number(supprDep.dataset.finSupprDepense)]], 'Dépense supprimée');
+      }
+      return;
+    }
+    // Un champ dans une ligne cliquable ne doit pas ouvrir la fiche.
+    if (t.closest('select, input, textarea, .fi-drop')) return;
     const set = t.closest('button[data-set]');
     if (set) { poser(set.dataset.set, set.dataset.val); render(); return; }
     const tog = t.closest('[data-toggle]');
@@ -1480,11 +1918,46 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
   document.addEventListener('change', (e) => {
     const t = e.target;
     if (t.matches('[data-fait]')) { basculerFaite(Number(t.dataset.fait), t.checked); return; }
+    if (t.matches('[data-fin-affecter]')) {
+      financeEcrire([['UpdateRecord', FN.FIN_TABLES.depenses.tableId, Number(t.dataset.finAffecter), { Budget_ligne: Number(t.value) || 0 }]], 'Dépense rattachée ✓');
+      return;
+    }
+    if (t.matches('[data-fin-projet]')) {
+      financeEcrire([['UpdateRecord', FN.FIN_TABLES.depenses.tableId, Number(t.dataset.finProjet), { Opportunite: Number(t.value) || 0 }]], 'Projet rattaché ✓');
+      return;
+    }
+    if (t.id === 'fin-fichier' && t.files && t.files[0]) { lireFichier(t.files[0]); return; }
+    if (t.id === 'fin-exo' && apercu) { apercu.exercice = Number(t.value) || apercu.exercice; render(); return; }
     if (t.matches('select[data-set]')) { poser(t.dataset.set, t.value); render(); }
   });
 
   document.addEventListener('submit', (e) => {
     const form = e.target;
+    if (form.hasAttribute('data-fin-ajout-ligne')) {
+      e.preventDefault();
+      financeEcrire([['AddRecord', FN.FIN_TABLES.budget.tableId, null, {
+        Libelle: form.libelle.value.trim(), Categorie: form.categorie.value, Montant_prevu: Number(form.prevu.value) || 0,
+        Financeur: form.financeur.value.trim(), Exercice: Number(ui.finance.exercice), PFI: ui.finance.pfi || ''
+      }]], 'Ligne budgétaire ajoutée ✓');
+      return;
+    }
+    if (form.hasAttribute('data-fin-ajout-depense')) {
+      e.preventDefault();
+      const m = Number(form.montant.value) || 0, st = form.statut.value, dt = inputValueToGristDate(form.date.value);
+      ui.finance.nouvelle = false;
+      financeEcrire([['AddRecord', FN.FIN_TABLES.depenses.tableId, null, {
+        Libelle: form.libelle.value.trim(), Fournisseur: form.fournisseur.value.trim(), Categorie: form.categorie.value, Statut: st,
+        Montant: m, Montant_engage: m, Montant_facture: st === 'Engagé' ? 0 : m, Montant_paye: st === 'Payé' ? m : 0,
+        Date_engagement: dt, Date_paiement: st === 'Payé' ? dt : null, Source: 'Manuelle', PFI: ui.finance.pfi || '',
+        Budget_ligne: Number(form.ligne.value) || 0
+      }]], 'Dépense ajoutée ✓');
+      return;
+    }
+    if (form.dataset.finNotes) {
+      e.preventDefault();
+      financeEcrire([['UpdateRecord', FN.FIN_TABLES.depenses.tableId, Number(form.dataset.finNotes), { Notes: form.notes.value }]], 'Note enregistrée ✓');
+      return;
+    }
     if (form.dataset.ajoutAction) {
       e.preventDefault();
       const label = form.label.value.trim();
@@ -1496,6 +1969,16 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
       if (!/^https?:\/\//i.test(url)) { toast('Adresse invalide : elle doit commencer par http:// ou https://', true); return; }
       enregistrerLiens(p.id, p.liens.concat({ libelle: form.libelle.value.trim() || url, url }));
     }
+  });
+
+  // Dépôt d'un fichier SIFAC sur la zone d'import.
+  document.addEventListener('dragover', (e) => { if (e.target.closest && e.target.closest('.fi-drop')) { e.preventDefault(); e.target.closest('.fi-drop').classList.add('over'); } });
+  document.addEventListener('dragleave', (e) => { if (e.target.closest && e.target.closest('.fi-drop')) e.target.closest('.fi-drop').classList.remove('over'); });
+  document.addEventListener('drop', (e) => {
+    const zone = e.target.closest && e.target.closest('.fi-drop');
+    if (!zone || !e.dataTransfer || !e.dataTransfer.files.length) return;
+    e.preventDefault();
+    lireFichier(e.dataTransfer.files[0]);
   });
 
   // Glisser-déposer natif : projets entre étapes, actions entre statuts.

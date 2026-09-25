@@ -7,7 +7,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { buildMockScript } from './mock-grist.mjs';
-import { espaceConfig } from './fixtures.mjs';
+import { espaceConfig, espaceFinanceConfig, sifacCsv } from './fixtures.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.join(__dirname, '..', '..');
@@ -19,8 +19,8 @@ if (process.env.PLAYWRIGHT_CHROMIUM_PATH) launchOpts.executablePath = process.en
 const browser = await chromium.launch(launchOpts);
 let erreurs = 0;
 
-async function shot(name, { width = 1440, height = 1000, vue = null, apres = null } = {}) {
-  const cfg = espaceConfig();
+async function shot(name, { width = 1440, height = 1000, vue = null, apres = null, config = espaceConfig } = {}) {
+  const cfg = config();
   const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1 });
   const page = await context.newPage();
   page.on('pageerror', (err) => { erreurs++; console.error('  ! erreur page :', err.message); });
@@ -55,5 +55,26 @@ await shot('espace-contacts', { vue: 'contacts' });
 await shot('espace-actions', { vue: 'actions' });
 await shot('espace-actions-calendrier', { vue: 'actions', apres: (p) => p.click('[data-set="actions.mode"][data-val="calendrier"]') });
 await shot('espace-etroit', { width: 420, height: 900 });
+
+// Finance : mise en place, import d'un export SIFAC, puis les trois vues.
+const csv = { name: 'export_sifac_SEQUOIA-IA.csv', mimeType: 'text/csv', buffer: Buffer.from(sifacCsv(new Date().getFullYear()), 'utf8') };
+const importerCsv = async (p) => {
+  await p.click('[data-set="finance.sous"][data-val="import"]');
+  await p.setInputFiles('#fin-fichier', csv);
+  await p.waitForSelector('[data-fin-importer]');
+};
+const importe = async (p) => { await importerCsv(p); await p.click('[data-fin-importer]'); await p.waitForSelector('.fi-trier, .es-kpis'); };
+await shot('espace-finance-installation', { vue: 'finance', height: 600 });
+await shot('espace-finance-apercu', { vue: 'finance', config: espaceFinanceConfig, apres: importerCsv });
+await shot('espace-finance-synthese', { vue: 'finance', config: espaceFinanceConfig, height: 1300, apres: importe });
+await shot('espace-finance-depenses', { vue: 'finance', config: espaceFinanceConfig, apres: async (p) => {
+  await importe(p); await p.click('[data-fin-voir="non-affectees"]');
+} });
+await shot('espace-finance-ecritures', { vue: 'finance', config: espaceFinanceConfig, apres: async (p) => {
+  await importe(p); await p.click('[data-set="finance.sous"][data-val="ecritures"]');
+} });
+await shot('espace-finance-fiche', { vue: 'finance', config: espaceFinanceConfig, apres: async (p) => {
+  await importe(p); await p.click('[data-set="finance.sous"][data-val="depenses"]'); await p.click('.fi-table tbody tr >> text=Serveur GPU');
+} });
 await browser.close();
 if (erreurs) { console.error(erreurs + ' erreur(s)'); process.exit(1); }

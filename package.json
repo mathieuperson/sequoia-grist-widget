@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node tests/common.test.mjs && node tests/pilotage.test.mjs && node tests/espace.test.mjs",
+    "test": "node tests/common.test.mjs && node tests/pilotage.test.mjs && node tests/espace.test.mjs && node tests/finance.test.mjs",
     "test:browser": "node tests/browser/run.mjs",
     "preview": "node tests/browser/screenshot.mjs",
     "preview:pilotage": "node tests/browser/screenshot-pilotage.mjs",
