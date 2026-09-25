@@ -314,5 +314,21 @@ eq(Array.from(estampilles).length <= 1, true,
   'estampille: une seule version en circulation (sinon un widget a été oublié) — ' +
   Array.from(estampilles).join(', '));
 
+// ---- Journal des opportunités ----
+{
+  const texte = 'Note libre sans date\n[2026-09-25] Relance envoyée\nsuite de la relance\n[2026-09-01] Premier contact';
+  const j = sandbox.lireJournal(texte);
+  eq(j.map(e => [e.date, e.texte, e.ligne]), [[null, 'Note libre sans date', 0], ['2026-09-25', 'Relance envoyée\nsuite de la relance', 1], ['2026-09-01', 'Premier contact', 3]],
+    'lireJournal: entrées datées, prolongations, note sans date et son index de ligne');
+  eq(sandbox.ecrireJournal('[2026-09-01] A', 'B', '2026-09-25'), '[2026-09-25] B\n[2026-09-01] A', 'ecrireJournal: la plus récente en tête');
+  eq(sandbox.daterEntreeJournal(texte, 0, '2026-09-21'), texte.replace('Note libre sans date', '[2026-09-21] Note libre sans date'), 'daterEntreeJournal: date la ligne visée');
+  eq(sandbox.daterEntreeJournal(texte, 1, '2026-09-21'), texte, 'daterEntreeJournal: une ligne déjà datée ne change pas');
+  eq(sandbox.daterNouvellesLignes('[2026-09-01] A', 'Voir PDF envoyé par Anna\n[2026-09-01] A', '2026-09-25'),
+    '[2026-09-25] Voir PDF envoyé par Anna\n[2026-09-01] A', 'daterNouvellesLignes: une note ajoutée à la main prend la date du jour');
+  eq(sandbox.daterNouvellesLignes('Ancienne note', 'Ancienne note\nNouvelle\nsur deux lignes', '2026-09-25'),
+    'Ancienne note\n[2026-09-25] Nouvelle\nsur deux lignes', 'daterNouvellesLignes: les lignes existantes gardent leur forme, une note sur deux lignes prend une seule date');
+  eq(sandbox.daterNouvellesLignes('', '', '2026-09-25'), '', 'daterNouvellesLignes: vide');
+}
+
 console.log(`\n${pass} passed, ${fail} failed (final)`);
 process.exit(fail ? 1 : 0);

@@ -6,8 +6,8 @@
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-<link rel="stylesheet" href="./common.css?v=20260925g">
-<script src="./common.js?v=20260925g"></script>
+<link rel="stylesheet" href="./common.css?v=20260925h">
+<script src="./common.js?v=20260925h"></script>
 <style>
   /* ---------- Sidebar ---------- */
   .filter-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
@@ -495,7 +495,9 @@
     border-bottom: 1px solid var(--border);
   }
   .jr-entree:last-child { border-bottom: none; }
-  .jr-date { font-size: 11.5px; color: var(--text-muted); min-width: 74px; flex-shrink: 0; padding-top: 1px; }
+  .jr-date { font-size: 11.5px; color: var(--text-muted); min-width: 74px; flex-shrink: 0; padding-top: 1px; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+  .jr-dater { font: inherit; font-size: 11px; font-weight: 600; color: var(--sequoia-green-dark); background: var(--sequoia-green-light); border: 0; border-radius: 6px; padding: 2px 8px; cursor: pointer; }
+  .jr-dater-champ { font: inherit; font-size: 11.5px; width: 118px; border: 1px solid var(--border); border-radius: 6px; padding: 2px 4px; }
   .jr-texte { font-size: 13px; line-height: 1.5; min-width: 0; }
   .act-contacts { padding: 0 16px 12px; }
 
@@ -1611,31 +1613,7 @@
   // d'édition ne montrait que les champs ; cette fiche montre le reste.
   // ---------------------------------------------------------------------
 
-  // Le journal vit dans la colonne Commentaire, une entrée par ligne, datée
-  // entre crochets. Pas de table supplémentaire à créer, et le texte reste
-  // lisible tel quel dans Grist. Ce qui ne suit pas ce format — un commentaire
-  // écrit à la main avant — est gardé comme une entrée sans date.
-  const MARQUE_JOURNAL = /^\s*\[(\d{4}-\d{2}-\d{2})\]\s?/;
-
-  function lireJournal(texte) {
-    const lignes = String(texte || '').split('\n');
-    const entrees = [];
-    lignes.forEach(ligne => {
-      const m = MARQUE_JOURNAL.exec(ligne);
-      if (m) entrees.push({ date: m[1], texte: ligne.replace(MARQUE_JOURNAL, '').trim() });
-      else if (ligne.trim() && entrees.length) entrees[entrees.length - 1].texte += '\n' + ligne.trim();
-      else if (ligne.trim()) entrees.push({ date: null, texte: ligne.trim() });
-    });
-    return entrees;
-  }
-
-  function ecrireJournal(texteExistant, nouvelleEntree) {
-    const jour = new Date().toISOString().slice(0, 10);
-    const ligne = '[' + jour + '] ' + nouvelleEntree.trim();
-    const avant = String(texteExistant || '').trim();
-    // La plus récente en tête : c'est ce qu'on vient chercher.
-    return avant ? ligne + '\n' + avant : ligne;
-  }
+  // Le journal (lireJournal, ecrireJournal, daterEntreeJournal) vit dans common.js.
 
   function ouvrirOpportunite(id) {
     opportuniteOuverte = id;
@@ -1715,7 +1693,8 @@
       (journal.length
         ? '<div class="jr-liste">' + journal.map(e =>
             '<div class="jr-entree">' +
-              '<div class="jr-date">' + escapeHtml(e.date ? formatDate(inputValueToGristDate(e.date)) : 'sans date') + '</div>' +
+              '<div class="jr-date">' + (e.date ? escapeHtml(formatDate(inputValueToGristDate(e.date)))
+                : '<span class="jr-sans">sans date</span><button type="button" class="jr-dater" data-dater="' + e.ligne + '" title="Donner une date à cette note">Dater</button>') + '</div>' +
               '<div class="jr-texte">' + escapeHtml(e.texte).replace(/\n/g, '<br>') + '</div>' +
             '</div>').join('') + '</div>'
         : '<div class="panel-empty">Rien de noté pour l’instant.</div>');
@@ -1884,6 +1863,30 @@
         } catch (err) { console.error(err); toast('Erreur d’enregistrement', true); }
       };
       noter.addEventListener('click', envoyer);
+      // Une note écrite sans passer par « Noter » (cellule Grist, formulaire) n'a
+      // pas de date : on la lui donne ici, aujourd'hui par défaut.
+      document.querySelectorAll('[data-dater]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const champ = document.createElement('input');
+          champ.type = 'date';
+          champ.className = 'jr-dater-champ';
+          champ.value = jourIso();
+          const ok = document.createElement('button');
+          ok.type = 'button'; ok.className = 'jr-dater'; ok.textContent = 'OK';
+          btn.replaceWith(champ, ok);
+          champ.focus();
+          ok.addEventListener('click', async () => {
+            if (!champ.value) return;
+            try {
+              await updateRecord(r.tableId, o.id, {
+                [cols.Commentaire]: daterEntreeJournal(formatValue(o[cols.Commentaire]), Number(btn.dataset.dater), champ.value)
+              });
+              await refreshRelated(true);
+              toast('Note datée');
+            } catch (err) { console.error(err); toast('Erreur d’enregistrement', true); }
+          });
+        });
+      });
       document.getElementById('jr-texte').addEventListener('keydown', (e) => {
         // Entrée envoie, Maj+Entrée passe à la ligne : le geste des messageries.
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); envoyer(); }
@@ -2915,7 +2918,7 @@
           set('Montant', montant === '' ? null : Number(montant));
           set('DateDebut', inputValueToGristDate(document.getElementById('m-debut').value));
           set('Echeance', inputValueToGristDate(document.getElementById('m-echeance').value));
-          set('Commentaire', document.getElementById('m-commentaire').value.trim());
+          set('Commentaire', daterNouvellesLignes('', document.getElementById('m-commentaire').value.trim()));
           const contactChips = getContacts();
           const clusterChips = getClusterContacts();
           if (contactChips.length) set('ContactPartenaire',
@@ -2947,7 +2950,9 @@
       bind('m-montant', 'Montant', asNumber);
       bind('m-debut', 'DateDebut', asDate);
       bind('m-echeance', 'Echeance', asDate);
-      bind('m-commentaire', 'Commentaire');
+      // Ce qui est ajouté au commentaire prend la date du jour, comme avec « Noter ».
+      const commentaireInitial = cols.Commentaire ? formatValue(o[cols.Commentaire]) : '';
+      bind('m-commentaire', 'Commentaire', el => daterNouvellesLignes(commentaireInitial, el.value));
 
       document.getElementById('m-delete').addEventListener('click', async () => {
         if (!confirm('Supprimer définitivement cette opportunité ?')) return;

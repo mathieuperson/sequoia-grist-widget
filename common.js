@@ -1069,6 +1069,67 @@ function createMultiSelect(root, conf) {
   };
 }
 
+// ---------- Journal (colonne Commentaire des opportunités) ----------
+//
+// Une entrée par ligne, datée entre crochets : « [2026-09-25] Relance envoyée ».
+// Pas de table à créer, et le texte reste lisible tel quel dans Grist. Ce qui ne
+// suit pas ce format (écrit à la main) est gardé comme une entrée sans date ; les
+// lignes qui suivent une entrée datée la prolongent.
+const MARQUE_JOURNAL = /^\s*\[(\d{4}-\d{2}-\d{2})\]\s?/;
+
+function jourIso(d) {
+  const x = d || new Date();
+  return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0');
+}
+
+// Rend [{ date, texte, ligne }] — `ligne` est l'index de la première ligne de
+// l'entrée dans le texte, de quoi la dater après coup.
+function lireJournal(texte) {
+  const lignes = String(texte || '').split('\n');
+  const entrees = [];
+  lignes.forEach((ligne, i) => {
+    const m = MARQUE_JOURNAL.exec(ligne);
+    if (m) entrees.push({ date: m[1], texte: ligne.replace(MARQUE_JOURNAL, '').trim(), ligne: i });
+    else if (ligne.trim() && entrees.length && entrees[entrees.length - 1].date) entrees[entrees.length - 1].texte += '\n' + ligne.trim();
+    else if (ligne.trim()) entrees.push({ date: null, texte: ligne.trim(), ligne: i });
+  });
+  return entrees;
+}
+
+function ecrireJournal(texteExistant, nouvelleEntree, jour) {
+  const ligne = '[' + (jour || jourIso()) + '] ' + String(nouvelleEntree).trim();
+  const avant = String(texteExistant || '').trim();
+  // La plus récente en tête : c'est ce qu'on vient chercher.
+  return avant ? ligne + '\n' + avant : ligne;
+}
+
+// Date une entrée qui n'en avait pas (index de ligne rendu par lireJournal).
+function daterEntreeJournal(texte, ligne, jour) {
+  const lignes = String(texte || '').split('\n');
+  if (ligne < 0 || ligne >= lignes.length || MARQUE_JOURNAL.test(lignes[ligne])) return String(texte || '');
+  lignes[ligne] = '[' + jour + '] ' + lignes[ligne].trim();
+  return lignes.join('\n');
+}
+
+// Un commentaire modifié à la main (formulaire, cellule) : les lignes nouvelles
+// qui ne portent pas de date prennent celle du jour. Les lignes déjà présentes
+// restent telles quelles, datées ou non. Sert aux formulaires qui écrivent la
+// colonne Commentaire sans passer par « Noter ».
+function daterNouvellesLignes(ancien, nouveau, jour) {
+  const avant = new Set(String(ancien || '').split('\n').map(l => l.trim()).filter(Boolean));
+  const j = jour || jourIso();
+  // Une note écrite sur plusieurs lignes ne prend qu'une date, sur sa première.
+  let precedenteNouvelle = false;
+  return String(nouveau || '').split('\n').map(l => {
+    const t = l.trim();
+    if (!t) { precedenteNouvelle = false; return l; }
+    if (MARQUE_JOURNAL.test(l) || avant.has(t)) { precedenteNouvelle = false; return l; }
+    if (precedenteNouvelle) return l;
+    precedenteNouvelle = true;
+    return '[' + j + '] ' + t;
+  }).join('\n');
+}
+
 // ---------- Presse-papier ----------
 
 // Un widget Grist vit dans une iframe, et l'API presse-papier moderne y est

@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Espace SequoIA — Cluster SequoIA</title>
-<link rel="stylesheet" href="./common.css?v=20260925g">
+<link rel="stylesheet" href="./common.css?v=20260925h">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-<script src="./common.js?v=20260925g"></script>
-<script src="./pilotage.js?v=20260925g"></script>
-<script src="./espace.js?v=20260925g"></script>
-<script src="./finance.js?v=20260925g"></script>
+<script src="./common.js?v=20260925h"></script>
+<script src="./pilotage.js?v=20260925h"></script>
+<script src="./espace.js?v=20260925h"></script>
+<script src="./finance.js?v=20260925h"></script>
 <script src="./vendor/read-excel-file-5.8.8.min.js"></script>
 <style>
 /* Une application à onglets, dans la charte de common.css : fond gris
@@ -352,6 +352,9 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .pa-badge.taille { font-weight: 500; color: var(--text-muted); }
 .pa-badge.axe { background: #eef2ff; color: #3730a3; border-color: transparent; }
 .pa-pills:empty { display: none; }
+.jr-dater { font: inherit; font-size: 11px; font-weight: 600; color: var(--sequoia-green-dark); background: var(--sequoia-green-light); border: 0; border-radius: 6px; padding: 2px 8px; cursor: pointer; margin-top: 4px; }
+.jr-dater-champ { font: inherit; font-size: 11.5px; width: 118px; border: 1px solid var(--border); border-radius: 6px; padding: 2px 4px; margin-top: 4px; }
+.jr-form textarea { flex: 1; min-width: 0; min-height: 38px; border: 1px solid var(--border); border-radius: 9px; padding: 8px 10px; font: inherit; font-size: 13px; resize: vertical; }
 .doc-ico { flex: 0 0 22px; font-size: 16px; line-height: 1.2; }
 .doc-nom { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: var(--sequoia-green-dark); cursor: pointer; text-align: left; word-break: break-word; }
 .doc-nom:hover { text-decoration: underline; }
@@ -856,6 +859,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         echeance: r[oc.Echeance] || null,
         axe: txt(r[oc.AxeSequoia]),
         commentaire: oc.Commentaire ? stripHtml(String(r[oc.Commentaire] || '')) : '',
+        commentaireBrut: oc.Commentaire ? String(formatValue(r[oc.Commentaire]) || '') : '',
         liens: oc.Liens ? E.lireLiens(r[oc.Liens]) : null,
         docs: colDocuments() ? attachmentIdsFromValue(r[colDocuments()]) : null,
         partnerIds,
@@ -1619,6 +1623,22 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
       (e.crBrut ? '<span class="lire-cr">📖 Lire le compte rendu</span>' : '') + '</div>' +
       '<button type="button" class="es-x ed-crayon" data-edit="interactions:' + e.id + '" title="Modifier l’échange" aria-label="Modifier l’échange">✎</button></div>';
   }
+  // Le journal du projet (colonne Commentaire), comme dans le CRM : une entrée
+  // datée par ligne, « Noter » pour en ajouter une, « Dater » pour celles
+  // écrites sans date.
+  function journalProjet(p) {
+    if (!related.opportunites.cols.Commentaire) return '';
+    const entrees = lireJournal(p.commentaireBrut);
+    return '<div class="es-section"><h5>Journal</h5>' +
+      '<form class="es-form jr-form" data-noter="' + p.id + '" style="margin:0 0 8px"><textarea class="grow" name="texte" rows="2" placeholder="Où en est-on ? (ex. relance envoyée pour caler une date)"></textarea>' +
+      '<button class="es-btn primary" type="submit">Noter</button></form>' +
+      (entrees.length ? '<div class="es-list">' + entrees.map(e =>
+        '<div class="es-row"><span class="d">' + (e.date ? H(formatDate(inputValueToGristDate(e.date)))
+          : '<span class="es-muted">sans date</span><br><span class="jr-dater-zone" data-dater-zone="' + e.ligne + '"><button type="button" class="jr-dater" data-dater-ligne="' + e.ligne + '">Dater</button></span>') + '</span>' +
+        '<div class="es-note" style="flex:1;min-width:0">' + H(e.texte) + '</div></div>').join('') + '</div>'
+        : '<div class="es-muted" style="font-size:13px;font-style:italic">Rien de noté pour l’instant.</div>') + '</div>';
+  }
+
   // Un échange en pleine page : de quoi lire un compte rendu confortablement.
   function ficheEchange(e, retour) {
     const qui = e.contactIds.map(id => D.cById.get(id)).filter(Boolean);
@@ -1671,7 +1691,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
       body = '<div class="es-info"><div><span>Montant</span><b>' + H(formatMontantOrDash(p.montant)) + '</b></div><div><span>Étape</span><b>' + H(p.stage || '—') + '</b></div>' +
         '<div><span>Début</span><b>' + H(formatDate(p.debut) || '—') + '</b></div><div><span>Échéance</span><b>' + H(formatDate(p.echeance) || '—') + '</b></div>' +
         '<div><span>Échanges</span><b>' + lies.echanges.length + '</b></div><div><span>Actions ouvertes</span><b>' + lies.actions.filter(a => !a.done).length + '</b></div></div>' +
-        (p.commentaire ? '<div class="es-section"><h5>Journal</h5><div class="es-note">' + H(p.commentaire) + '</div></div>' : '') +
+        journalProjet(p) +
         (lies.echanges.length ? '<div class="es-section"><h5>Dernier échange</h5>' + ligneEchange(lies.echanges[0]) + '</div>' : '');
     } else if (tab === 'echanges') {
       body = (lies.echanges.length ? '<div class="es-list">' + lies.echanges.map(ligneEchange).join('') + '</div>'
@@ -2061,6 +2081,10 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
       const garde = id ? normaliserPourComparer(saisie[col]) !== normaliserPourComparer(valeurs[col]) : normaliserPourComparer(saisie[col]) !== '';
       if (garde) champs[col] = saisie[col];
     });
+    // Ce qui est ajouté au commentaire d'une opportunité prend la date du jour,
+    // comme avec « Noter » : le journal ne garde pas de note sans date.
+    const colCom = cle === 'opportunites' ? related.opportunites.cols.Commentaire : null;
+    if (colCom && typeof champs[colCom] === 'string') champs[colCom] = daterNouvellesLignes(valeurs[colCom], champs[colCom]);
     if (id && !Object.keys(champs).length) { fermerEditeur(); return; }
     try {
       let nouvelId = id;
@@ -2714,6 +2738,19 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
       pastilles(chip.dataset.chipRetirer, reste);
       return;
     }
+    const dater = t.closest('[data-dater-ligne]');
+    if (dater) {
+      dater.parentElement.innerHTML = '<input type="date" class="jr-dater-champ" value="' + jourIso() + '"><button type="button" class="jr-dater" data-dater-ok="' + dater.dataset.daterLigne + '">OK</button>';
+      return;
+    }
+    const daterOk = t.closest('[data-dater-ok]');
+    if (daterOk && ui.sheet) {
+      const jour = daterOk.previousElementSibling.value;
+      const p = D.pById.get(ui.sheet.id);
+      const op = related.opportunites;
+      if (jour && p) ecrire(op.tableId, p.id, { [op.cols.Commentaire]: daterEntreeJournal(p.commentaireBrut, Number(daterOk.dataset.daterOk), jour) }, 'Note datée ✓');
+      return;
+    }
     const docCol = t.closest('[data-doc-colonne]');
     if (docCol) { ajouterColonneProjet(docCol.dataset.docColonne); return; }
     const retirer = t.closest('[data-doc-retirer]');
@@ -2848,6 +2885,15 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
   document.addEventListener('submit', (e) => {
     const form = e.target;
     if (form.id === 'ed-form') { e.preventDefault(); enregistrerEditeur(); return; }
+    if (form.dataset.noter) {
+      e.preventDefault();
+      const texte = form.texte.value.trim();
+      const p = D.pById.get(Number(form.dataset.noter));
+      if (!texte || !p) return;
+      const op = related.opportunites;
+      ecrire(op.tableId, p.id, { [op.cols.Commentaire]: ecrireJournal(p.commentaireBrut, texte) }, 'Noté ✓');
+      return;
+    }
     if (form.hasAttribute('data-fin-ajout-ligne')) {
       e.preventDefault();
       financeEcrire([['AddRecord', FN.FIN_TABLES.budget.tableId, null, {
