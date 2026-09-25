@@ -186,9 +186,12 @@ relations), sur le modèle de données du Cluster. Aucun code n'en est repris.
   tableau triable ; calendrier annuel du début à l'échéance. La fiche d'un projet montre sa progression dans le
   temps, ses échanges (directs ou par ricochet via les actions) avec extrait du CR, ses actions (cochables, ajout
   rapide), ses personnes et ses **liens**.
-- **Liens** : plutôt que d'envoyer des fichiers dans Grist, un projet porte des liens vers les documents là où ils
-  vivent (drive, dépôt). Il faut pour cela une colonne texte `Liens` dans la table Opportunités, une ligne par
-  lien, `Libellé | https://…`. L'onglet reste masqué tant que la colonne n'existe pas.
+- **Documents** (onglet de la fiche projet) : les **fichiers** du projet (brief, PDF, convention…), stockés dans une
+  colonne de type *Pièces jointes* de la table Opportunités (`Documents`), qu'on dépose ou glisse dans la fiche et
+  qu'on ouvre d'un clic ; et les **liens** vers des documents qui vivent ailleurs (colonne texte `Liens`, une ligne
+  par lien, `Libellé | https://…`). Si une colonne manque, le widget propose de l'ajouter. Si l'instance refuse
+  l'envoi de fichiers depuis le widget, le message dit pourquoi et rappelle qu'on peut déposer le fichier
+  directement dans la cellule `Documents` du projet dans Grist : il apparaît alors dans la fiche.
 - **Partenaires** : quatre vues. **Fiche** (par défaut, comme le CRM) : la liste des structures à gauche, à droite
   la fiche 360° — en-tête (logo, piliers, axes, site), indicateurs (dernier contact et seuil de relance à 90 j,
   échanges, projets, prochaine action), projets, contacts (copie des adresses), actions (ajout rapide) et

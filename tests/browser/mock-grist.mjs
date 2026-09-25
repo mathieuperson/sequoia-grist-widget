@@ -157,6 +157,13 @@ export function buildMockScript(cfg) {
         (actions || []).forEach(action => {
           const [verb, tid, rowId, fields] = action;
           // Création de table (l'Espace crée ses tables Finance d'un clic).
+          if (verb === 'AddColumn') {
+            const t = CFG.tables[tid];
+            if (!t) throw new Error('mock: no such table ' + tid);
+            if (!t.colIds.includes(rowId)) { t.colIds.push(rowId); t.data[rowId] = (t.data.id || []).map(() => null); }
+            retValues.push({ colRef: 0, colId: rowId });
+            return;
+          }
           if (verb === 'AddTable') {
             CFG.tables[tid] = { colIds: (rowId || []).map(c => c.id), data: { id: [] } };
             retValues.push({ table_id: tid });

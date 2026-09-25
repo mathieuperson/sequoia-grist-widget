@@ -365,6 +365,10 @@ export function espaceConfig() {
   opp.data.ContactCluster = opp.data.id.map((_, i) => (i % 3 === 0 ? ['L', 201] : i % 3 === 1 ? ['L', 204, 205] : null));
   opp.data.Liens = opp.data.id.map((_, i) => (i === 1 ? 'Dossier ANR | https://drive.example.org/visionmer\nhttps://anr.fr' : ''));
   cfg.columnsMeta.Opportunites.push(refCol('ContactCluster', 'RefList:Contacts', 'Contact(s) Cluster'));
+  // Des fichiers joints au projet VisionMer (colonne Pièces jointes).
+  opp.colIds.push('Documents');
+  opp.data.Documents = opp.data.id.map((_, i) => (i === 1 ? ['L', 801, 802] : null));
+  cfg.columnsMeta.Opportunites.push({ id: 'Documents', fields: { type: 'Attachments', label: 'Documents' } });
 
   // [intitulé, échéance (jours), fait, statut, opportunité (401…), partenaire, contacts, important, échange]
   const acts = [
