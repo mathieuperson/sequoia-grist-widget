@@ -1,0 +1,59 @@
+// Aperçu visuel de l'Espace SequoIA : une capture par vue, plus une fiche
+// projet ouverte. Sert à vérifier la mise en page — ce que les tests ne font pas.
+//
+//   npm run preview:espace
+import { chromium } from 'playwright';
+import path from 'node:path';
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { buildMockScript } from './mock-grist.mjs';
+import { espaceConfig } from './fixtures.mjs';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const REPO = path.join(__dirname, '..', '..');
+const OUT = path.join(__dirname, 'screenshots');
+fs.mkdirSync(OUT, { recursive: true });
+
+const launchOpts = { headless: true };
+if (process.env.PLAYWRIGHT_CHROMIUM_PATH) launchOpts.executablePath = process.env.PLAYWRIGHT_CHROMIUM_PATH;
+const browser = await chromium.launch(launchOpts);
+let erreurs = 0;
+
+async function shot(name, { width = 1440, height = 1000, vue = null, apres = null } = {}) {
+  const cfg = espaceConfig();
+  const context = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: 1 });
+  const page = await context.newPage();
+  page.on('pageerror', (err) => { erreurs++; console.error('  ! erreur page :', err.message); });
+  page.on('console', (m) => { if (m.type() === 'error') { erreurs++; console.error('  ! console :', m.text()); } });
+  await page.route('**/grist-plugin-api.js', (r) => r.fulfill({ contentType: 'application/javascript', body: buildMockScript(cfg) }));
+  await page.route('**/tables/*/columns*', (r) => {
+    const tableId = decodeURIComponent(new URL(r.request().url()).pathname.split('/tables/')[1].split('/')[0]);
+    r.fulfill({ contentType: 'application/json', body: JSON.stringify({ columns: (cfg.columnsMeta || {})[tableId] || [] }) });
+  });
+  await page.goto('file://' + path.join(REPO, 'espace.html') + (vue ? '?vue=' + vue : ''));
+  await page.waitForSelector('.es-inner');
+  if (apres) await apres(page);
+  await page.waitForTimeout(350);
+  const file = path.join(OUT, name + '.png');
+  await page.screenshot({ path: file });
+  console.log('  ✓ ' + path.relative(REPO, file));
+  await context.close();
+}
+
+console.log("Captures de l'Espace SequoIA :");
+await shot('espace-dashboard', { height: 1500 });
+await shot('espace-projets-cartes', { vue: 'projets' });
+await shot('espace-projets-tableau', { vue: 'projets', apres: (p) => p.click('[data-set="projets.mode"][data-val="tableau"]') });
+await shot('espace-projets-calendrier', { vue: 'projets', apres: (p) => p.click('[data-set="projets.mode"][data-val="calendrier"]') });
+await shot('espace-projet-fiche', { vue: 'projets', apres: async (p) => {
+  await p.click('.es-pcard >> text=VisionMer');
+  await p.click('.es-sheet-tabs [data-tab="echanges"]');
+} });
+await shot('espace-partenaires', { vue: 'partenaires' });
+await shot('espace-partenaires-graphe', { vue: 'partenaires', apres: (p) => p.click('[data-set="partenaires.mode"][data-val="graphe"]') });
+await shot('espace-contacts', { vue: 'contacts' });
+await shot('espace-actions', { vue: 'actions' });
+await shot('espace-actions-calendrier', { vue: 'actions', apres: (p) => p.click('[data-set="actions.mode"][data-val="calendrier"]') });
+await shot('espace-etroit', { width: 420, height: 900 });
+await browser.close();
+if (erreurs) { console.error(erreurs + ' erreur(s)'); process.exit(1); }

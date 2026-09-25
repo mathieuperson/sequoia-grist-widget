@@ -354,3 +354,50 @@ export function pilotageConfig() {
     }
   };
 }
+
+// Le document du pilotage, complété de ce que l'Espace sait montrer en plus :
+// une table d'actions avec statut, des personnes du Cluster sur les projets
+// et une colonne de liens.
+export function espaceConfig() {
+  const cfg = pilotageConfig();
+  const opp = cfg.tables.Opportunites;
+  opp.colIds.push('ContactCluster', 'Liens');
+  opp.data.ContactCluster = opp.data.id.map((_, i) => (i % 3 === 0 ? ['L', 201] : i % 3 === 1 ? ['L', 204, 205] : null));
+  opp.data.Liens = opp.data.id.map((_, i) => (i === 1 ? 'Dossier ANR | https://drive.example.org/visionmer\nhttps://anr.fr' : ''));
+  cfg.columnsMeta.Opportunites.push(refCol('ContactCluster', 'RefList:Contacts', 'Contact(s) Cluster'));
+
+  // [intitulé, échéance (jours), fait, statut, opportunité (401…), partenaire, contacts, important, échange]
+  const acts = [
+    ['Envoyer la note de cadrage', -3, false, 'À faire', 402, 6, [201], true, 301],
+    ['Relancer la lettre de soutien', 1, false, 'En cours', 402, 6, [204], false, null],
+    ['Préparer le comité de pilotage', 5, false, 'À faire', 407, 4, [201], false, null],
+    ['Boucler la répartition des lots', 12, false, 'En cours', 406, 12, [206], true, 308],
+    ['Signer l’accord de consortium', 30, false, 'En attente', 409, 1, [], false, null],
+    ['Compte rendu du comité', -10, true, 'Fait', 410, 10, [201], false, null],
+    ['Appeler la Région', null, false, 'À faire', null, 3, [203], false, null]
+  ];
+  cfg.tables.Actions_MP = {
+    colIds: ['Intitule', 'Echeance', 'Fait', 'Statut', 'Opportunite', 'Partenaires', 'Contacts', 'Important', 'Interaction', 'Notes'],
+    data: {
+      id: acts.map((_, i) => 501 + i),
+      Intitule: acts.map(a => a[0]),
+      Echeance: acts.map(a => (a[1] === null ? null : rel(a[1]))),
+      Fait: acts.map(a => a[2]),
+      Statut: acts.map(a => a[3]),
+      Opportunite: acts.map(a => (a[4] ? ['L', a[4]] : null)),
+      Partenaires: acts.map(a => (a[5] ? ['L', a[5]] : null)),
+      Contacts: acts.map(a => (a[6].length ? ['L'].concat(a[6]) : null)),
+      Important: acts.map(a => a[7]),
+      Interaction: acts.map(a => a[8]),
+      Notes: acts.map(() => '')
+    }
+  };
+  cfg.columnsMeta.Actions_MP = [
+    choiceCol('Statut', ['À faire', 'En cours', 'En attente', 'Fait']),
+    refCol('Opportunite', 'RefList:Opportunites', 'Opportunité'),
+    refCol('Partenaires', 'RefList:Structures', 'Partenaire(s)'),
+    refCol('Contacts', 'RefList:Contacts', 'Contact(s)'),
+    refCol('Interaction', 'Ref:Interactions', 'Interaction')
+  ];
+  return cfg;
+}

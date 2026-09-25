@@ -8,6 +8,7 @@ Widgets personnalisés Grist pour le CRM SequoIA (déployés via GitHub Pages).
 |---|---|---|---|
 | **Pilotage Partenariats & Innovation** | `/pilotage.html` | Structures | Complet (lit et écrit Interactions / Opportunités / Actions) |
 | **CRM SequoIA — fiche 360** | `/crm.html` | Structures | Complet (lit et écrit Contacts / Interactions / Opportunités) |
+| **Espace SequoIA** | `/espace.html` | Structures | Complet (lit tout ; écrit Actions et Opportunités) |
 | Dashboard financement CIFRE | `/cifre-financement.html` | Thèses (ou toute table de thèses doctorales) | Lecture |
 | Cartographie | `/cartographie.html` | Structures | Complet (`allowSelectBy`, suit la sélection Grist) |
 
@@ -167,6 +168,35 @@ Limites assumées :
   changements d'étape dans le document.
 - Les « lettres de soutien émises » du volet Dispositifs structurants ne sont pas affichées : aucune colonne du
   document ne les porte aujourd'hui.
+
+### Espace SequoIA (`espace.html`)
+
+Une application à onglets qui rassemble tout le document au même endroit : **Tableau de bord**, **Projets**,
+**Partenaires**, **Contacts**, **Actions**. L'ergonomie s'inspire d'un espace de gestion de laboratoire (barre
+d'onglets en pastilles, fiche qui glisse depuis la droite, vues cartes / tableau / calendrier, graphes de
+relations), sur le modèle de données du Cluster. Aucun code n'en est repris.
+
+- **Barre du haut** : « Qui êtes-vous ? » choisit son profil parmi les contacts (retenu dans le navigateur),
+  ce qui allume les filtres « Mes projets » (colonne de contacts des opportunités) et « Mes actions ». La cloche
+  liste les actions en retard ou dues dans la semaine et les échéances de projet à 30 jours ; les alertes
+  consultées sont marquées comme vues.
+- **Tableau de bord** : bandeau aux couleurs des trois piliers, indicateurs, échanges par mois, projets par étape,
+  partenaires les plus engagés, réseau partenaires ↔ projets actifs, alertes.
+- **Projets** : cartes groupées par étape (glisser une carte change son étape), par type ou par partenaire ;
+  tableau triable ; calendrier annuel du début à l'échéance. La fiche d'un projet montre sa progression dans le
+  temps, ses échanges (directs ou par ricochet via les actions) avec extrait du CR, ses actions (cochables, ajout
+  rapide), ses personnes et ses **liens**.
+- **Liens** : plutôt que d'envoyer des fichiers dans Grist, un projet porte des liens vers les documents là où ils
+  vivent (drive, dépôt). Il faut pour cela une colonne texte `Liens` dans la table Opportunités, une ligne par
+  lien, `Libellé | https://…`. L'onglet reste masqué tant que la colonne n'existe pas.
+- **Partenaires** : cartes (projets, contacts, échanges, ancienneté du dernier échange), filtres
+  Partenaires / Prospects / Équipes, et graphe structures ↔ projets.
+- **Contacts** : tableau triable et graphe contacts ↔ structures.
+- **Actions** : kanban par `Statut` si la colonne existe (glisser une carte change le statut), sinon par
+  urgence ; calendrier mensuel avec les échéances de projet.
+
+`espace.html?vue=projets` (ou `partenaires`, `contacts`, `actions`) ouvre directement une vue. La logique pure vit
+dans `espace.js`, testée par `tests/espace.test.mjs`.
 
 ### CRM SequoIA — fiche 360 (`crm.html`)
 
@@ -346,6 +376,7 @@ latérale se replie en onglets).
 npm run preview
 npm run preview -- --width 1200
 npm run preview:pilotage
+npm run preview:espace
 ```
 
 Le jeu d'essai du pilotage (`pilotageConfig()` dans `tests/browser/fixtures.mjs` : 12 partenaires, 9 équipes de
