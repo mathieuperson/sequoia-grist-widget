@@ -542,6 +542,18 @@ body { overflow: hidden; }
 }
 .pil-modal h2 { font-size: 16px; font-weight: 600; margin: 0; padding: 16px 18px 12px; border-bottom: 1px solid var(--pil-sep); }
 .pil-modal-body { padding: 14px 18px; display: flex; flex-direction: column; gap: 12px; }
+/* Échanges et actions du projet, en tête du formulaire d'édition. */
+.pil-histo { border: 1px solid var(--pil-sep); border-radius: 8px; padding: 8px 10px; background: var(--pil-surface-2); }
+.pil-histo summary { cursor: pointer; font-size: 13px; font-weight: 600; }
+.pil-histo-sub { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); margin: 10px 0 4px; }
+.pil-histo-list { list-style: none; margin: 0; padding: 0; max-height: 260px; overflow: auto; }
+.pil-histo-list li { display: flex; gap: 10px; padding: 6px 0; border-top: 1px solid var(--pil-sep); font-size: 12.5px; }
+.pil-histo-list li:first-child { border-top: 0; }
+.pil-histo-list li.fait { color: var(--text-muted); }
+.pil-histo-date { flex: none; min-width: 72px; color: var(--text-muted); font-size: 11.5px; padding-top: 1px; }
+.pil-histo-title { font-weight: 600; }
+.pil-histo-meta, .pil-histo-cr { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+.pil-histo-empty { margin: 2px 0; font-size: 12.5px; font-style: italic; color: var(--text-muted); }
 .pil-field { display: flex; flex-direction: column; gap: 5px; }
 .pil-field label { font-size: 12.5px; color: var(--text-muted); }
 .pil-field input, .pil-field select, .pil-field textarea {
@@ -2919,6 +2931,52 @@ body { overflow: hidden; }
   }
 
   // Édition d’une opportunité existante
+  // Les échanges et actions du projet : ceux qui le désignent, plus ceux qui
+  // s'y rattachent par ricochet (l'échange d'où sort une action du projet,
+  // l'action née d'un échange du projet) — comme la fiche projet du CRM.
+  function rattachementsDuProjet(projectId) {
+    const echanges = new Map();
+    model.interactions.filter(i => i.projectIds.includes(projectId)).forEach(i => echanges.set(i.id, i));
+    const actions = new Map();
+    const tableActions = model.actions.filter(a => a.source === 'table');
+    tableActions.filter(a => a.projectId === projectId).forEach(a => {
+      actions.set(a.id, a);
+      const i = a.interactionId != null && model.interactions.find(x => x.id === a.interactionId);
+      if (i) echanges.set(i.id, i);
+    });
+    tableActions.forEach(a => {
+      if (!actions.has(a.id) && a.interactionId != null && echanges.has(a.interactionId)) actions.set(a.id, a);
+    });
+    return {
+      echanges: Array.from(echanges.values()).sort((x, y) => (Number(y.date) || 0) - (Number(x.date) || 0)),
+      actions: Array.from(actions.values()).sort((x, y) => (x.done - y.done) || ((Number(x.due) || Infinity) - (Number(y.due) || Infinity)))
+    };
+  }
+
+  function historiqueProjetHtml(projectId) {
+    const { echanges, actions } = rattachementsDuProjet(projectId);
+    const ouvertes = actions.filter(a => !a.done).length;
+    const listeEchanges = echanges.length
+      ? '<ul class="pil-histo-list">' + echanges.map(i => {
+          const cr = excerpt(i.cr, 180);
+          return '<li><span class="pil-histo-date">' + H(i.date ? formatDate(i.date) : '—') + '</span>' +
+            '<div><div class="pil-histo-title">' + H([i.type, i.objet].filter(Boolean).join(' · ') || 'Sans objet') + '</div>' +
+            (i.partnerIds.length ? '<div class="pil-histo-meta">' + H(partnerNames(i.partnerIds)) + '</div>' : '') +
+            (cr ? '<div class="pil-histo-cr">' + H(cr) + '</div>' : '') + '</div></li>';
+        }).join('') + '</ul>'
+      : '<p class="pil-histo-empty">Aucun échange rattaché à ce projet.</p>';
+    const listeActions = actions.length
+      ? '<ul class="pil-histo-list">' + actions.map(a =>
+          '<li class="' + (a.done ? 'fait' : '') + '"><span class="pil-histo-date">' + H(a.due ? formatDate(a.due) : '—') + '</span>' +
+            '<div><div class="pil-histo-title">' + (a.done ? '✓ ' : '') + H(a.label) + '</div></div></li>').join('') + '</ul>'
+      : '<p class="pil-histo-empty">Aucune action rattachée à ce projet.</p>';
+    return '<details class="pil-histo"' + (echanges.length || actions.length ? ' open' : '') + '>' +
+        '<summary>Échanges (' + echanges.length + ') · Actions (' + ouvertes + ' en cours / ' + actions.length + ')</summary>' +
+        '<div class="pil-histo-sub">Échanges</div>' + listeEchanges +
+        (model.hasActionTable ? '<div class="pil-histo-sub">Actions</div>' + listeActions : '') +
+      '</details>';
+  }
+
   function editOpportuniteModal(projectId) {
     const opp = related.opportunites;
     if (!opp.tableId) { setStatus('Table Opportunités introuvable'); return; }
@@ -2970,6 +3028,7 @@ body { overflow: hidden; }
         }
       },
       fields:
+        historiqueProjetHtml(projectId) +
         field('Sujet', '<input name="sujet" value="' + H(project.title) + '" required>') +
         msField('Type', 'type') +
         selectField('Étape', 'statut', stages, project.stage) +

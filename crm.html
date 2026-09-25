@@ -373,6 +373,10 @@
   .tl-item.open { background: #f4f7f5; }
   .tl-item.open::after { border-color: var(--sequoia-green); background: var(--sequoia-green); }
   .tl-item.open .tl-meta { white-space: normal; overflow: visible; }
+  .tl-item .tl-cr {
+    font-size: 12px; color: var(--text-muted); margin-top: 3px; line-height: 1.4;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
   .tl-preview { margin: 9px 0 2px; border-top: 1px solid var(--border); padding-top: 9px; }
   .tl-preview-empty { font-size: 12.5px; color: var(--text-muted); font-style: italic; }
   .tl-open-btn {
@@ -1667,10 +1671,8 @@
     const nomsDeGens = new Map();
     gens.forEach(g => { if (!nomsDeGens.has(g.id)) nomsDeGens.set(g.id, g.label); });
 
-    const actions = recordsPointingTo('actions', r.tableId, o.id, rel('actions').cols.Opportunite);
+    const { actions, echanges } = rattachementsDuProjet(o.id);
     const actionsOuvertes = actions.filter(x => !actionEstFaite(x));
-    const echanges = recordsPointingTo('interactions', r.tableId, o.id, rel('interactions').cols.Opportunites)
-      .sort((x, y) => (Number(y[rel('interactions').cols.Date]) || 0) - (Number(x[rel('interactions').cols.Date]) || 0));
     const journal = lireJournal(val('Commentaire'));
 
     const entete =
@@ -1758,13 +1760,19 @@
 
     const iCols = rel('interactions').cols;
     const echangesHtml = echanges.length
-      ? '<div class="timeline">' + echanges.map(i =>
-          '<div class="tl-item" data-voir-interaction="' + i.id + '">' +
+      ? '<div class="timeline">' + echanges.map(i => {
+          const avec = structuresOfInteraction(i);
+          const cr = iCols.CR ? excerpt(i[iCols.CR], 180) : '';
+          return '<div class="tl-item" data-voir-interaction="' + i.id + '">' +
             '<div class="tl-when">' + escapeHtml(iCols.Date ? formatDate(i[iCols.Date]) : '') + '</div>' +
             '<div class="tl-body"><div class="tl-title">' +
               escapeHtml([iCols.Type && formatValue(i[iCols.Type]), iCols.Objet && formatValue(i[iCols.Objet])]
-                .filter(Boolean).join(' · ') || 'Sans objet') + '</div></div>' +
-          '</div>').join('') + '</div>'
+                .filter(Boolean).join(' · ') || 'Sans objet') + '</div>' +
+              (avec ? '<div class="tl-meta">' + escapeHtml(avec) + '</div>' : '') +
+              (cr ? '<div class="tl-cr">' + escapeHtml(cr) + '</div>' : '') +
+            '</div>' +
+          '</div>';
+        }).join('') + '</div>'
       : '<div class="panel-empty">Aucun échange rattaché.</div>';
 
     return '<div class="crm-inner">' + entete + kpis +
@@ -1779,6 +1787,45 @@
         '</div>' +
       '</div>' +
     '</div>';
+  }
+
+  // Tout ce qui se rattache au projet : les échanges et actions qui le
+  // désignent directement, plus ceux qui s'y rattachent par ricochet — un
+  // échange dont une action vise le projet, une action née d'un échange du
+  // projet. Sans ce second pas, un CR saisi sans « Opportunités » mais dont
+  // la suite a bien été rattachée resterait introuvable depuis la fiche.
+  function rattachementsDuProjet(oppId) {
+    const oppTable = rel('opportunites').tableId;
+    const iRel = rel('interactions');
+    const aRel = rel('actions');
+    const echanges = new Map();
+    const actions = new Map();
+    recordsPointingTo('interactions', oppTable, oppId, iRel.cols.Opportunites)
+      .forEach(x => echanges.set(x.id, x));
+    if (aRel.tableId) {
+      recordsPointingTo('actions', oppTable, oppId, aRel.cols.Opportunite)
+        .forEach(x => actions.set(x.id, x));
+      const versEchange = colonnesVers('actions', iRel.tableId);
+      if (aRel.cols.Interaction && !versEchange.includes(aRel.cols.Interaction)) versEchange.push(aRel.cols.Interaction);
+      // Échanges d'où sortent les actions du projet.
+      Array.from(actions.values()).forEach(a => versEchange.forEach(col =>
+        refIdsFromValue(a[col]).forEach(id => {
+          const i = iRel.records.find(x => x.id === id);
+          if (i) echanges.set(i.id, i);
+        })));
+      // Actions nées des échanges du projet.
+      const idsEchanges = new Set(echanges.keys());
+      aRel.records.forEach(a => {
+        if (!actions.has(a.id) && versEchange.some(col => refIdsFromValue(a[col]).some(id => idsEchanges.has(id)))) {
+          actions.set(a.id, a);
+        }
+      });
+    }
+    const date = x => Number(x[iRel.cols.Date]) || 0;
+    return {
+      actions: Array.from(actions.values()),
+      echanges: Array.from(echanges.values()).sort((x, y) => date(y) - date(x))
+    };
   }
 
   function bindOpportuniteFicheEvents() {
@@ -1812,7 +1859,10 @@
     document.querySelectorAll('[data-voir-interaction]').forEach(el => {
       el.addEventListener('click', () => {
         const i = rel('interactions').records.find(x => x.id === Number(el.dataset.voirInteraction));
-        const st = structureDeReference();
+        // Un projet interne n'a pas de partenaire : l'échange s'ouvre alors
+        // depuis une des structures qu'il nomme lui-même.
+        const idsEchange = i ? (rel('interactions').linkCols || []).flatMap(col => refIdsFromValue(i[col])) : [];
+        const st = structureDeReference() || structures.find(x => idsEchange.includes(x.id));
         if (i && st) openInteractionModal(i, st);
       });
     });
