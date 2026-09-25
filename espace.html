@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Espace SequoIA — Cluster SequoIA</title>
-<link rel="stylesheet" href="./common.css?v=20260925f">
+<link rel="stylesheet" href="./common.css?v=20260925g">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-<script src="./common.js?v=20260925f"></script>
-<script src="./pilotage.js?v=20260925f"></script>
-<script src="./espace.js?v=20260925f"></script>
-<script src="./finance.js?v=20260925f"></script>
+<script src="./common.js?v=20260925g"></script>
+<script src="./pilotage.js?v=20260925g"></script>
+<script src="./espace.js?v=20260925g"></script>
+<script src="./finance.js?v=20260925g"></script>
 <script src="./vendor/read-excel-file-5.8.8.min.js"></script>
 <style>
 /* Une application à onglets, dans la charte de common.css : fond gris
@@ -738,7 +738,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     if (structTableId) {
       try {
         const data = await fetchTableCached(structTableId);
-        colsStructure = resoudreColsStructure(dataColumns(data));
+        colsStructure = resoudreColsStructure(dataColumns(data), data);
         structures = recordsFromTableData(data);
       }
       catch (err) { console.error('Structures illisibles', err); }
@@ -776,7 +776,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
   const STRUCT_ROLES = {
     Nom: ['nom_acteur', 'Nom', 'Nom_structure', 'Name'],
     TypeActeur: ['type_acteur', 'TypeActeur', 'Type_acteur', "Type d'acteur"],
-    Categorie: ['acteur_categorie', 'Categorie', 'Catégorie'],
+    Categorie: ['acteur_categorie', 'Categorie', 'Catégorie', 'categorie_acteur', 'Statut_partenaire', 'Relation'],
     Activite: ['entreprise_activite', 'secteur_activite', 'Secteur', 'Activite', 'Activité'],
     Taille: ['entreprise_taille', 'Taille'],
     AxeSequoia: ['axe_sequoia', 'AxeSequoia', 'Axe_SequoIA'],
@@ -789,10 +789,17 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     RechercheStructure: ['recherche_structure', 'RechercheStructure']
   };
   let colsStructure = {};
-  function resoudreColsStructure(ids) {
+  function resoudreColsStructure(ids, data) {
     const devinees = resolveColumns(ids, STRUCT_ROLES);
     const out = {};
     Object.keys(STRUCT_ROLES).forEach(role => { out[role] = (mappings[role] && ids.includes(mappings[role]) ? mappings[role] : devinees[role]) || null; });
+    // La catégorie est ce qui distingue un prospect d'un partenaire. Si son nom
+    // ne dit rien, on prend la colonne qui contient la valeur « Prospect ».
+    const aProspect = (col) => (data && data[col] || []).some(v => listeChoix(v).some(x => normalizeKey(x) === 'prospect'));
+    if (!out.Categorie || !aProspect(out.Categorie)) {
+      const col = ids.find(aProspect);
+      if (col) out.Categorie = col;
+    }
     return out;
   }
 
