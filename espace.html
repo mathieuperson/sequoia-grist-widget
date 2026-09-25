@@ -1,0 +1,2029 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Espace SequoIA — Cluster SequoIA</title>
+<link rel="stylesheet" href="./common.css?v=20260925b">
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<script src="./common.js?v=20260925b"></script>
+<script src="./pilotage.js?v=20260925b"></script>
+<script src="./espace.js?v=20260925b"></script>
+<script src="./finance.js?v=20260925b"></script>
+<script src="./vendor/read-excel-file-5.8.8.min.js"></script>
+<style>
+/* Une application à onglets, dans la charte de common.css : fond gris
+   clair, cartes blanches arrondies, barre d'onglets en pastilles, fiche
+   qui glisse depuis la droite. */
+:root {
+  --es-radius: 12px;
+  --es-surface-2: #f8faf9;
+  --es-sep: #eef1ef;
+  --es-ink: #111816;
+  --es-warn: #b45309;
+  --es-late: #b3261e;
+  --es-shadow: 0 1px 2px rgba(16, 24, 20, .04), 0 1px 1px rgba(16, 24, 20, .03);
+  --es-sheet: 620px;
+  /* Repli des étapes, comme pilotage.html : stageColor() lit d'abord les
+     couleurs réelles de la colonne Statut. */
+  --stage-idee: #9ca3af; --stage-prospection: #6b7280; --stage-premierechange: #60a5fa;
+  --stage-qualification: #3b82f6; --stage-recherchedequipe: #8b5cf6; --stage-montage: #f97316;
+  --stage-contractualisation: #facc15; --stage-projetlance: #22c55e; --stage-concretiseencours: #22c55e;
+  --stage-termine: #15803d; --stage-abandonne: #ef4444;
+}
+body { background: var(--bg); overflow: hidden; }
+button { font: inherit; color: inherit; }
+.es-app { height: 100vh; display: flex; flex-direction: column; }
+
+/* ---------- Barre du haut ---------- */
+.es-top {
+  display: flex; align-items: center; gap: 10px; padding: 12px 16px;
+  flex-wrap: wrap; flex-shrink: 0;
+}
+.es-top-left { display: flex; gap: 8px; align-items: center; }
+.es-btn {
+  display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 12px;
+  border: 1px solid var(--border); background: var(--card-bg); border-radius: 9px;
+  font-size: 13px; cursor: pointer; white-space: nowrap;
+}
+.es-btn:hover { background: var(--es-surface-2); }
+.es-btn.primary { background: var(--sequoia-green); border-color: var(--sequoia-green); color: #fff; font-weight: 600; }
+.es-btn.primary:hover { background: var(--sequoia-green-dark); }
+.es-btn.icon { width: 34px; padding: 0; justify-content: center; position: relative; }
+.es-dot { position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--es-late); }
+.es-avatar {
+  width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; color: #fff; background: var(--sequoia-green); flex-shrink: 0;
+}
+.es-avatar.lg { width: 40px; height: 40px; font-size: 14px; border-radius: 11px; }
+.es-me { display: flex; flex-direction: column; line-height: 1.15; text-align: left; }
+.es-me small { color: var(--text-muted); font-size: 11px; }
+
+.es-tabs {
+  margin-left: auto; display: flex; gap: 2px; padding: 3px; border-radius: 999px;
+  background: #e4e8e6; border: 1px solid var(--border); overflow-x: auto; max-width: 100%;
+}
+.es-tab {
+  border: 0; background: transparent; border-radius: 999px; padding: 6px 15px;
+  font-size: 13px; cursor: pointer; white-space: nowrap; transition: background .2s, color .2s;
+}
+.es-tab.on { background: var(--es-ink); color: #fff; }
+.es-tab:not(.on):hover { background: rgba(255,255,255,.6); }
+
+/* Menus déroulants (profil, cloche) */
+.es-pop {
+  position: absolute; top: 54px; z-index: 50; width: 300px; max-height: 70vh; overflow: auto;
+  background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(16, 24, 20, .14); padding: 8px;
+}
+.es-pop h4 { margin: 6px 6px 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); }
+.es-pop input { width: 100%; height: 32px; border: 1px solid var(--border); border-radius: 8px; padding: 0 9px; font: inherit; font-size: 13px; margin-bottom: 6px; }
+.es-pop-item {
+  display: flex; gap: 9px; align-items: flex-start; width: 100%; text-align: left; border: 0; background: none;
+  padding: 7px 6px; border-radius: 8px; cursor: pointer; font-size: 13px;
+}
+.es-pop-item:hover { background: var(--es-surface-2); }
+.es-pop-item.nouveau { background: #eef4ff; }
+.es-pop-item .sub { display: block; font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+.es-pop-empty { padding: 14px 8px; text-align: center; font-size: 12.5px; color: var(--text-muted); }
+
+/* ---------- Zone principale ---------- */
+.es-main { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 16px 28px; }
+.es-inner { max-width: 1400px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+.es-card {
+  background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--es-radius);
+  box-shadow: var(--es-shadow);
+}
+.es-card-head { display: flex; align-items: baseline; gap: 8px; padding: 14px 16px 4px; }
+.es-card-head h3 { margin: 0; font-size: 13.5px; font-weight: 650; }
+.es-card-head .aside { margin-left: auto; font-size: 11.5px; color: var(--text-muted); }
+.es-card-body { padding: 8px 16px 16px; }
+.es-muted { color: var(--text-muted); }
+.es-empty { padding: 24px 10px; text-align: center; color: var(--text-muted); font-size: 13px; font-style: italic; }
+
+/* Toolbar commune aux listes */
+.es-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.es-toolbar h1 { margin: 0 8px 0 0; font-size: 22px; font-weight: 650; }
+.es-search {
+  height: 34px; min-width: 220px; flex: 0 1 300px; border: 1px solid var(--border); border-radius: 9px;
+  padding: 0 11px; font: inherit; font-size: 13px; background: var(--card-bg);
+}
+.es-seg { display: inline-flex; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; background: var(--card-bg); }
+.es-seg button { border: 0; background: none; padding: 0 12px; height: 32px; font-size: 12.5px; cursor: pointer; }
+.es-seg button + button { border-left: 1px solid var(--border); }
+.es-seg button.on { background: var(--es-ink); color: #fff; }
+.es-select { height: 34px; border: 1px solid var(--border); border-radius: 9px; padding: 0 8px; font: inherit; font-size: 12.5px; background: var(--card-bg); }
+.es-toolbar .grow { flex: 1; }
+.es-count { font-size: 12.5px; color: var(--text-muted); }
+
+/* ---------- Tableau de bord ---------- */
+.es-hero {
+  position: relative; overflow: hidden; border-radius: 16px; min-height: 168px; color: #fff;
+  background: #1b3b30; isolation: isolate;
+}
+.es-blob { position: absolute; border-radius: 50%; filter: blur(46px); opacity: .85; z-index: -2; }
+.es-blob.b1 { width: 340px; height: 340px; background: var(--pilier-core); top: -140px; left: -60px; animation: es-flot1 16s ease-in-out infinite alternate; }
+.es-blob.b2 { width: 300px; height: 300px; background: var(--pilier-secu); top: -60px; left: 38%; animation: es-flot2 19s ease-in-out infinite alternate; }
+.es-blob.b3 { width: 320px; height: 320px; background: var(--pilier-env); bottom: -170px; right: -40px; animation: es-flot3 22s ease-in-out infinite alternate; }
+@keyframes es-flot1 { to { transform: translate(120px, 60px) scale(1.15); } }
+@keyframes es-flot2 { to { transform: translate(-90px, 70px) scale(.9); } }
+@keyframes es-flot3 { to { transform: translate(-140px, -50px) scale(1.1); } }
+@media (prefers-reduced-motion: reduce) { .es-blob { animation: none; } }
+.es-hero::after {
+  content: ''; position: absolute; inset: 0; z-index: -1;
+  background: linear-gradient(180deg, rgba(255,255,255,.10), rgba(0,0,0,.18));
+  backdrop-filter: saturate(120%);
+}
+.es-hero-body { padding: 24px 26px; display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-end; }
+.es-hero-kicker { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; opacity: .85; }
+.es-hero h1 { margin: 4px 0 6px; font-size: 32px; font-weight: 650; letter-spacing: -.01em; }
+.es-hero p { margin: 0; opacity: .9; font-size: 14px; }
+.es-hero-stats { margin-left: auto; display: flex; gap: 22px; }
+.es-hero-stats div { text-align: right; }
+.es-hero-stats b { display: block; font-size: 24px; font-weight: 650; }
+.es-hero-stats span { font-size: 12px; opacity: .85; }
+
+.es-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+.es-kpi { padding: 14px 16px; }
+.es-kpi .lbl { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); }
+.es-kpi .val { font-size: 26px; font-weight: 650; margin-top: 4px; }
+.es-kpi .sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.es-kpi .sub.alerte { color: var(--es-late); font-weight: 600; }
+
+.es-grid-3 { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 12px; }
+.es-grid-2 { display: grid; grid-template-columns: 1.6fr 1fr; gap: 12px; }
+@media (max-width: 1100px) { .es-grid-3, .es-grid-2 { grid-template-columns: 1fr; } }
+
+.es-chart svg { width: 100%; height: auto; display: block; }
+.es-chart text { font-size: 10.5px; fill: var(--text-muted); }
+.es-hbar { display: grid; grid-template-columns: 130px 1fr 34px; align-items: center; gap: 8px; font-size: 12.5px; margin: 7px 0; }
+.es-hbar .track { height: 10px; border-radius: 5px; background: var(--es-sep); overflow: hidden; }
+.es-hbar .fill { height: 100%; border-radius: 5px; }
+.es-hbar .nom { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.es-hbar .n { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-muted); }
+.es-legend { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+.es-legend button { display: flex; align-items: center; gap: 8px; border: 0; background: none; padding: 2px 0; cursor: pointer; text-align: left; }
+.es-legend i { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+.es-legend .n { margin-left: auto; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.es-donut-wrap { display: flex; gap: 16px; align-items: center; }
+.es-donut-wrap svg { width: 130px; height: 130px; flex-shrink: 0; }
+
+.es-alerts { display: flex; flex-direction: column; }
+.es-alert { display: flex; gap: 10px; align-items: center; padding: 9px 2px; border-top: 1px solid var(--es-sep); cursor: pointer; font-size: 13px; }
+.es-alert:first-child { border-top: 0; }
+.es-alert .when { margin-left: auto; font-size: 12px; white-space: nowrap; font-weight: 600; }
+.es-alert .when.late { color: var(--es-late); }
+.es-alert .when.soon { color: var(--es-warn); }
+.es-alert .kind { font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); display: block; }
+
+/* ---------- Graphe ---------- */
+.es-graph { position: relative; }
+.es-graph svg { width: 100%; height: auto; display: block; }
+.es-graph line { stroke: #c9d2cd; stroke-width: 1.1; }
+.es-graph .nd { cursor: pointer; }
+.es-graph .nd circle { stroke: #fff; stroke-width: 2; }
+.es-graph .nd text { font-size: 10.5px; fill: var(--text); paint-order: stroke; stroke: #fff; stroke-width: 3px; }
+.es-graph .nd:hover circle { stroke: var(--es-ink); }
+.es-graph-legend { display: flex; gap: 14px; font-size: 12px; color: var(--text-muted); padding: 0 16px 12px; flex-wrap: wrap; }
+.es-graph-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 5px; vertical-align: -1px; }
+
+/* ---------- Projets : cartes ---------- */
+.es-board { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 6px; align-items: flex-start; }
+.es-col { flex: 0 0 280px; background: #eaeeec; border-radius: 12px; padding: 8px; }
+.es-col.over { outline: 2px dashed var(--sequoia-green); outline-offset: -2px; }
+.es-col-head { display: flex; align-items: center; gap: 7px; padding: 4px 6px 8px; font-size: 12.5px; font-weight: 650; }
+.es-col-head i { width: 9px; height: 9px; border-radius: 50%; }
+.es-col-head .n { margin-left: auto; color: var(--text-muted); font-weight: 500; }
+.es-col-sum { font-size: 11.5px; color: var(--text-muted); padding: 0 6px 8px; margin-top: -6px; }
+.es-col-cards { display: flex; flex-direction: column; gap: 8px; min-height: 30px; }
+.es-pcard { padding: 11px 12px; cursor: pointer; }
+.es-pcard:hover { border-color: #c5cfca; }
+.es-pcard.dragging { opacity: .45; }
+.es-pcard h4 { margin: 6px 0 4px; font-size: 13.5px; font-weight: 600; line-height: 1.3; }
+.es-pcard .who { font-size: 12px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.es-pcard .foot { display: flex; align-items: center; gap: 8px; margin-top: 9px; font-size: 11.5px; color: var(--text-muted); }
+.es-pcard .foot .m { margin-left: auto; font-weight: 600; color: var(--text); }
+.es-badge {
+  display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 600; padding: 2px 8px;
+  border-radius: 999px; background: var(--es-sep); color: var(--text); white-space: nowrap;
+}
+.es-badge i { width: 7px; height: 7px; border-radius: 50%; }
+/* Dispositifs : mêmes teintes que pilotage.html */
+.es-badge.tag-cifre { background: #f5e8f7; color: #7d2e7d; }
+.es-badge.tag-chaire { background: #f0eaf6; color: #5c3f7d; }
+.es-badge.tag-labcom { background: #e7f1f8; color: #2b5c7d; }
+.es-badge.tag-national { background: #f8f0e0; color: #7a5a14; }
+.es-badge.tag-interne { background: #e9edf1; color: #3f5261; }
+.es-badge.tag-europe { background: #ece9f8; color: #4a3d86; }
+.es-badge.tag-stage { background: #dce8f2; color: #1e4a7a; }
+.es-badge.tag-autre { background: #eef0ef; color: #5a625e; }
+.es-time { height: 4px; border-radius: 2px; background: var(--es-sep); margin-top: 9px; overflow: hidden; }
+.es-time > div { height: 100%; background: var(--sequoia-green); border-radius: 2px; }
+.es-time.late > div { background: var(--es-late); }
+
+/* ---------- Tableaux ---------- */
+.es-table-wrap { overflow-x: auto; }
+table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.es-table th {
+  text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted);
+  font-weight: 600; padding: 10px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; cursor: pointer; user-select: none;
+}
+.es-table th.sorted::after { content: ' ↓'; }
+.es-table th.sorted.asc::after { content: ' ↑'; }
+.es-table td { padding: 9px 12px; border-bottom: 1px solid var(--es-sep); vertical-align: middle; }
+.es-table tbody tr { cursor: pointer; }
+.es-table tbody tr:hover { background: var(--es-surface-2); }
+.es-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.es-table .ttl { font-weight: 600; max-width: 360px; }
+
+/* ---------- Frise ---------- */
+.es-cal-head { display: flex; align-items: center; gap: 8px; padding: 12px 16px; }
+.es-cal-head b { font-size: 15px; min-width: 60px; text-align: center; }
+.es-frise { padding: 0 16px 16px; }
+.es-frise-row { display: grid; grid-template-columns: 260px 1fr; align-items: center; min-height: 32px; border-top: 1px solid var(--es-sep); }
+.es-frise-row.head { border-top: 0; min-height: 24px; }
+.es-frise-lbl { font-size: 12.5px; padding-right: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.es-frise-track { position: relative; height: 32px; background:
+  repeating-linear-gradient(90deg, transparent 0, transparent calc(100% / 12 - 1px), var(--es-sep) calc(100% / 12 - 1px), var(--es-sep) calc(100% / 12)); }
+.es-frise-months { display: grid; grid-template-columns: repeat(12, 1fr); font-size: 11px; color: var(--text-muted); text-transform: capitalize; }
+.es-seg-bar {
+  position: absolute; top: 8px; height: 16px; border-radius: 6px; cursor: pointer; font-size: 10.5px; line-height: 16px;
+  padding: 0 6px; overflow: hidden; white-space: nowrap; color: #fff; font-weight: 600;
+}
+.es-seg-bar.open-end { border-top-right-radius: 0; border-bottom-right-radius: 0; opacity: .8; }
+.es-today { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--es-late); opacity: .6; }
+
+/* ---------- Partenaires ---------- */
+.es-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+.es-scard { padding: 14px; cursor: pointer; display: flex; flex-direction: column; gap: 10px; }
+.es-scard:hover { border-color: #c5cfca; }
+.es-scard-top { display: flex; gap: 10px; align-items: center; min-width: 0; }
+.es-scard-top b { display: block; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.es-scard-top small { font-size: 12px; color: var(--text-muted); }
+.es-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.es-stats div { background: var(--es-surface-2); border-radius: 8px; padding: 6px 8px; }
+.es-stats b { display: block; font-size: 15px; }
+.es-stats span { font-size: 10.5px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
+.es-scard .last { font-size: 11.5px; color: var(--text-muted); }
+.es-scard .last.old { color: var(--es-warn); }
+
+/* ---------- Actions ---------- */
+.es-acard { padding: 10px 11px; cursor: grab; display: flex; gap: 9px; align-items: flex-start; }
+.es-acard.fait { opacity: .6; }
+.es-acard.fait .lbl { text-decoration: line-through; }
+.es-acard input { margin-top: 2px; }
+.es-acard .lbl { font-size: 13px; font-weight: 550; line-height: 1.3; }
+.es-acard .meta { font-size: 11.5px; color: var(--text-muted); margin-top: 3px; }
+.es-acard .due { font-weight: 600; }
+.es-acard .due.late { color: var(--es-late); }
+.es-imp { color: #d97706; }
+.es-month { display: grid; grid-template-columns: repeat(7, 1fr); border-top: 1px solid var(--es-sep); border-left: 1px solid var(--es-sep); margin: 0 16px 16px; }
+.es-month .dname { font-size: 11px; text-transform: uppercase; color: var(--text-muted); padding: 6px; border-right: 1px solid var(--es-sep); border-bottom: 1px solid var(--es-sep); background: var(--es-surface-2); }
+.es-day { min-height: 92px; padding: 5px; border-right: 1px solid var(--es-sep); border-bottom: 1px solid var(--es-sep); font-size: 11.5px; }
+.es-day.autre { background: var(--es-surface-2); color: var(--text-muted); }
+.es-day.auj .num { background: var(--es-ink); color: #fff; border-radius: 50%; }
+.es-day .num { display: inline-flex; width: 21px; height: 21px; align-items: center; justify-content: center; font-weight: 600; }
+.es-chip { display: block; margin-top: 3px; padding: 2px 6px; border-radius: 5px; background: var(--sequoia-green-light); color: var(--sequoia-green-dark); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.es-chip.late { background: #fdecea; color: var(--es-late); }
+.es-chip.fait { background: var(--es-sep); color: var(--text-muted); text-decoration: line-through; }
+.es-chip.projet { background: #eef2ff; color: #3730a3; }
+
+/* ---------- Fiche latérale ---------- */
+.es-backdrop { position: fixed; inset: 0; background: rgba(17, 24, 22, .28); z-index: 60; opacity: 0; pointer-events: none; transition: opacity .2s; }
+.es-backdrop.open { opacity: 1; pointer-events: auto; }
+.es-sheet {
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(var(--es-sheet), 100vw); z-index: 61;
+  background: var(--card-bg); border-left: 1px solid var(--border); box-shadow: -14px 0 40px rgba(16, 24, 20, .12);
+  transform: translateX(102%); transition: transform .25s ease; display: flex; flex-direction: column;
+}
+.es-sheet.open { transform: none; }
+.es-sheet-head { padding: 18px 20px 12px; border-bottom: 1px solid var(--es-sep); }
+.es-sheet-top { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.es-sheet-top .close { margin-left: auto; }
+.es-sheet h2 { margin: 10px 0 4px; font-size: 19px; line-height: 1.3; font-weight: 650; }
+.es-sheet .desc { font-size: 13px; color: var(--text-muted); }
+.es-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.es-pill { border: 1px solid var(--border); background: var(--card-bg); border-radius: 999px; padding: 3px 10px; font-size: 12px; cursor: pointer; }
+.es-pill:hover { border-color: var(--sequoia-green); }
+.es-pill small { color: var(--text-muted); }
+.es-progress { margin-top: 12px; }
+.es-progress .bar { height: 6px; border-radius: 3px; background: var(--es-sep); overflow: hidden; }
+.es-progress .bar > div { height: 100%; background: var(--sequoia-green); }
+.es-progress.late .bar > div { background: var(--es-late); }
+.es-progress .lbls { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--text-muted); margin-top: 4px; }
+.es-sheet-tabs { display: flex; gap: 2px; padding: 8px 14px 0; border-bottom: 1px solid var(--es-sep); overflow-x: auto; }
+.es-sheet-tabs button { border: 0; background: none; padding: 8px 10px; font-size: 13px; cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; color: var(--text-muted); }
+.es-sheet-tabs button.on { color: var(--text); border-bottom-color: var(--es-ink); font-weight: 600; }
+.es-sheet-tabs .n { font-size: 11px; background: var(--es-sep); border-radius: 999px; padding: 1px 6px; margin-left: 4px; }
+.es-sheet-body { flex: 1; overflow-y: auto; padding: 16px 20px 24px; }
+.es-info { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.es-info div { background: var(--es-surface-2); border-radius: 9px; padding: 9px 11px; }
+.es-info span { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--text-muted); }
+.es-info b { font-size: 13.5px; font-weight: 600; }
+.es-section { margin-top: 18px; }
+.es-section h5 { margin: 0 0 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); }
+.es-note { font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
+.es-list { display: flex; flex-direction: column; }
+.es-row { display: flex; gap: 10px; padding: 10px 0; border-top: 1px solid var(--es-sep); font-size: 13px; align-items: flex-start; }
+.es-row:first-child { border-top: 0; }
+.es-row.click { cursor: pointer; }
+.es-row.click:hover { background: var(--es-surface-2); }
+.es-row .d { flex: 0 0 78px; color: var(--text-muted); font-size: 12px; padding-top: 1px; }
+.es-row .t { font-weight: 600; }
+.es-row .s { color: var(--text-muted); font-size: 12px; margin-top: 2px; }
+.es-row .cr { color: var(--text-muted); font-size: 12px; margin-top: 3px; line-height: 1.45;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.es-row .r { margin-left: auto; white-space: nowrap; font-size: 12px; }
+.es-form { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+.es-form input { height: 34px; border: 1px solid var(--border); border-radius: 9px; padding: 0 10px; font: inherit; font-size: 13px; }
+.es-form input.grow { flex: 1; min-width: 160px; }
+.es-link { color: var(--sequoia-green-dark); text-decoration: none; font-weight: 600; word-break: break-word; }
+.es-link:hover { text-decoration: underline; }
+.es-x { border: 0; background: none; cursor: pointer; color: var(--text-muted); font-size: 16px; line-height: 1; padding: 2px 6px; }
+.es-x:hover { color: var(--es-late); }
+
+.es-status { font-size: 12px; color: var(--text-muted); }
+
+/* ---------- Finance ---------- */
+.fi-setup { border-color: #b7d7c2; background: #f3faf5; }
+.fi-setup.warn, .fi-trier.warn { border-color: #f3d19c; background: #fffaf0; }
+.fi-setup p { margin: 0 0 8px; font-size: 13.5px; }
+.fi-setup ul { margin: 0 0 12px; padding-left: 18px; font-size: 13px; line-height: 1.7; }
+.fi-trier { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; padding: 10px 14px; border: 1px solid #b7d7c2; background: #f3faf5; border-radius: 10px; }
+.fi-jauge { display: inline-block; width: 90px; height: 7px; border-radius: 4px; background: var(--es-sep); overflow: hidden; vertical-align: middle; }
+.fi-jauge span { display: block; height: 100%; border-radius: 4px; }
+.fi-pct { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.fi-cat { margin: 4px 0 14px; }
+.fi-cat-head { display: flex; align-items: center; gap: 8px; font-size: 13px; margin-bottom: 6px; }
+.fi-cat-head i { width: 10px; height: 10px; border-radius: 3px; }
+.fi-cat-head span { margin-left: auto; color: var(--text-muted); font-size: 12px; }
+.fi-bars { display: flex; flex-direction: column; gap: 3px; }
+.fi-bar { height: 8px; border-radius: 4px; min-width: 2px; }
+.fi-bar.prevu { background: repeating-linear-gradient(45deg, #dfe5e2 0 5px, #eef1ef 5px 10px); }
+.fi-table td, .fi-table th { padding: 8px 10px; }
+.fi-table tfoot td { font-weight: 650; border-top: 1px solid var(--border); background: var(--es-surface-2); }
+.fi-table .fi-neg { color: var(--es-late); font-weight: 600; }
+.fi-table tr.fi-orph td { background: #fffaf0; }
+.fi-sel { height: 28px; max-width: 180px; font-size: 12px; }
+.fi-top .es-hbar { grid-template-columns: 150px 1fr auto; }
+.fi-drop { display: block; border: 1.5px dashed #b7c4bd; border-radius: 12px; padding: 26px; text-align: center; cursor: pointer; font-size: 13.5px; color: var(--text-muted); background: var(--es-surface-2); }
+.fi-drop:hover, .fi-drop.over { border-color: var(--sequoia-green); color: var(--text); background: var(--sequoia-green-light); }
+.fi-drop b { color: var(--sequoia-green-dark); }
+.fi-info { grid-template-columns: repeat(3, 1fr); }
+.fi-plan { margin: 14px 0 0; padding-left: 18px; font-size: 13.5px; line-height: 1.7; }
+@media (max-width: 720px) { .fi-info { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 720px) {
+  .es-tabs { margin-left: 0; width: 100%; }
+  .es-hero h1 { font-size: 24px; }
+  .es-hero-stats { margin-left: 0; }
+  .es-frise-row { grid-template-columns: 140px 1fr; }
+  .es-search { min-width: 0; flex: 1 1 100%; }
+}
+</style>
+</head>
+<body>
+<div class="es-app">
+  <header class="es-top">
+    <div class="es-top-left">
+      <button class="es-btn" id="btn-moi" type="button" aria-haspopup="true"></button>
+      <button class="es-btn icon" id="btn-cloche" type="button" aria-label="Alertes" title="Alertes">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+        <span class="es-dot" id="cloche-dot" hidden></span>
+      </button>
+      <button class="es-btn icon" id="btn-refresh" type="button" aria-label="Rafraîchir" title="Rafraîchir">↻</button>
+      <span class="es-status" id="status"></span>
+    </div>
+    <nav class="es-tabs" id="tabs" aria-label="Vues">
+      <button class="es-tab" data-vue="dashboard" type="button">Tableau de bord</button>
+      <button class="es-tab" data-vue="projets" type="button">Projets</button>
+      <button class="es-tab" data-vue="partenaires" type="button">Partenaires</button>
+      <button class="es-tab" data-vue="contacts" type="button">Contacts</button>
+      <button class="es-tab" data-vue="actions" type="button">Actions</button>
+      <button class="es-tab" data-vue="finance" type="button">Finance</button>
+    </nav>
+    <div id="pop-host"></div>
+  </header>
+  <main class="es-main" id="main"><div class="es-empty">Chargement…</div></main>
+</div>
+<div class="es-backdrop" id="backdrop"></div>
+<aside class="es-sheet" id="sheet" aria-hidden="true"></aside>
+
+<script>
+(function () {
+  'use strict';
+  const H = escapeHtml;
+  const E = window.espace;
+  const txt = (v) => (v === null || v === undefined) ? '' : String(formatValue(v)).trim();
+  const nowTs = () => Math.floor(Date.now() / 1000);
+  const $ = (id) => document.getElementById(id);
+
+  // ---------------------------------------------------------------------
+  // Configuration : le widget est posé sur la table Structures, les autres
+  // tables sont lues par docApi, colonnes résolues par leur nom — comme le
+  // CRM et le pilotage.
+  // ---------------------------------------------------------------------
+  const COLUMNS = [
+    { name: 'Nom', title: 'Nom de la structure', optional: false },
+    { name: 'TypeActeur', title: "Type d'acteur", optional: true },
+    { name: 'Categorie', title: 'Catégorie', optional: true },
+    { name: 'Activite', title: 'Activité', optional: true },
+    { name: 'AxeSequoia', title: 'Axe SequoIA', optional: true },
+    { name: 'PilierSequoia', title: 'Pilier SequoIA', optional: true },
+    { name: 'RechercheEquipeLabo', title: 'Laboratoire', optional: true },
+    { name: 'RechercheEquipeActivite', title: 'Équipe / activité', optional: true },
+    { name: 'Logo', title: 'URL du logo', optional: true }
+  ];
+
+  const RELATED = {
+    contacts: {
+      tableCandidates: ['Contacts', 'Contact'],
+      roles: {
+        Nom: ['Nom'], Prenom: ['Prenom', 'Prénom'],
+        NomComplet: ['Nom_Complet', 'NomComplet', 'Nom complet'],
+        Fonction: ['Fonction', 'Poste'],
+        Structures: ['Structures', 'Structure'],
+        Email: ['Email', 'Mail', 'Courriel'],
+        Telephone: ['Telephone', 'Téléphone', 'Tel']
+      }
+    },
+    interactions: {
+      tableCandidates: ['Interactions', 'Interaction'],
+      roles: {
+        Objet: ['Objet', 'Sujet', 'Titre'], Date: ['Date'], Type: ['Type'],
+        Partenaires: ['Partenaires', 'Partenaire', 'Structures', 'Structure'],
+        Opportunites: ['Opportunites', 'Opportunités', 'Opportunite'],
+        CR: ['CR', 'Compte_rendu', 'Compte-rendu', 'CompteRendu']
+      }
+    },
+    opportunites: {
+      tableCandidates: ['Opportunites', 'Opportunités', 'Opportunite'],
+      roles: {
+        Sujet: ['Sujet', 'Objet', 'Titre'], Type: ['Type', 'Dispositif'],
+        Statut: ['Statut', 'Status', 'Etape', 'Étape'],
+        Montant: ['Montant', 'Montant_€', 'Budget'],
+        Partenaires: ['Partenaires', 'Partenaire', 'Structures', 'Structure'],
+        DateDebut: ['DateDebut', 'Date_Debut', 'Date de début'],
+        Echeance: ['Echeance', 'Echéance', 'Date_fin', 'Date de dépôt'],
+        AxeSequoia: ['AxeSequoia', 'Axe_Sequoia', 'Axe SequoIA', 'Axe'],
+        Commentaire: ['Commentaire', 'Commentaires', 'Notes'],
+        Liens: ['Liens', 'Documents', 'Liens_documents', 'Pieces_jointes_liens']
+      }
+    },
+    actions: {
+      optional: true,
+      tableCandidates: ['Actions_MP', 'ActionsMP', 'ACTIONS_MP', 'Actions', 'Action'],
+      roles: {
+        Intitule: ['Intitule', 'Intitulé', 'Libelle', 'Libellé', 'Titre', 'Objet'],
+        Echeance: ['Echeance', 'Échéance', 'Date_echeance', 'Date'],
+        Fait: ['Fait', 'Faite', 'Termine', 'Terminé', 'Done'],
+        FaitLe: ['Fait_le', 'FaitLe', 'Fait le', 'Date_fait'],
+        Opportunite: ['Opportunite', 'Opportunité', 'Opportunites', 'Opportunités'],
+        Partenaires: ['Partenaires', 'Partenaire', 'Structures', 'Structure'],
+        Interaction: ['Interaction', 'Interactions'],
+        Contacts: ['Contacts', 'Contact', 'Contact(s)', 'Interlocuteurs'],
+        Notes: ['Notes', 'Note', 'Commentaire', 'Détail'],
+        Statut: ['Statut', 'Status', 'Etat', 'État', 'Colonne', 'Avancement'],
+        Important: ['Important', 'Importante', 'Importance_haute', 'Strategique', 'Stratégique']
+      }
+    }
+  };
+
+  // ---------------------------------------------------------------------
+  // État
+  // ---------------------------------------------------------------------
+  let mappings = {};
+  let structTableId = null;
+  let related = {};
+  let stageChoices = [];
+  let statutActionChoices = [];
+  let D = null; // modèle normalisé
+  const ui = {
+    vue: new URLSearchParams(location.search).get('vue') || 'dashboard',
+    projets: { q: '', mode: 'cartes', groupe: 'etape', type: '', tri: 'echeance', asc: true, annee: new Date().getFullYear(), miens: false },
+    partenaires: { q: '', mode: 'cartes', filtre: 'partenaires', type: '' },
+    contacts: { q: '', mode: 'tableau', tri: 'nom', asc: true },
+    actions: { q: '', mode: 'kanban', miennes: false, faites: false, mois: null },
+    finance: { sous: 'synthese', exercice: null, pfi: '', q: '', statut: '', categorie: '', affect: '', nouvelle: false },
+    sheet: null // { kind, id, tab }
+  };
+
+  // Préférences propres à chaque personne : qui elle est, les alertes déjà
+  // vues. Le navigateur peut refuser le stockage (fenêtre privée) : le
+  // widget fonctionne alors sans s'en souvenir.
+  function lireLocal(cle, defaut) {
+    try { const v = localStorage.getItem('espace-sequoia:' + cle); return v ? JSON.parse(v) : defaut; }
+    catch (err) { return defaut; }
+  }
+  function ecrireLocal(cle, valeur) {
+    try { localStorage.setItem('espace-sequoia:' + cle, JSON.stringify(valeur)); } catch (err) { /* sans mémoire */ }
+  }
+  let moiId = lireLocal('moi', null);
+  let alertesVues = lireLocal('alertes-vues', []);
+
+  function setStatus(msg) {
+    $('status').textContent = msg || '';
+    if (msg) setTimeout(() => { if ($('status').textContent === msg) $('status').textContent = ''; }, 3000);
+  }
+
+  grist.ready({ requiredAccess: 'full', columns: COLUMNS, allowSelectBy: true });
+
+  // ---------------------------------------------------------------------
+  // Lecture du document
+  // ---------------------------------------------------------------------
+  async function resolveRelated(key) {
+    const conf = RELATED[key];
+    for (const tableId of conf.tableCandidates) {
+      try {
+        const data = await fetchTableCached(tableId);
+        const cols = resolveColumns(dataColumns(data), conf.roles);
+        const meta = await fetchColumnMeta(tableId);
+        const refTargets = {};
+        meta.forEach(m => {
+          const cible = /^Ref(?:List)?:(.+)$/.exec(m.type || '');
+          if (cible) refTargets[m.id] = cible[1];
+        });
+        return {
+          tableId, cols, refTargets, meta,
+          listCols: meta.filter(m => /^(RefList|ChoiceList):?/.test(m.type || '')).map(m => m.id),
+          records: recordsFromTableData(data)
+        };
+      } catch (err) { /* candidat suivant */ }
+    }
+    return { tableId: null, cols: {}, refTargets: {}, meta: [], listCols: [], records: [] };
+  }
+
+  // Les colonnes de `key` qui désignent la table `cible`, d'après les
+  // métadonnées, plus celle que la configuration nomme.
+  function colsVers(key, cible, connue) {
+    const r = related[key];
+    if (!r || !cible) return [];
+    const cols = Object.keys(r.refTargets).filter(c => r.refTargets[c] === cible);
+    if (connue && !cols.includes(connue)) cols.unshift(connue);
+    return cols;
+  }
+  function idsPar(rec, cols) {
+    const out = new Set();
+    cols.forEach(c => refIdsFromValue(rec[c]).forEach(id => out.add(id)));
+    return Array.from(out);
+  }
+
+  async function choixDe(key, colId) {
+    const r = related[key];
+    if (!r || !r.tableId || !colId) return { choices: [], styles: {} };
+    return fetchChoiceStyles(r.tableId, colId);
+  }
+
+  async function charger(force) {
+    if (force) {
+      Object.values(related).forEach(r => { if (r.tableId) invalidateTableCache(r.tableId); });
+      if (structTableId) invalidateTableCache(structTableId);
+    }
+    const keys = Object.keys(RELATED);
+    const res = await Promise.all(keys.map(resolveRelated));
+    keys.forEach((k, i) => { related[k] = res[i]; });
+    const [stages, statuts] = await Promise.all([
+      choixDe('opportunites', related.opportunites.cols.Statut),
+      choixDe('actions', related.actions.cols.Statut)
+    ]);
+    stageChoices = stages.choices;
+    registerStatusStyles(stages.styles);
+    statutActionChoices = statuts.choices;
+    let structures = [];
+    if (structTableId) {
+      try { structures = recordsFromTableData(await fetchTableCached(structTableId)).map(r => mapRecord(r, mappings)); }
+      catch (err) { console.error('Structures illisibles', err); }
+    }
+    D = construire(structures);
+    await chargerFinance(force);
+  }
+
+  // ---------------------------------------------------------------------
+  // Modèle normalisé
+  // ---------------------------------------------------------------------
+  function construire(structuresBrutes) {
+    const sf = (s, role) => (mappings[role] ? s[role] : undefined);
+    const structures = structuresBrutes.map(s => {
+      const categorie = txt(sf(s, 'Categorie'));
+      return {
+        id: s.id,
+        name: txt(sf(s, 'Nom')) || 'Sans nom',
+        type: txt(sf(s, 'TypeActeur')),
+        categorie,
+        activite: txt(sf(s, 'Activite')),
+        axe: txt(sf(s, 'AxeSequoia')),
+        pilier: txt(sf(s, 'PilierSequoia')),
+        logo: txt(sf(s, 'Logo')),
+        isTeam: !!(txt(sf(s, 'RechercheEquipeLabo')) || txt(sf(s, 'RechercheEquipeActivite'))),
+        isProspect: normalizeKey(categorie).includes('prospect')
+      };
+    });
+    const sById = new Map(structures.map(s => [s.id, s]));
+
+    const ct = related.contacts;
+    const contacts = ct.records.map(r => {
+      const c = ct.cols;
+      const nom = txt(r[c.NomComplet]) || [txt(r[c.Prenom]), txt(r[c.Nom])].filter(Boolean).join(' ');
+      return {
+        id: r.id, name: nom || 'Sans nom', fonction: txt(r[c.Fonction]),
+        email: txt(r[c.Email]), tel: txt(r[c.Telephone]),
+        structureIds: idsPar(r, colsVers('contacts', structTableId, c.Structures))
+      };
+    });
+    const cById = new Map(contacts.map(c => [c.id, c]));
+
+    const op = related.opportunites;
+    const oc = op.cols;
+    const projets = op.records.map(r => {
+      const partnerIds = refIdsFromValue(r[oc.Partenaires]);
+      const toutes = idsPar(r, colsVers('opportunites', structTableId, oc.Partenaires));
+      return {
+        id: r.id,
+        title: txt(r[oc.Sujet]) || 'Sans titre',
+        type: txt(r[oc.Type]),
+        stage: txt(r[oc.Statut]),
+        montant: Number(r[oc.Montant]) || 0,
+        debut: r[oc.DateDebut] || null,
+        echeance: r[oc.Echeance] || null,
+        axe: txt(r[oc.AxeSequoia]),
+        commentaire: oc.Commentaire ? stripHtml(String(r[oc.Commentaire] || '')) : '',
+        liens: oc.Liens ? E.lireLiens(r[oc.Liens]) : null,
+        partnerIds,
+        teamIds: toutes.filter(id => !partnerIds.includes(id)),
+        contactIds: idsPar(r, colsVers('opportunites', ct.tableId))
+      };
+    });
+    const pById = new Map(projets.map(p => [p.id, p]));
+
+    const it = related.interactions;
+    const ic = it.cols;
+    const echanges = it.records.map(r => ({
+      id: r.id,
+      date: r[ic.Date] || null,
+      type: txt(r[ic.Type]),
+      objet: txt(r[ic.Objet]),
+      cr: ic.CR ? excerpt(r[ic.CR], 260) : '',
+      partnerIds: idsPar(r, colsVers('interactions', structTableId, ic.Partenaires)),
+      contactIds: idsPar(r, colsVers('interactions', ct.tableId)),
+      projectIds: idsPar(r, colsVers('interactions', op.tableId, ic.Opportunites))
+    })).sort((a, b) => (Number(b.date) || 0) - (Number(a.date) || 0));
+    const eById = new Map(echanges.map(e => [e.id, e]));
+
+    const ac = related.actions;
+    const aco = ac.cols;
+    const actions = ac.records.map(r => ({
+      id: r.id,
+      label: txt(r[aco.Intitule]) || 'Action sans intitulé',
+      due: r[aco.Echeance] || null,
+      done: !!r[aco.Fait],
+      statut: txt(r[aco.Statut]),
+      important: aco.Important ? !!r[aco.Important] : false,
+      notes: aco.Notes ? stripHtml(String(r[aco.Notes] || '')) : '',
+      projectIds: idsPar(r, colsVers('actions', op.tableId, aco.Opportunite)),
+      partnerIds: idsPar(r, colsVers('actions', structTableId, aco.Partenaires)),
+      interactionIds: idsPar(r, colsVers('actions', it.tableId, aco.Interaction)),
+      contactIds: idsPar(r, colsVers('actions', ct.tableId, aco.Contacts))
+    }));
+    const aById = new Map(actions.map(a => [a.id, a]));
+
+    // Le rattachement d'un projet, direct ou par ricochet : l'échange d'où
+    // sort une de ses actions, l'action née d'un de ses échanges.
+    const liesProjet = new Map();
+    projets.forEach(p => {
+      const ech = new Set(echanges.filter(e => e.projectIds.includes(p.id)).map(e => e.id));
+      const act = new Set(actions.filter(a => a.projectIds.includes(p.id)).map(a => a.id));
+      Array.from(act).forEach(id => aById.get(id).interactionIds.forEach(e => { if (eById.has(e)) ech.add(e); }));
+      actions.forEach(a => { if (a.interactionIds.some(e => ech.has(e))) act.add(a.id); });
+      liesProjet.set(p.id, {
+        echanges: Array.from(ech).map(id => eById.get(id)).sort((x, y) => (Number(y.date) || 0) - (Number(x.date) || 0)),
+        actions: Array.from(act).map(id => aById.get(id))
+      });
+    });
+
+    const dernierEchange = new Map();
+    echanges.forEach(e => e.partnerIds.forEach(id => {
+      if (!dernierEchange.has(id) || Number(e.date) > Number(dernierEchange.get(id))) dernierEchange.set(id, e.date);
+    }));
+
+    const etapes = orderStages(stageChoices.concat(projets.map(p => p.stage)));
+    return { structures, sById, contacts, cById, projets, pById, echanges, eById, actions, aById, liesProjet, dernierEchange, etapes };
+  }
+
+  const nomS = (id) => (D.sById.get(id) || {}).name || '#' + id;
+  const nomsS = (ids) => ids.map(nomS).join(', ');
+  const actif = (p) => !isStageIn(p.stage, 'clos') && !isStageIn(p.stage, 'termine');
+
+  // ---------------------------------------------------------------------
+  // Éléments communs
+  // ---------------------------------------------------------------------
+  const PALETTE_TYPES = { economique: '#2563eb', recherche: '#7c3aed', institutionnel: '#0891b2', academique: '#7c3aed' };
+  function couleurStructure(s) {
+    if (!s) return '#94a3b8';
+    if (s.isTeam) return '#7c3aed';
+    const k = normalizeKey(s.type);
+    const hit = Object.keys(PALETTE_TYPES).find(t => k.includes(t));
+    return hit ? PALETTE_TYPES[hit] : '#1f6b3f';
+  }
+  function avatar(nom, couleur, grand) {
+    return '<span class="es-avatar' + (grand ? ' lg' : '') + '" style="background:' + H(couleur) + '">' + H(initials(nom)) + '</span>';
+  }
+  function badgeEtape(stage) {
+    if (!stage) return '<span class="es-badge">Sans étape</span>';
+    return '<span class="es-badge" style="background:' + stageColor(stage) + ';color:' + stageTextColor(stage) + '">' + H(stage) + '</span>';
+  }
+  function badgeType(type) {
+    return type ? '<span class="es-badge ' + H(dispositifClass(type)) + '">' + H(type) + '</span>' : '';
+  }
+  function jRel(j) {
+    if (j === null) return '';
+    if (j === 0) return "aujourd'hui";
+    return j > 0 ? 'dans ' + j + ' j' : 'il y a ' + (-j) + ' j';
+  }
+  function barreTemps(p, grand) {
+    const av = E.avancementTemps(p.debut, p.echeance, nowTs());
+    if (av === null) return '';
+    const late = av >= 1 && actif(p);
+    if (!grand) return '<div class="es-time' + (late ? ' late' : '') + '" title="' + Math.round(av * 100) + ' % du temps écoulé"><div style="width:' + (av * 100).toFixed(1) + '%"></div></div>';
+    return '<div class="es-progress' + (late ? ' late' : '') + '"><div class="bar"><div style="width:' + (av * 100).toFixed(1) + '%"></div></div>' +
+      '<div class="lbls"><span>' + H(formatDate(p.debut)) + '</span><span>' + Math.round(av * 100) + ' % du temps écoulé · échéance ' +
+      H(jRel(E.joursAvant(p.echeance, nowTs()))) + '</span><span>' + H(formatDate(p.echeance)) + '</span></div></div>';
+  }
+  function correspond(q, champs) {
+    const k = normalizeKey(q);
+    return !k || champs.some(c => normalizeKey(c).includes(k));
+  }
+  function moi() { return moiId && D ? D.cById.get(moiId) || null : null; }
+
+  // ---------------------------------------------------------------------
+  // Barre du haut : profil, alertes, onglets
+  // ---------------------------------------------------------------------
+  function renderTop() {
+    const m = moi();
+    $('btn-moi').innerHTML = m
+      ? avatar(m.name, 'var(--sequoia-green)') + '<span class="es-me">' + H(m.name) + '<small>' + H(m.fonction || 'Cluster SequoIA') + '</small></span>'
+      : avatar('?', '#94a3b8') + '<span class="es-me">Qui êtes-vous ?<small>Choisir mon profil</small></span>';
+    document.querySelectorAll('.es-tab').forEach(b => b.classList.toggle('on', b.dataset.vue === ui.vue));
+    const alertes = E.alertesEspace({ projets: D.projets, actions: D.actions }, nowTs(), { vues: alertesVues });
+    $('cloche-dot').hidden = !alertes.some(a => !a.vue);
+  }
+
+  function fermerPop() { $('pop-host').innerHTML = ''; }
+  function ouvrirPop(html, ancre) {
+    $('pop-host').innerHTML = '<div class="es-pop" style="left:' + ancre.offsetLeft + 'px">' + html + '</div>';
+  }
+
+  function popProfil(q) {
+    const liste = D.contacts
+      .filter(c => correspond(q || '', [c.name, c.fonction, nomsS(c.structureIds)]))
+      .sort((a, b) => a.name.localeCompare(b.name, 'fr')).slice(0, 60);
+    const items = liste.map(c =>
+      '<button type="button" class="es-pop-item" data-moi="' + c.id + '">' + avatar(c.name, 'var(--sequoia-green)') +
+      '<span>' + H(c.name) + '<span class="sub">' + H([c.fonction, nomsS(c.structureIds)].filter(Boolean).join(' · ')) + '</span></span></button>').join('');
+    return '<h4>Qui êtes-vous ?</h4><input type="search" id="pop-q" placeholder="Rechercher un contact…" value="' + H(q || '') + '">' +
+      '<div id="pop-list">' + (items || '<div class="es-pop-empty">Aucun contact.</div>') + '</div>' +
+      (moiId ? '<button type="button" class="es-pop-item" data-moi="0">Ne plus me reconnaître</button>' : '');
+  }
+
+  function popAlertes() {
+    const alertes = E.alertesEspace({ projets: D.projets, actions: D.actions }, nowTs(), { vues: alertesVues });
+    if (!alertes.length) return '<h4>Alertes</h4><div class="es-pop-empty">Rien d’urgent.</div>';
+    const ligne = a => '<button type="button" class="es-pop-item' + (a.vue ? '' : ' nouveau') + '" data-alerte="' + H(a.id) + '">' +
+      '<span><span class="sub">' + H(a.type) + '</span>' + H(a.titre) + '<span class="sub">' + H(jRel(a.jours)) + '</span></span></button>';
+    const nouvelles = alertes.filter(a => !a.vue), vues = alertes.filter(a => a.vue);
+    return (nouvelles.length ? '<h4>Nouvelles</h4>' + nouvelles.map(ligne).join('') : '') +
+      (vues.length ? '<h4>Déjà consultées</h4>' + vues.map(ligne).join('') : '');
+  }
+
+  // ---------------------------------------------------------------------
+  // Graphiques (SVG dessiné à la main : pas de dépendance)
+  // ---------------------------------------------------------------------
+  function barresMensuelles(serie) {
+    const W = 560, Hh = 170, pb = 22, pt = 10;
+    const max = Math.max(1, ...serie.map(m => m.count));
+    const bw = W / serie.length;
+    const bars = serie.map((m, i) => {
+      const h = ((Hh - pb - pt) * m.count) / max;
+      const x = i * bw + bw * 0.18, y = Hh - pb - h;
+      return '<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + (bw * 0.64).toFixed(1) + '" height="' + Math.max(0, h).toFixed(1) +
+        '" rx="4" fill="' + (i === serie.length - 1 ? 'var(--sequoia-green)' : '#9cc3ab') + '"><title>' + H(m.label + ' ' + m.annee + ' : ' + m.count) + '</title></rect>' +
+        (m.count ? '<text x="' + (i * bw + bw / 2).toFixed(1) + '" y="' + (y - 3).toFixed(1) + '" text-anchor="middle">' + m.count + '</text>' : '') +
+        '<text x="' + (i * bw + bw / 2).toFixed(1) + '" y="' + (Hh - 6) + '" text-anchor="middle">' + H(m.label) + '</text>';
+    }).join('');
+    return '<svg viewBox="0 0 ' + W + ' ' + Hh + '" role="img" aria-label="Échanges par mois">' +
+      '<line x1="0" x2="' + W + '" y1="' + (Hh - pb) + '" y2="' + (Hh - pb) + '" stroke="var(--border)"/>' + bars + '</svg>';
+  }
+
+  function donut(parts) {
+    const total = parts.reduce((t, p) => t + p.value, 0) || 1;
+    const R = 50, r = 32, c = 60;
+    let a0 = -Math.PI / 2;
+    const arcs = parts.map(p => {
+      const a1 = a0 + (2 * Math.PI * p.value) / total;
+      const large = a1 - a0 > Math.PI ? 1 : 0;
+      const pt = (rad, a) => (c + rad * Math.cos(a)).toFixed(2) + ' ' + (c + rad * Math.sin(a)).toFixed(2);
+      const d = parts.length === 1
+        ? 'M ' + pt(R, 0) + ' A ' + R + ' ' + R + ' 0 1 1 ' + pt(R, Math.PI) + ' A ' + R + ' ' + R + ' 0 1 1 ' + pt(R, 0) +
+          ' M ' + pt(r, 0) + ' A ' + r + ' ' + r + ' 0 1 0 ' + pt(r, Math.PI) + ' A ' + r + ' ' + r + ' 0 1 0 ' + pt(r, 0) + ' Z'
+        : 'M ' + pt(R, a0) + ' A ' + R + ' ' + R + ' 0 ' + large + ' 1 ' + pt(R, a1) + ' L ' + pt(r, a1) + ' A ' + r + ' ' + r + ' 0 ' + large + ' 0 ' + pt(r, a0) + ' Z';
+      a0 = a1;
+      return '<path d="' + d + '" fill="' + p.color + '" fill-rule="evenodd"><title>' + H(p.label + ' : ' + p.value) + '</title></path>';
+    }).join('');
+    return '<svg viewBox="0 0 120 120" role="img" aria-label="Répartition">' + arcs +
+      '<text x="60" y="58" text-anchor="middle" style="font-size:18px;font-weight:650;fill:var(--text)">' + total + '</text>' +
+      '<text x="60" y="73" text-anchor="middle" style="font-size:9px;fill:var(--text-muted)">projets + échanges</text></svg>';
+  }
+
+  // Graphe de relations : nœuds structure / projet / contact, arêtes = liens.
+  function graphe(nodes, edges, width, height) {
+    if (!nodes.length) return '<div class="es-empty">Rien à relier pour l’instant.</div>';
+    const pos = E.dispositionGraphe(nodes, edges, width, height, null, { haut: 24, droite: 190, bas: 24, gauche: 24 });
+    const lignes = edges.filter(([a, b]) => pos[a] && pos[b]).map(([a, b]) =>
+      '<line x1="' + pos[a].x + '" y1="' + pos[a].y + '" x2="' + pos[b].x + '" y2="' + pos[b].y + '"/>').join('');
+    const pts = nodes.map(n => {
+      const p = pos[n.id];
+      return '<g class="nd" data-open="' + H(n.open) + '" tabindex="0"><circle cx="' + p.x + '" cy="' + p.y + '" r="' + n.r + '" fill="' + n.color + '"><title>' + H(n.label) + '</title></circle>' +
+        (n.showLabel !== false ? '<text x="' + (p.x + n.r + 3) + '" y="' + (p.y + 3.5) + '">' + H(n.label.length > 28 ? n.label.slice(0, 27) + '…' : n.label) + '</text>' : '') + '</g>';
+    }).join('');
+    return '<svg viewBox="0 0 ' + width + ' ' + height + '">' + lignes + pts + '</svg>';
+  }
+
+  function grapheProjets(limite) {
+    const projets = D.projets.filter(actif).slice(0, limite || 60);
+    const sIds = new Set();
+    const edges = [];
+    projets.forEach(p => p.partnerIds.concat(p.teamIds).forEach(id => { if (D.sById.has(id)) { sIds.add(id); edges.push(['s' + id, 'p' + p.id]); } }));
+    const nodes = Array.from(sIds).map(id => {
+      const s = D.sById.get(id);
+      const deg = edges.filter(e => e[0] === 's' + id).length;
+      return { id: 's' + id, label: s.name, color: couleurStructure(s), r: 6 + Math.min(8, deg * 1.5), open: 'structure:' + id };
+    }).concat(projets.map(p => ({ id: 'p' + p.id, label: p.title, color: stageColor(p.stage), r: 5, open: 'projet:' + p.id, showLabel: false })));
+    return { nodes, edges };
+  }
+
+  const LEGENDE_GRAPHE = '<div class="es-graph-legend"><span><i style="background:#2563eb"></i>Économique</span>' +
+    '<span><i style="background:#7c3aed"></i>Recherche / équipe</span><span><i style="background:#0891b2"></i>Institutionnel</span>' +
+    '<span><i style="background:#f97316"></i>Projet (couleur d’étape — survoler pour le nom)</span></div>';
+
+  // ---------------------------------------------------------------------
+  // Vue : tableau de bord
+  // ---------------------------------------------------------------------
+  function vueDashboard() {
+    const now = nowTs();
+    const m = moi();
+    const partenaires = D.structures.filter(s => !s.isTeam && !s.isProspect);
+    const actifs = D.projets.filter(actif);
+    const enCours = D.projets.filter(p => isStageIn(p.stage, 'lance'));
+    const pipeline = sumMontants(D.projets.filter(p => isStageIn(p.stage, 'pondere')));
+    const ouvertes = D.actions.filter(a => !a.done);
+    const retard = ouvertes.filter(a => a.due && E.joursAvant(a.due, now) < 0);
+    const ech90 = D.echanges.filter(e => e.date && E.joursAvant(e.date, now) >= -90);
+    const actifsPart = new Set(actifs.flatMap(p => p.partnerIds));
+
+    const hero = '<section class="es-hero"><span class="es-blob b1"></span><span class="es-blob b2"></span><span class="es-blob b3"></span>' +
+      '<div class="es-hero-body"><div><div class="es-hero-kicker">Partenariats &amp; Innovation</div>' +
+      '<h1>Cluster SequoIA</h1><p>' + (m ? 'Bonjour ' + H(m.name.split(' ')[0]) + ' — ' : '') +
+      H(new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })) + '</p></div>' +
+      '<div class="es-hero-stats"><div><b>' + actifs.length + '</b><span>projets actifs</span></div>' +
+      '<div><b>' + H(formatMontantCompact(sumMontants(actifs)) || '0 €') + '</b><span>engagés ou en montage</span></div>' +
+      '<div><b>' + actifsPart.size + '</b><span>partenaires impliqués</span></div></div></div></section>';
+
+    const kpi = (lbl, val, sub, alerte, vue) => '<div class="es-card es-kpi"' + (vue ? ' data-vue="' + vue + '" style="cursor:pointer"' : '') + '><div class="lbl">' + H(lbl) +
+      '</div><div class="val">' + H(val) + '</div><div class="sub' + (alerte ? ' alerte' : '') + '">' + H(sub) + '</div></div>';
+    const kpis = '<div class="es-kpis">' +
+      kpi('Partenaires', String(partenaires.length), actifsPart.size + ' avec un projet actif', false, 'partenaires') +
+      kpi('Projets en cours', String(enCours.length), actifs.length - enCours.length + ' en discussion ou montage', false, 'projets') +
+      kpi('Pipeline pondéré', formatMontantCompact(pipeline) || '0 €', 'qualification → contractualisation', false, 'projets') +
+      kpi('Actions ouvertes', String(ouvertes.length), retard.length ? retard.length + ' en retard' : 'aucune en retard', retard.length > 0, 'actions') +
+      kpi('Échanges (90 j)', String(ech90.length), D.echanges.length + ' au total', false, null) +
+      '</div>';
+
+    // Projets par étape
+    const parEtape = D.etapes.map(st => ({ st, n: D.projets.filter(p => p.stage === st).length })).filter(x => x.n);
+    const maxE = Math.max(1, ...parEtape.map(x => x.n));
+    const etapesHtml = parEtape.length ? parEtape.map(x =>
+      '<div class="es-hbar"><span class="nom" title="' + H(x.st) + '">' + H(x.st) + '</span><div class="track"><div class="fill" style="width:' +
+      (x.n / maxE * 100).toFixed(1) + '%;background:' + stageColor(x.st) + '"></div></div><span class="n">' + x.n + '</span></div>').join('')
+      : '<div class="es-empty">Aucun projet.</div>';
+
+    // Top partenaires
+    const top = E.topPartenaires(D.projets, D.echanges, 6).filter(t => D.sById.has(t.id));
+    const couleurs = ['#1f6b3f', '#4fa5d8', '#8c62b3', '#4cae8c', '#f59e0b', '#94a3b8'];
+    const parts = top.map((t, i) => ({ label: nomS(t.id), value: t.projets + t.echanges, color: couleurs[i % couleurs.length], id: t.id }));
+    const topHtml = parts.length ? '<div class="es-donut-wrap">' + donut(parts) + '<div class="es-legend" style="flex:1;min-width:0">' +
+      parts.map((p, i) => '<button type="button" data-open="structure:' + p.id + '"><i style="background:' + p.color + '"></i><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
+        H(p.label) + '</span><span class="n">' + top[i].projets + ' p · ' + top[i].echanges + ' é</span></button>').join('') + '</div></div>'
+      : '<div class="es-empty">Pas encore de partenaire engagé.</div>';
+
+    const charts = '<div class="es-grid-3">' +
+      '<div class="es-card es-chart"><div class="es-card-head"><h3>Échanges par mois</h3><span class="aside">12 derniers mois</span></div><div class="es-card-body">' +
+        barresMensuelles(E.serieMensuelle(D.echanges.map(e => e.date), now, 12)) + '</div></div>' +
+      '<div class="es-card"><div class="es-card-head"><h3>Projets par étape</h3></div><div class="es-card-body">' + etapesHtml + '</div></div>' +
+      '<div class="es-card"><div class="es-card-head"><h3>Partenaires les plus engagés</h3><span class="aside">projets · échanges</span></div><div class="es-card-body">' + topHtml + '</div></div>' +
+      '</div>';
+
+    const g = grapheProjets(50);
+    const alertes = E.alertesEspace({ projets: D.projets, actions: D.actions }, now, { vues: alertesVues }).slice(0, 12);
+    const alertesHtml = alertes.length ? '<div class="es-alerts">' + alertes.map(a =>
+      '<div class="es-alert" data-alerte="' + H(a.id) + '"><div><span class="kind">' + H(a.type) + '</span>' + H(a.titre) + '</div>' +
+      '<span class="when ' + (a.jours < 0 ? 'late' : a.jours <= 7 ? 'soon' : '') + '">' + H(jRel(a.jours)) + '</span></div>').join('') + '</div>'
+      : '<div class="es-empty">Rien d’urgent.</div>';
+    const bas = '<div class="es-grid-2">' +
+      '<div class="es-card es-graph"><div class="es-card-head"><h3>Réseau partenaires ↔ projets actifs</h3><span class="aside">cliquer un point pour ouvrir sa fiche</span></div>' +
+        graphe(g.nodes, g.edges, 820, 420) + LEGENDE_GRAPHE + '</div>' +
+      '<div class="es-card"><div class="es-card-head"><h3>Alertes</h3><span class="aside">30 prochains jours</span></div><div class="es-card-body">' + alertesHtml + '</div></div>' +
+      '</div>';
+
+    return '<div class="es-inner">' + hero + kpis + charts + bas + '</div>';
+  }
+
+  // ---------------------------------------------------------------------
+  // Vue : projets
+  // ---------------------------------------------------------------------
+  function projetsFiltres() {
+    const f = ui.projets;
+    const m = moi();
+    return D.projets.filter(p =>
+      correspond(f.q, [p.title, p.type, p.stage, nomsS(p.partnerIds.concat(p.teamIds))]) &&
+      (!f.type || p.type === f.type) &&
+      (!f.miens || (m && p.contactIds.includes(m.id))));
+  }
+
+  function carteProjet(p) {
+    const lies = D.liesProjet.get(p.id);
+    const qui = p.partnerIds.length ? nomsS(p.partnerIds) : 'Projet interne';
+    return '<article class="es-card es-pcard" draggable="true" data-open="projet:' + p.id + '" data-drag-projet="' + p.id + '">' +
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">' + badgeType(p.type) + (ui.projets.groupe !== 'etape' ? badgeEtape(p.stage) : '') + '</div>' +
+      '<h4>' + H(p.title) + '</h4><div class="who">' + H(qui) + (p.teamIds.length ? ' · ' + H(nomsS(p.teamIds)) : '') + '</div>' +
+      barreTemps(p) +
+      '<div class="foot"><span title="Échanges">💬 ' + lies.echanges.length + '</span><span title="Actions ouvertes">☑ ' +
+      lies.actions.filter(a => !a.done).length + '</span>' + (p.echeance ? '<span>' + H(formatDate(p.echeance)) + '</span>' : '') +
+      '<span class="m">' + H(formatMontantOrDash(p.montant)) + '</span></div></article>';
+  }
+
+  function vueProjets() {
+    const f = ui.projets;
+    const liste = projetsFiltres();
+    const types = Array.from(new Set(D.projets.map(p => p.type).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'fr'));
+    const toolbar = '<div class="es-toolbar"><h1>Projets</h1>' +
+      '<input class="es-search" data-q="projets" placeholder="Rechercher un projet, un partenaire…" value="' + H(f.q) + '">' +
+      '<select class="es-select" data-set="projets.type"><option value="">Tous les types</option>' +
+        types.map(t => '<option' + (t === f.type ? ' selected' : '') + '>' + H(t) + '</option>').join('') + '</select>' +
+      (moi() ? '<button type="button" class="es-btn' + (f.miens ? ' primary' : '') + '" data-toggle="projets.miens">Mes projets</button>' : '') +
+      '<span class="grow"></span><span class="es-count">' + liste.length + ' projet' + (liste.length > 1 ? 's' : '') + '</span>' +
+      '<div class="es-seg">' + [['cartes', 'Cartes'], ['tableau', 'Tableau'], ['calendrier', 'Calendrier']].map(([k, l]) =>
+        '<button type="button" data-set="projets.mode" data-val="' + k + '" class="' + (f.mode === k ? 'on' : '') + '">' + l + '</button>').join('') + '</div></div>';
+
+    let corps = '';
+    if (f.mode === 'cartes') {
+      const grp = f.groupe;
+      const cle = grp === 'type' ? (p => p.type) : grp === 'partenaire' ? (p => p.partnerIds.length ? nomS(p.partnerIds[0]) : 'Projet interne') : (p => p.stage);
+      const ordre = grp === 'etape' ? D.etapes : null;
+      const groupes = E.grouper(liste, cle, ordre, grp === 'etape' ? 'Sans étape' : 'Non renseigné')
+        .filter(g => g.elements.length || grp === 'etape');
+      corps = '<div class="es-toolbar"><span class="es-count">Grouper par</span><div class="es-seg">' +
+        [['etape', 'Étape'], ['type', 'Type'], ['partenaire', 'Partenaire']].map(([k, l]) =>
+          '<button type="button" data-set="projets.groupe" data-val="' + k + '" class="' + (grp === k ? 'on' : '') + '">' + l + '</button>').join('') +
+        '</div>' + (grp === 'etape' ? '<span class="es-count">— glisser une carte pour changer son étape</span>' : '') + '</div>' +
+        '<div class="es-board">' + groupes.map(g =>
+          '<div class="es-col"' + (grp === 'etape' ? ' data-drop-etape="' + H(g.cle) + '"' : '') + '><div class="es-col-head">' +
+          (grp === 'etape' ? '<i style="background:' + stageColor(g.cle) + '"></i>' : '') + H(g.cle) + '<span class="n">' + g.elements.length + '</span></div>' +
+          '<div class="es-col-sum">' + H(formatMontantOrDash(sumMontants(g.elements))) + '</div>' +
+          '<div class="es-col-cards">' + g.elements.map(carteProjet).join('') + '</div></div>').join('') + '</div>';
+    } else if (f.mode === 'tableau') {
+      const cols = [['title', 'Projet'], ['type', 'Type'], ['stage', 'Étape'], ['partenaires', 'Partenaires'], ['montant', 'Montant'],
+        ['debut', 'Début'], ['echeance', 'Échéance'], ['echanges', 'Échanges'], ['actions', 'Actions']];
+      const val = (p, k) => k === 'partenaires' ? nomsS(p.partnerIds) : k === 'echanges' ? D.liesProjet.get(p.id).echanges.length
+        : k === 'actions' ? D.liesProjet.get(p.id).actions.filter(a => !a.done).length : k === 'stage' ? stageRank(p.stage) : p[k];
+      const tri = liste.slice().sort((a, b) => {
+        const x = val(a, f.tri), y = val(b, f.tri);
+        const r = (typeof x === 'number' || typeof y === 'number') ? (Number(x) || 0) - (Number(y) || 0) : String(x || '').localeCompare(String(y || ''), 'fr');
+        return f.asc ? r : -r;
+      });
+      corps = '<div class="es-card es-table-wrap"><table class="es-table"><thead><tr>' + cols.map(([k, l]) =>
+        '<th data-tri="projets" data-val="' + k + '" class="' + (f.tri === k ? 'sorted' + (f.asc ? ' asc' : '') : '') + '">' + l + '</th>').join('') +
+        '</tr></thead><tbody>' + tri.map(p => {
+          const lies = D.liesProjet.get(p.id);
+          return '<tr data-open="projet:' + p.id + '"><td class="ttl">' + H(p.title) + '</td><td>' + badgeType(p.type) + '</td><td>' + badgeEtape(p.stage) +
+            '</td><td>' + H(p.partnerIds.length ? nomsS(p.partnerIds) : 'Interne') + '</td><td class="num">' + H(formatMontantOrDash(p.montant)) +
+            '</td><td class="num">' + H(formatDate(p.debut)) + '</td><td class="num">' + H(formatDate(p.echeance)) +
+            '</td><td class="num">' + lies.echanges.length + '</td><td class="num">' + lies.actions.filter(a => !a.done).length + '</td></tr>';
+        }).join('') + '</tbody></table>' + (tri.length ? '' : '<div class="es-empty">Aucun projet.</div>') + '</div>';
+    } else {
+      const an = f.annee;
+      const rangs = liste.map(p => ({ p, seg: E.segmentAnnee(p.debut, p.echeance, an) })).filter(x => x.seg)
+        .sort((a, b) => a.seg.left - b.seg.left);
+      const debutAn = Date.UTC(an, 0, 1) / 1000, finAn = Date.UTC(an + 1, 0, 1) / 1000;
+      const auj = nowTs();
+      const trait = auj >= debutAn && auj < finAn ? '<span class="es-today" style="left:' + ((auj - debutAn) / (finAn - debutAn) * 100).toFixed(2) + '%"></span>' : '';
+      const sansDate = liste.filter(p => !p.debut).length;
+      corps = '<div class="es-card"><div class="es-cal-head"><button type="button" class="es-btn icon" data-annee="-1" aria-label="Année précédente">‹</button><b>' + an +
+        '</b><button type="button" class="es-btn icon" data-annee="1" aria-label="Année suivante">›</button>' +
+        '<span class="es-count" style="margin-left:8px">Du début à l’échéance · ' + rangs.length + ' projet' + (rangs.length > 1 ? 's' : '') + ' sur l’année' +
+        (sansDate ? ' · ' + sansDate + ' sans date de début' : '') + '</span></div><div class="es-frise">' +
+        '<div class="es-frise-row head"><span></span><div class="es-frise-months">' + ESPACE_MOIS_COURTS.map(mm => '<span>' + mm + '</span>').join('') + '</div></div>' +
+        rangs.map(({ p, seg }) => '<div class="es-frise-row"><span class="es-frise-lbl" data-open="projet:' + p.id + '" title="' + H(p.title) + '">' + H(p.title) + '</span>' +
+          '<div class="es-frise-track">' + trait + '<span class="es-seg-bar' + (seg.coupeApres ? ' open-end' : '') + '" data-open="projet:' + p.id + '" style="left:' + seg.left + '%;width:' + seg.width +
+          '%;background:' + stageColor(p.stage) + ';color:' + stageTextColor(p.stage) + '" title="' + H(p.title + ' — ' + (p.stage || '')) + '">' + H(p.stage) + '</span></div></div>').join('') +
+        (rangs.length ? '' : '<div class="es-empty">Aucun projet daté sur ' + an + '.</div>') + '</div></div>';
+    }
+    return '<div class="es-inner">' + toolbar + corps + '</div>';
+  }
+
+  // ---------------------------------------------------------------------
+  // Vue : partenaires
+  // ---------------------------------------------------------------------
+  function structuresFiltrees() {
+    const f = ui.partenaires;
+    return D.structures.filter(s =>
+      (f.filtre === 'tous' || (f.filtre === 'prospects' ? s.isProspect : f.filtre === 'equipes' ? s.isTeam : (!s.isProspect && !s.isTeam))) &&
+      (!f.type || s.type === f.type) &&
+      correspond(f.q, [s.name, s.type, s.activite, s.axe, s.pilier]));
+  }
+  function statsStructure(s) {
+    return {
+      projets: D.projets.filter(p => p.partnerIds.includes(s.id) || p.teamIds.includes(s.id)),
+      contacts: D.contacts.filter(c => c.structureIds.includes(s.id)),
+      echanges: D.echanges.filter(e => e.partnerIds.includes(s.id))
+    };
+  }
+  function vuePartenaires() {
+    const f = ui.partenaires;
+    const liste = structuresFiltrees().sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+    const types = Array.from(new Set(D.structures.map(s => s.type).filter(Boolean))).sort();
+    const toolbar = '<div class="es-toolbar"><h1>Partenaires</h1>' +
+      '<input class="es-search" data-q="partenaires" placeholder="Rechercher une structure…" value="' + H(f.q) + '">' +
+      '<div class="es-seg">' + [['partenaires', 'Partenaires'], ['prospects', 'Prospects'], ['equipes', 'Équipes'], ['tous', 'Tous']].map(([k, l]) =>
+        '<button type="button" data-set="partenaires.filtre" data-val="' + k + '" class="' + (f.filtre === k ? 'on' : '') + '">' + l + '</button>').join('') + '</div>' +
+      '<select class="es-select" data-set="partenaires.type"><option value="">Tous les types</option>' + types.map(t => '<option' + (t === f.type ? ' selected' : '') + '>' + H(t) + '</option>').join('') + '</select>' +
+      '<span class="grow"></span><span class="es-count">' + liste.length + ' structure' + (liste.length > 1 ? 's' : '') + '</span>' +
+      '<div class="es-seg">' + [['cartes', 'Cartes'], ['graphe', 'Graphe']].map(([k, l]) =>
+        '<button type="button" data-set="partenaires.mode" data-val="' + k + '" class="' + (f.mode === k ? 'on' : '') + '">' + l + '</button>').join('') + '</div></div>';
+    let corps;
+    if (f.mode === 'graphe') {
+      const ids = new Set(liste.map(s => s.id));
+      const projets = D.projets.filter(p => p.partnerIds.concat(p.teamIds).some(id => ids.has(id)));
+      const edges = [];
+      projets.forEach(p => p.partnerIds.concat(p.teamIds).forEach(id => { if (ids.has(id)) edges.push(['s' + id, 'p' + p.id]); }));
+      const lies = new Set(edges.map(e => e[0]));
+      const nodes = liste.filter(s => lies.has('s' + s.id)).map(s => ({ id: 's' + s.id, label: s.name, color: couleurStructure(s),
+        r: 6 + Math.min(9, edges.filter(e => e[0] === 's' + s.id).length * 1.5), open: 'structure:' + s.id }))
+        .concat(projets.map(p => ({ id: 'p' + p.id, label: p.title, color: stageColor(p.stage), r: 5, open: 'projet:' + p.id, showLabel: projets.length <= 30 })));
+      corps = '<div class="es-card es-graph">' + graphe(nodes, edges, 1100, 620) + LEGENDE_GRAPHE +
+        '<div class="es-graph-legend">Seules les structures rattachées à au moins un projet apparaissent (' + (liste.length - nodes.filter(n => n.id[0] === 's').length) + ' sans projet).</div></div>';
+    } else {
+      const now = nowTs();
+      corps = liste.length ? '<div class="es-cards">' + liste.map(s => {
+        const st = statsStructure(s);
+        const der = D.dernierEchange.get(s.id);
+        const j = der ? -E.joursAvant(der, now) : null;
+        return '<article class="es-card es-scard" data-open="structure:' + s.id + '"><div class="es-scard-top">' + avatar(s.name, couleurStructure(s), true) +
+          '<div style="min-width:0"><b>' + H(s.name) + '</b><small>' + H([s.type, s.activite].filter(Boolean).join(' · ') || s.categorie || '—') + '</small></div></div>' +
+          '<div class="es-stats"><div><b>' + st.projets.filter(actif).length + '</b><span>projets</span></div><div><b>' + st.contacts.length +
+          '</b><span>contacts</span></div><div><b>' + st.echanges.length + '</b><span>échanges</span></div></div>' +
+          '<div class="last' + (j !== null && j > 90 ? ' old' : '') + '">' + (j === null ? 'Aucun échange enregistré' : 'Dernier échange ' + H(jRel(-j))) + '</div></article>';
+      }).join('') + '</div>' : '<div class="es-card"><div class="es-empty">Aucune structure.</div></div>';
+    }
+    return '<div class="es-inner">' + toolbar + corps + '</div>';
+  }
+
+  // ---------------------------------------------------------------------
+  // Vue : contacts
+  // ---------------------------------------------------------------------
+  function vueContacts() {
+    const f = ui.contacts;
+    const liste = D.contacts.filter(c => correspond(f.q, [c.name, c.fonction, c.email, nomsS(c.structureIds)]));
+    const nEch = (c) => D.echanges.filter(e => e.contactIds.includes(c.id));
+    const toolbar = '<div class="es-toolbar"><h1>Contacts</h1>' +
+      '<input class="es-search" data-q="contacts" placeholder="Rechercher un nom, une fonction, une structure…" value="' + H(f.q) + '">' +
+      '<span class="grow"></span><span class="es-count">' + liste.length + ' contact' + (liste.length > 1 ? 's' : '') + '</span>' +
+      '<div class="es-seg">' + [['tableau', 'Tableau'], ['graphe', 'Graphe']].map(([k, l]) =>
+        '<button type="button" data-set="contacts.mode" data-val="' + k + '" class="' + (f.mode === k ? 'on' : '') + '">' + l + '</button>').join('') + '</div></div>';
+    let corps;
+    if (f.mode === 'graphe') {
+      const edges = [];
+      const sIds = new Set();
+      liste.forEach(c => c.structureIds.forEach(id => { if (D.sById.has(id)) { sIds.add(id); edges.push(['c' + c.id, 's' + id]); } }));
+      const nodes = Array.from(sIds).map(id => { const s = D.sById.get(id); return { id: 's' + id, label: s.name, color: couleurStructure(s), r: 9, open: 'structure:' + id }; })
+        .concat(liste.map(c => ({ id: 'c' + c.id, label: c.name, color: '#94a3b8', r: 4.5, open: 'contact:' + c.id, showLabel: liste.length <= 40 })));
+      corps = '<div class="es-card es-graph">' + graphe(nodes, edges, 1100, 620) +
+        '<div class="es-graph-legend"><span><i style="background:#94a3b8"></i>Contact</span><span>Les grands points sont les structures.</span></div></div>';
+    } else {
+      const val = (c, k) => k === 'structures' ? nomsS(c.structureIds) : k === 'echanges' ? nEch(c).length
+        : k === 'dernier' ? (Number((nEch(c)[0] || {}).date) || 0) : c[k === 'nom' ? 'name' : k];
+      const tri = liste.slice().sort((a, b) => {
+        const x = val(a, f.tri), y = val(b, f.tri);
+        const r = typeof x === 'number' ? x - y : String(x || '').localeCompare(String(y || ''), 'fr');
+        return f.asc ? r : -r;
+      });
+      const cols = [['nom', 'Nom'], ['fonction', 'Fonction'], ['structures', 'Structure(s)'], ['email', 'Email'], ['echanges', 'Échanges'], ['dernier', 'Dernier échange']];
+      corps = '<div class="es-card es-table-wrap"><table class="es-table"><thead><tr>' + cols.map(([k, l]) =>
+        '<th data-tri="contacts" data-val="' + k + '" class="' + (f.tri === k ? 'sorted' + (f.asc ? ' asc' : '') : '') + '">' + l + '</th>').join('') +
+        '</tr></thead><tbody>' + tri.map(c => {
+          const e = nEch(c);
+          return '<tr data-open="contact:' + c.id + '"><td class="ttl"><span style="display:inline-flex;gap:8px;align-items:center">' + avatar(c.name, '#64748b') + H(c.name) +
+            '</span></td><td>' + H(c.fonction) + '</td><td>' + H(nomsS(c.structureIds)) + '</td><td>' + H(c.email) +
+            '</td><td class="num">' + e.length + '</td><td class="num">' + H(e[0] ? formatDate(e[0].date) : '—') + '</td></tr>';
+        }).join('') + '</tbody></table>' + (tri.length ? '' : '<div class="es-empty">Aucun contact.</div>') + '</div>';
+    }
+    return '<div class="es-inner">' + toolbar + corps + '</div>';
+  }
+
+  // ---------------------------------------------------------------------
+  // Vue : actions
+  // ---------------------------------------------------------------------
+  function actionsFiltrees() {
+    const f = ui.actions;
+    const m = moi();
+    return D.actions.filter(a =>
+      (f.faites || !a.done) &&
+      (!f.miennes || (m && a.contactIds.includes(m.id))) &&
+      correspond(f.q, [a.label, a.notes, a.projectIds.map(id => (D.pById.get(id) || {}).title).join(' '), nomsS(a.partnerIds)]));
+  }
+  function carteAction(a) {
+    const j = a.due ? E.joursAvant(a.due, nowTs()) : null;
+    const ctx = a.projectIds.map(id => (D.pById.get(id) || {}).title).filter(Boolean).concat(nomsS(a.partnerIds) ? [nomsS(a.partnerIds)] : []).join(' · ');
+    const qui = a.contactIds.map(id => (D.cById.get(id) || {}).name).filter(Boolean).join(', ');
+    return '<article class="es-card es-acard' + (a.done ? ' fait' : '') + '" draggable="true" data-drag-action="' + a.id + '" data-open="action:' + a.id + '">' +
+      '<input type="checkbox" data-fait="' + a.id + '"' + (a.done ? ' checked' : '') + (related.actions.cols.Fait ? '' : ' disabled') + ' aria-label="Faite">' +
+      '<div style="min-width:0"><div class="lbl">' + (a.important ? '<span class="es-imp" title="Importante">★</span> ' : '') + H(a.label) + '</div>' +
+      '<div class="meta">' + (a.due ? '<span class="due' + (j < 0 && !a.done ? ' late' : '') + '">' + H(formatDate(a.due)) + '</span>' : 'Sans échéance') +
+      (ctx ? ' · ' + H(ctx) : '') + (qui ? '<br>' + H(qui) : '') + '</div></div></article>';
+  }
+  function colonnesActions(liste) {
+    const now = nowTs();
+    if (related.actions.cols.Statut) {
+      const ordre = statutActionChoices.length ? statutActionChoices : Array.from(new Set(liste.map(a => a.statut).filter(Boolean)));
+      return { draggable: true, groupes: E.grouper(liste, a => a.statut, ordre, 'Sans statut') };
+    }
+    const cle = (a) => {
+      if (a.done) return 'Faites';
+      if (!a.due) return 'Sans échéance';
+      const j = E.joursAvant(a.due, now);
+      return j < 0 ? 'En retard' : j <= 7 ? 'Cette semaine' : 'Plus tard';
+    };
+    return { draggable: false, groupes: E.grouper(liste, cle, ['En retard', 'Cette semaine', 'Plus tard', 'Sans échéance'].concat(ui.actions.faites ? ['Faites'] : [])) };
+  }
+  function vueActions() {
+    const f = ui.actions;
+    if (!related.actions.tableId) {
+      return '<div class="es-inner"><div class="es-toolbar"><h1>Actions</h1></div><div class="es-card"><div class="es-empty">Aucune table d’actions dans ce document (Actions_MP ou Actions).</div></div></div>';
+    }
+    const liste = actionsFiltrees();
+    const toolbar = '<div class="es-toolbar"><h1>Actions</h1>' +
+      '<input class="es-search" data-q="actions" placeholder="Rechercher une action, un projet…" value="' + H(f.q) + '">' +
+      (moi() ? '<button type="button" class="es-btn' + (f.miennes ? ' primary' : '') + '" data-toggle="actions.miennes">Mes actions</button>' : '') +
+      '<button type="button" class="es-btn' + (f.faites ? ' primary' : '') + '" data-toggle="actions.faites">Voir les faites</button>' +
+      '<span class="grow"></span><span class="es-count">' + liste.filter(a => !a.done).length + ' ouverte(s)</span>' +
+      '<div class="es-seg">' + [['kanban', 'Kanban'], ['calendrier', 'Calendrier']].map(([k, l]) =>
+        '<button type="button" data-set="actions.mode" data-val="' + k + '" class="' + (f.mode === k ? 'on' : '') + '">' + l + '</button>').join('') + '</div></div>';
+    let corps;
+    if (f.mode === 'calendrier') {
+      const base = f.mois ? new Date(f.mois) : new Date();
+      const premier = new Date(base.getFullYear(), base.getMonth(), 1);
+      const decal = (premier.getDay() + 6) % 7;
+      const debut = new Date(premier); debut.setDate(1 - decal);
+      const cleJour = (d) => d.getFullYear() + '-' + d.getMonth() + '-' + d.getDate();
+      const parJour = {};
+      const poser = (ts, html) => { const d = new Date(Number(ts) * 1000); const k = d.getUTCFullYear() + '-' + d.getUTCMonth() + '-' + d.getUTCDate(); (parJour[k] = parJour[k] || []).push(html); };
+      const now = nowTs();
+      liste.forEach(a => { if (a.due) poser(a.due, '<span class="es-chip' + (a.done ? ' fait' : E.joursAvant(a.due, now) < 0 ? ' late' : '') + '" data-open="action:' + a.id + '" title="' + H(a.label) + '">' + H(a.label) + '</span>'); });
+      D.projets.filter(actif).forEach(p => { if (p.echeance) poser(p.echeance, '<span class="es-chip projet" data-open="projet:' + p.id + '" title="Échéance : ' + H(p.title) + '">⚑ ' + H(p.title) + '</span>'); });
+      const auj = cleJour(new Date());
+      let cases = '';
+      for (let i = 0; i < 42; i++) {
+        const d = new Date(debut); d.setDate(debut.getDate() + i);
+        const k = cleJour(d);
+        cases += '<div class="es-day' + (d.getMonth() !== premier.getMonth() ? ' autre' : '') + (k === auj ? ' auj' : '') + '"><span class="num">' + d.getDate() + '</span>' + (parJour[k] || []).join('') + '</div>';
+      }
+      const sansDate = liste.filter(a => !a.due && !a.done).length;
+      corps = '<div class="es-card"><div class="es-cal-head"><button type="button" class="es-btn icon" data-mois="-1" aria-label="Mois précédent">‹</button><b style="text-transform:capitalize;min-width:150px">' +
+        H(premier.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })) + '</b><button type="button" class="es-btn icon" data-mois="1" aria-label="Mois suivant">›</button>' +
+        '<button type="button" class="es-btn" data-mois="0">Aujourd’hui</button><span class="es-count" style="margin-left:8px">⚑ = échéance de projet' +
+        (sansDate ? ' · ' + sansDate + ' action(s) sans échéance' : '') + '</span></div>' +
+        '<div class="es-month">' + ['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'].map(n => '<div class="dname">' + n + '</div>').join('') + cases + '</div></div>';
+    } else {
+      const { draggable, groupes } = colonnesActions(liste);
+      corps = (draggable ? '' : '<div class="es-count">Colonnes calculées d’après l’échéance — ajoutez une colonne « Statut » à la table des actions pour un kanban libre.</div>') +
+        '<div class="es-board">' + groupes.map(g =>
+          '<div class="es-col"' + (draggable ? ' data-drop-statut="' + H(g.cle) + '"' : '') + '><div class="es-col-head">' + H(g.cle) +
+          '<span class="n">' + g.elements.length + '</span></div><div class="es-col-cards">' + g.elements
+            .sort((a, b) => (a.done - b.done) || ((Number(a.due) || Infinity) - (Number(b.due) || Infinity))).map(carteAction).join('') + '</div></div>').join('') + '</div>';
+    }
+    return '<div class="es-inner">' + toolbar + corps + '</div>';
+  }
+
+  // ---------------------------------------------------------------------
+  // Fiche latérale
+  // ---------------------------------------------------------------------
+  function ligneEchange(e) {
+    return '<div class="es-row"><span class="d">' + H(e.date ? formatDate(e.date) : '—') + '</span><div style="min-width:0">' +
+      '<div class="t">' + H([e.type, e.objet].filter(Boolean).join(' · ') || 'Sans objet') + '</div>' +
+      (e.partnerIds.length ? '<div class="s">' + H(nomsS(e.partnerIds)) + '</div>' : '') +
+      (e.cr ? '<div class="cr">' + H(e.cr) + '</div>' : '') + '</div></div>';
+  }
+  function ligneAction(a) {
+    const j = a.due ? E.joursAvant(a.due, nowTs()) : null;
+    return '<div class="es-row"><input type="checkbox" data-fait="' + a.id + '"' + (a.done ? ' checked' : '') + (related.actions.cols.Fait ? '' : ' disabled') + ' aria-label="Faite">' +
+      '<div style="min-width:0' + (a.done ? ';opacity:.6;text-decoration:line-through' : '') + '"><div class="t">' + (a.important ? '<span class="es-imp">★</span> ' : '') + H(a.label) + '</div>' +
+      (a.contactIds.length ? '<div class="s">' + H(a.contactIds.map(id => (D.cById.get(id) || {}).name).filter(Boolean).join(', ')) + '</div>' : '') + '</div>' +
+      '<span class="r' + (j !== null && j < 0 && !a.done ? '" style="color:var(--es-late);font-weight:600' : '') + '">' + H(a.due ? formatDate(a.due) : '') + '</span></div>';
+  }
+  function ligneProjet(p) {
+    return '<div class="es-row click" data-open="projet:' + p.id + '"><div style="min-width:0;flex:1"><div class="t">' + H(p.title) + '</div><div class="s">' +
+      H([p.type, p.partnerIds.length ? nomsS(p.partnerIds) : 'Interne'].filter(Boolean).join(' · ')) + '</div></div>' + badgeEtape(p.stage) + '</div>';
+  }
+  function ligneContact(c) {
+    return '<div class="es-row click" data-open="contact:' + c.id + '">' + avatar(c.name, '#64748b') + '<div style="min-width:0"><div class="t">' + H(c.name) + '</div><div class="s">' +
+      H([c.fonction, c.email].filter(Boolean).join(' · ')) + '</div></div></div>';
+  }
+  const vide = (msg) => '<div class="es-empty">' + H(msg) + '</div>';
+
+  function ficheProjet(p, tab) {
+    const lies = D.liesProjet.get(p.id);
+    const personnes = p.contactIds.map(id => D.cById.get(id)).filter(Boolean);
+    const tabs = [['general', 'Général'], ['echanges', 'Échanges', lies.echanges.length], ['actions', 'Actions', lies.actions.filter(a => !a.done).length],
+      ['personnes', 'Personnes', personnes.length]].concat(p.liens ? [['liens', 'Liens', p.liens.length]] : []);
+    const head = '<div class="es-sheet-top">' + badgeEtape(p.stage) + badgeType(p.type) + '<button type="button" class="es-btn icon close" data-close aria-label="Fermer">✕</button></div>' +
+      '<h2>' + H(p.title) + '</h2><div class="desc">' + H(p.partnerIds.length ? '' : 'Projet interne') + '</div>' +
+      '<div class="es-pills">' + p.partnerIds.concat(p.teamIds).map(id => '<button type="button" class="es-pill" data-open="structure:' + id + '">' + H(nomS(id)) +
+        (p.teamIds.includes(id) ? ' <small>équipe</small>' : '') + '</button>').join('') + '</div>' + barreTemps(p, true);
+    let body = '';
+    if (tab === 'general') {
+      body = '<div class="es-info"><div><span>Montant</span><b>' + H(formatMontantOrDash(p.montant)) + '</b></div><div><span>Étape</span><b>' + H(p.stage || '—') + '</b></div>' +
+        '<div><span>Début</span><b>' + H(formatDate(p.debut) || '—') + '</b></div><div><span>Échéance</span><b>' + H(formatDate(p.echeance) || '—') + '</b></div>' +
+        '<div><span>Échanges</span><b>' + lies.echanges.length + '</b></div><div><span>Actions ouvertes</span><b>' + lies.actions.filter(a => !a.done).length + '</b></div></div>' +
+        (p.commentaire ? '<div class="es-section"><h5>Journal</h5><div class="es-note">' + H(p.commentaire) + '</div></div>' : '') +
+        (lies.echanges.length ? '<div class="es-section"><h5>Dernier échange</h5>' + ligneEchange(lies.echanges[0]) + '</div>' : '');
+    } else if (tab === 'echanges') {
+      body = lies.echanges.length ? '<div class="es-list">' + lies.echanges.map(ligneEchange).join('') + '</div>'
+        : vide('Aucun échange rattaché. Renseignez le projet dans la colonne « Opportunités » d’un échange.');
+    } else if (tab === 'actions') {
+      body = (lies.actions.length ? '<div class="es-list">' + lies.actions.slice().sort((a, b) => (a.done - b.done) || ((Number(a.due) || Infinity) - (Number(b.due) || Infinity))).map(ligneAction).join('') + '</div>' : vide('Aucune action.')) +
+        (related.actions.tableId ? '<form class="es-form" data-ajout-action="' + p.id + '"><input class="grow" name="label" placeholder="Nouvelle action…" required><input type="date" name="due"><button class="es-btn primary" type="submit">Ajouter</button></form>' : '');
+    } else if (tab === 'personnes') {
+      body = personnes.length ? '<div class="es-list">' + personnes.map(ligneContact).join('') + '</div>' : vide('Personne n’est rattaché à ce projet.');
+    } else if (tab === 'liens') {
+      body = (p.liens.length ? '<div class="es-list">' + p.liens.map((l, i) => '<div class="es-row"><div style="min-width:0;flex:1"><a class="es-link" href="' + H(l.url) + '" target="_blank" rel="noopener">' + H(l.libelle) + '</a>' +
+        (l.libelle !== l.url ? '<div class="s">' + H(l.url) + '</div>' : '') + '</div><button type="button" class="es-x" data-suppr-lien="' + i + '" aria-label="Retirer">×</button></div>').join('') + '</div>'
+        : vide('Aucun lien. Ajoutez l’adresse d’un document (drive, dépôt, site).')) +
+        '<form class="es-form" data-ajout-lien="' + p.id + '"><input name="libelle" placeholder="Libellé"><input class="grow" name="url" type="url" placeholder="https://…" required><button class="es-btn primary" type="submit">Ajouter</button></form>';
+    }
+    return { head, tabs, body };
+  }
+
+  function ficheStructure(s, tab) {
+    const st = statsStructure(s);
+    const tabs = [['projets', 'Projets', st.projets.length], ['contacts', 'Contacts', st.contacts.length], ['echanges', 'Échanges', st.echanges.length]];
+    const head = '<div class="es-sheet-top">' + avatar(s.name, couleurStructure(s), true) +
+      (s.type ? '<span class="es-badge">' + H(s.type) + '</span>' : '') + (s.categorie ? '<span class="es-badge">' + H(s.categorie) + '</span>' : '') +
+      '<button type="button" class="es-btn icon close" data-close aria-label="Fermer">✕</button></div>' +
+      '<h2>' + H(s.name) + '</h2><div class="desc">' + H([s.activite, s.axe, s.pilier].filter(Boolean).join(' · ')) + '</div>';
+    let body = '';
+    if (tab === 'projets') body = st.projets.length ? '<div class="es-list">' + st.projets.map(ligneProjet).join('') + '</div>' : vide('Aucun projet.');
+    else if (tab === 'contacts') body = st.contacts.length ? '<div class="es-list">' + st.contacts.map(ligneContact).join('') + '</div>' : vide('Aucun contact.');
+    else body = st.echanges.length ? '<div class="es-list">' + st.echanges.map(ligneEchange).join('') + '</div>' : vide('Aucun échange.');
+    return { head, tabs, body };
+  }
+
+  function ficheContact(c, tab) {
+    const ech = D.echanges.filter(e => e.contactIds.includes(c.id));
+    const act = D.actions.filter(a => a.contactIds.includes(c.id));
+    const proj = D.projets.filter(p => p.contactIds.includes(c.id));
+    const tabs = [['echanges', 'Échanges', ech.length], ['actions', 'Actions', act.filter(a => !a.done).length], ['projets', 'Projets', proj.length]];
+    const head = '<div class="es-sheet-top">' + avatar(c.name, '#64748b', true) + '<button type="button" class="es-btn icon close" data-close aria-label="Fermer">✕</button></div>' +
+      '<h2>' + H(c.name) + '</h2><div class="desc">' + H(c.fonction) + '</div>' +
+      '<div class="es-pills">' + c.structureIds.map(id => '<button type="button" class="es-pill" data-open="structure:' + id + '">' + H(nomS(id)) + '</button>').join('') +
+      (c.email ? '<button type="button" class="es-pill" data-copier="' + H(c.email) + '">✉ ' + H(c.email) + '</button>' : '') +
+      (c.tel ? '<button type="button" class="es-pill" data-copier="' + H(c.tel) + '">☎ ' + H(c.tel) + '</button>' : '') + '</div>';
+    let body = '';
+    if (tab === 'echanges') body = ech.length ? '<div class="es-list">' + ech.map(ligneEchange).join('') + '</div>' : vide('Aucun échange.');
+    else if (tab === 'actions') body = act.length ? '<div class="es-list">' + act.map(ligneAction).join('') + '</div>' : vide('Aucune action.');
+    else body = proj.length ? '<div class="es-list">' + proj.map(ligneProjet).join('') + '</div>' : vide('Aucun projet.');
+    return { head, tabs, body };
+  }
+
+  function ficheAction(a) {
+    const j = a.due ? E.joursAvant(a.due, nowTs()) : null;
+    const head = '<div class="es-sheet-top">' + (a.statut ? '<span class="es-badge">' + H(a.statut) + '</span>' : '') + (a.important ? '<span class="es-badge" style="background:#fef3c7">★ Importante</span>' : '') +
+      '<button type="button" class="es-btn icon close" data-close aria-label="Fermer">✕</button></div><h2>' + H(a.label) + '</h2>' +
+      '<div class="desc">' + (a.due ? 'Échéance ' + H(formatDate(a.due)) + ' (' + H(jRel(j)) + ')' : 'Sans échéance') + (a.done ? ' · faite' : '') + '</div>' +
+      '<div class="es-pills">' + a.projectIds.map(id => '<button type="button" class="es-pill" data-open="projet:' + id + '">' + H((D.pById.get(id) || {}).title || '#' + id) + ' <small>projet</small></button>').join('') +
+      a.partnerIds.map(id => '<button type="button" class="es-pill" data-open="structure:' + id + '">' + H(nomS(id)) + '</button>').join('') +
+      a.contactIds.map(id => D.cById.get(id)).filter(Boolean).map(c => '<button type="button" class="es-pill" data-open="contact:' + c.id + '">' + H(c.name) + '</button>').join('') + '</div>';
+    const ech = a.interactionIds.map(id => D.eById.get(id)).filter(Boolean);
+    const body = '<label class="es-row" style="cursor:pointer"><input type="checkbox" data-fait="' + a.id + '"' + (a.done ? ' checked' : '') + (related.actions.cols.Fait ? '' : ' disabled') + '> Marquer comme faite</label>' +
+      (a.notes ? '<div class="es-section"><h5>Notes</h5><div class="es-note">' + H(a.notes) + '</div></div>' : '') +
+      (ech.length ? '<div class="es-section"><h5>Échange d’origine</h5>' + ech.map(ligneEchange).join('') + '</div>' : '');
+    return { head, tabs: [], body };
+  }
+
+  function renderSheet() {
+    const s = ui.sheet;
+    const sheet = $('sheet');
+    if (!s || !D) { sheet.classList.remove('open'); $('backdrop').classList.remove('open'); sheet.setAttribute('aria-hidden', 'true'); return; }
+    let f = null;
+    if (s.kind === 'projet' && D.pById.has(s.id)) f = ficheProjet(D.pById.get(s.id), s.tab || 'general');
+    else if (s.kind === 'structure' && D.sById.has(s.id)) f = ficheStructure(D.sById.get(s.id), s.tab || 'projets');
+    else if (s.kind === 'contact' && D.cById.has(s.id)) f = ficheContact(D.cById.get(s.id), s.tab || 'echanges');
+    else if (s.kind === 'action' && D.aById.has(s.id)) f = ficheAction(D.aById.get(s.id));
+    else if (s.kind === 'depense' && F) { const d = F.depenses.find(x => x.id === s.id); if (d) f = ficheDepense(d); }
+    if (!f) { ui.sheet = null; return renderSheet(); }
+    const actif = s.tab || (f.tabs[0] || [])[0];
+    sheet.innerHTML = '<div class="es-sheet-head">' + f.head + '</div>' +
+      (f.tabs.length ? '<div class="es-sheet-tabs">' + f.tabs.map(([k, l, n]) => '<button type="button" data-tab="' + k + '" class="' + (k === actif ? 'on' : '') + '">' + H(l) +
+        (n !== undefined ? '<span class="n">' + n + '</span>' : '') + '</button>').join('') + '</div>' : '') +
+      '<div class="es-sheet-body">' + f.body + '</div>';
+    sheet.classList.add('open'); $('backdrop').classList.add('open'); sheet.setAttribute('aria-hidden', 'false');
+  }
+
+  function ouvrir(ref) {
+    const [kind, id] = String(ref).split(':');
+    ui.sheet = { kind, id: Number(id), tab: null };
+    renderSheet();
+  }
+
+  // ---------------------------------------------------------------------
+  // Vue : finance (suivi budgétaire, import SIFAC)
+  // ---------------------------------------------------------------------
+  // Trois tables facultatives (Budget_lignes, Depenses, Sifac_lignes), dont
+  // les colonnes portent les noms fixés par finance.js : c'est l'espace qui
+  // les crée, il n'a pas à deviner leur nom.
+  const FN = window.finance;
+  let F = null; // { tables: { budget, depenses, ecritures }, budget, depenses, ecritures, colsManquantes }
+
+  async function chargerFinance(force) {
+    const tables = {};
+    const colsManquantes = [];
+    for (const cle of Object.keys(FN.FIN_TABLES)) {
+      const def = FN.FIN_TABLES[cle];
+      if (force) invalidateTableCache(def.tableId);
+      try {
+        const data = await fetchTableCached(def.tableId);
+        const presentes = dataColumns(data);
+        def.colonnes.forEach(c => { if (!presentes.includes(c.id)) colsManquantes.push(def.tableId + '.' + c.id); });
+        tables[cle] = { tableId: def.tableId, records: recordsFromTableData(data), cols: presentes };
+      } catch (err) { tables[cle] = null; }
+    }
+    const rec = (cle) => (tables[cle] ? tables[cle].records : []);
+    const num = (v) => Number(v) || 0;
+    const ref = (v) => (typeof v === 'number' && v > 0 ? v : null);
+    const budget = rec('budget').map(r => ({
+      id: r.id, libelle: txt(r.Libelle) || 'Sans libellé', exercice: num(r.Exercice) || null,
+      categorie: txt(r.Categorie), prevu: num(r.Montant_prevu), financeur: txt(r.Financeur), pfi: txt(r.PFI), notes: txt(r.Notes)
+    }));
+    const depenses = rec('depenses').map(r => ({
+      id: r.id, flux: txt(r.Flux), libelle: txt(r.Libelle), fournisseur: txt(r.Fournisseur), codeTiers: txt(r.Code_tiers),
+      compte: txt(r.Compte), libelleCompte: txt(r.Libelle_compte), categorie: txt(r.Categorie), statut: txt(r.Statut),
+      montant: num(r.Montant), engage: num(r.Montant_engage), facture: num(r.Montant_facture), paye: num(r.Montant_paye),
+      dateEngagement: r.Date_engagement || null, dateFacture: r.Date_facture || null, datePaiement: r.Date_paiement || null,
+      pfi: txt(r.PFI), otp: txt(r.OTP), source: txt(r.Source) || 'Manuelle', orpheline: !!r.Orpheline,
+      budgetLigne: ref(r.Budget_ligne), projet: ref(r.Opportunite), notes: txt(r.Notes)
+    }));
+    const ecritures = rec('ecritures').map(r => ({
+      id: r.id, pfi: txt(r.PFI), exercice: num(r.Exercice) || null, flux: txt(r.Flux), libelleFlux: txt(r.Libelle_flux),
+      rubrique: txt(r.Rubrique), tiers: txt(r.Tiers), codeTiers: txt(r.Code_tiers), compte: txt(r.Compte),
+      libelleCompte: txt(r.Libelle_compte), compteExecution: txt(r.Compte_execution), otp: txt(r.OTP),
+      dateEngagement: r.Date_engagement || null, engage: num(r.Montant_engage), serviceFait: num(r.Montant_service_fait),
+      dateServiceFait: r.Date_service_fait || null, numFacture: txt(r.Num_facture), dateFacture: r.Date_facture || null,
+      facture: num(r.Montant_facture), paye: num(r.Montant_paye), datePaiement: r.Date_paiement || null, report: num(r.Report)
+    }));
+    // Les exercices qu'une dépense touche : ceux de ses écritures, ou l'année
+    // de sa première date pour une dépense saisie à la main.
+    const exercicesFlux = new Map();
+    ecritures.forEach(e => {
+      const k = e.pfi + '|' + e.flux;
+      if (!exercicesFlux.has(k)) exercicesFlux.set(k, new Set());
+      if (e.exercice) exercicesFlux.get(k).add(e.exercice);
+    });
+    depenses.forEach(d => {
+      const s = exercicesFlux.get(d.pfi + '|' + d.flux);
+      const an = (ts) => (ts ? new Date(ts * 1000).getUTCFullYear() : null);
+      d.exercices = s && s.size ? Array.from(s) : [an(d.dateEngagement || d.dateFacture || d.datePaiement)].filter(Boolean);
+    });
+    F = { tables, budget, depenses, ecritures, colsManquantes, bById: new Map(budget.map(b => [b.id, b])) };
+  }
+
+  function exercicesConnus() {
+    const s = new Set([new Date().getFullYear()]);
+    F.budget.forEach(b => { if (b.exercice) s.add(b.exercice); });
+    F.ecritures.forEach(e => { if (e.exercice) s.add(e.exercice); });
+    F.depenses.forEach(d => d.exercices.forEach(a => s.add(a)));
+    return Array.from(s).sort((a, b) => b - a);
+  }
+  const eur = (n) => (Number(n) || 0).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+  const eur2 = (n) => (Number(n) || 0).toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
+  const pct = (x) => (x === null || x === undefined ? '—' : Math.round(x * 100) + ' %');
+  const STATUT_COULEUR = { 'Engagé': '#f59e0b', 'Livré': '#3b82f6', 'Payé': '#16a34a' };
+  const CAT_COULEUR = { Personnel: '#8c62b3', Fonctionnement: '#4fa5d8', Investissement: '#4cae8c' };
+  function badgeStatutDepense(s) {
+    return s ? '<span class="es-badge"><i style="background:' + (STATUT_COULEUR[s] || '#94a3b8') + '"></i>' + H(s) + '</span>' : '';
+  }
+  function jauge(taux) {
+    if (taux === null || taux === undefined) return '<span class="es-muted">—</span>';
+    const w = Math.min(100, taux * 100);
+    const coul = taux > 1 ? 'var(--es-late)' : taux > 0.9 ? 'var(--es-warn)' : 'var(--sequoia-green)';
+    return '<span class="fi-jauge" title="' + pct(taux) + '"><span style="width:' + w.toFixed(1) + '%;background:' + coul + '"></span></span> <span class="fi-pct">' + pct(taux) + '</span>';
+  }
+
+  function financeFiltresPfi(liste, champ) {
+    const pfi = ui.finance.pfi;
+    return pfi ? liste.filter(x => (x[champ || 'pfi'] || '') === pfi) : liste;
+  }
+
+  function vueFinance() {
+    const f = ui.finance;
+    const manquantes = Object.keys(FN.FIN_TABLES).filter(k => !F.tables[k]);
+    const exos = exercicesConnus();
+    if (!f.exercice || !exos.includes(Number(f.exercice))) f.exercice = exos.includes(new Date().getFullYear()) ? new Date().getFullYear() : exos[0];
+    const pfis = Array.from(new Set(F.budget.map(b => b.pfi).concat(F.ecritures.map(e => e.pfi), F.depenses.map(d => d.pfi)).filter(Boolean))).sort();
+    const toolbar = '<div class="es-toolbar"><h1>Finance</h1>' +
+      '<select class="es-select" data-set="finance.exercice" aria-label="Exercice">' + exos.map(a => '<option value="' + a + '"' + (Number(f.exercice) === a ? ' selected' : '') + '>Exercice ' + a + '</option>').join('') + '</select>' +
+      (pfis.length > 1 ? '<select class="es-select" data-set="finance.pfi" aria-label="PFI"><option value="">Tous les PFI</option>' + pfis.map(p => '<option' + (p === f.pfi ? ' selected' : '') + '>' + H(p) + '</option>').join('') + '</select>' : '') +
+      '<span class="grow"></span><div class="es-seg">' + [['synthese', 'Synthèse'], ['depenses', 'Dépenses'], ['ecritures', 'Écritures SIFAC'], ['import', 'Import SIFAC']].map(([k, l]) =>
+        '<button type="button" data-set="finance.sous" data-val="' + k + '" class="' + (f.sous === k ? 'on' : '') + '">' + l + '</button>').join('') + '</div></div>';
+    let alerte = '';
+    if (manquantes.length) {
+      alerte = '<div class="es-card fi-setup"><div class="es-card-head"><h3>Mettre en place l’espace Finance</h3></div><div class="es-card-body">' +
+        '<p>Le suivi budgétaire s’appuie sur trois tables du document. ' + (manquantes.length === 3 ? 'Aucune n’existe encore.' : 'Il en manque ' + manquantes.length + '.') + '</p><ul>' +
+        Object.keys(FN.FIN_TABLES).map(k => { const t = FN.FIN_TABLES[k]; return '<li><b>' + H(t.tableId) + '</b> — ' + H(t.titre) + (F.tables[k] ? ' <span class="es-muted">(présente)</span>' : '') + '</li>'; }).join('') +
+        '</ul><button type="button" class="es-btn primary" data-fin-creer>Créer les tables manquantes</button> <span class="es-muted" style="font-size:12px">Ajoute ' + manquantes.length + ' table(s) au document, avec leurs colonnes. Rien d’existant n’est modifié.</span></div></div>';
+    } else if (F.colsManquantes.length) {
+      alerte = '<div class="es-card fi-setup warn"><div class="es-card-body">Colonnes attendues absentes du document : <b>' + H(F.colsManquantes.join(', ')) +
+        '</b>. Les écritures qui les visent échoueront ; ajoutez-les dans Grist (même identifiant).</div></div>';
+    }
+    let corps = '';
+    if (!manquantes.length) {
+      corps = f.sous === 'depenses' ? financeDepenses() : f.sous === 'ecritures' ? financeEcritures() : f.sous === 'import' ? financeImport() : financeSynthese();
+    }
+    return '<div class="es-inner">' + toolbar + alerte + corps + '</div>';
+  }
+
+  function courbeFinance(exo, budgetTotal) {
+    const ecr = financeFiltresPfi(F.ecritures);
+    const man = financeFiltresPfi(F.depenses).filter(d => d.source !== 'SIFAC');
+    const src = ecr.concat(man.map(d => ({ dateEngagement: d.dateEngagement, engage: d.engage, datePaiement: d.datePaiement, paye: d.paye })));
+    const eng = FN.cumulMensuel(src, exo, 'dateEngagement', 'engage', nowTs());
+    const pay = FN.cumulMensuel(src, exo, 'datePaiement', 'paye', nowTs());
+    const W = 560, Hh = 200, pl = 8, pr = 8, pt = 12, pb = 22;
+    const max = Math.max(1, budgetTotal, ...eng.filter(v => v !== null), ...pay.filter(v => v !== null)) * 1.08;
+    const x = (i) => pl + (i + 0.5) * (W - pl - pr) / 12;
+    const y = (v) => pt + (Hh - pt - pb) * (1 - v / max);
+    const trace = (serie, coul, tiret) => {
+      const pts = serie.map((v, i) => (v === null ? null : x(i).toFixed(1) + ',' + y(v).toFixed(1))).filter(Boolean);
+      return pts.length ? '<polyline points="' + pts.join(' ') + '" fill="none" stroke="' + coul + '" stroke-width="2.4"' + (tiret ? ' stroke-dasharray="5 4"' : '') + '/>' +
+        serie.map((v, i) => (v === null ? '' : '<circle cx="' + x(i).toFixed(1) + '" cy="' + y(v).toFixed(1) + '" r="2.6" fill="' + coul + '"><title>' + H(ESPACE_MOIS_COURTS[i] + ' : ' + eur(v)) + '</title></circle>')).join('') : '';
+    };
+    const ligneBudget = budgetTotal > 0 ? '<line x1="' + pl + '" x2="' + (W - pr) + '" y1="' + y(budgetTotal).toFixed(1) + '" y2="' + y(budgetTotal).toFixed(1) +
+      '" stroke="var(--es-late)" stroke-dasharray="3 4" opacity=".7"/><text x="' + (W - pr) + '" y="' + (y(budgetTotal) - 4).toFixed(1) + '" text-anchor="end">budget ' + H(formatMontantCompact(budgetTotal)) + '</text>' : '';
+    return '<svg viewBox="0 0 ' + W + ' ' + Hh + '" role="img" aria-label="Consommation cumulée">' +
+      '<line x1="0" x2="' + W + '" y1="' + (Hh - pb) + '" y2="' + (Hh - pb) + '" stroke="var(--border)"/>' + ligneBudget +
+      trace(eng, '#f59e0b', true) + trace(pay, 'var(--sequoia-green)') +
+      ESPACE_MOIS_COURTS.map((m, i) => '<text x="' + x(i).toFixed(1) + '" y="' + (Hh - 6) + '" text-anchor="middle">' + H(m) + '</text>').join('') + '</svg>' +
+      '<div class="es-graph-legend" style="padding:6px 0 0"><span><i style="background:#f59e0b"></i>Engagé cumulé</span><span><i style="background:var(--sequoia-green)"></i>Payé cumulé</span>' +
+      (budgetTotal > 0 ? '<span><i style="background:var(--es-late)"></i>Budget prévu</span>' : '') + '</div>';
+  }
+
+  function financeSynthese() {
+    const exo = Number(ui.finance.exercice);
+    const budget = financeFiltresPfi(F.budget).filter(b => b.exercice === exo);
+    const depensesExo = financeFiltresPfi(F.depenses).filter(d => d.exercices.includes(exo));
+    const t = FN.totauxExercice(financeFiltresPfi(F.ecritures), financeFiltresPfi(F.depenses).filter(d => d.source !== 'SIFAC'), exo);
+    const prevu = budget.reduce((s, b) => s + b.prevu, 0);
+    const cons = FN.consommationBudget(budget, depensesExo);
+    const orphelines = depensesExo.filter(d => d.orpheline).length;
+    const kpi = (lbl, val, sub, cls) => '<div class="es-card es-kpi"><div class="lbl">' + H(lbl) + '</div><div class="val">' + val + '</div><div class="sub' + (cls ? ' ' + cls : '') + '">' + sub + '</div></div>';
+    const kpis = '<div class="es-kpis">' +
+      kpi('Budget prévu', H(eur(prevu)), H(budget.length + ' ligne(s) budgétaire(s)')) +
+      kpi('Engagé', H(eur(t.engage)), (prevu ? jauge(t.engage / prevu) : 'commandes et engagements') + (t.report ? '<br>dont ' + H(eur(t.report)) + ' de reports' : '')) +
+      kpi('Facturé', H(eur(t.facture)), 'service fait et facturé') +
+      kpi('Payé', H(eur(t.paye)), prevu ? pct(t.paye / prevu) + ' du budget' : 'décaissé') +
+      kpi('Reste à engager', H(eur(prevu - t.engage)), prevu - t.engage < 0 ? 'dépassement' : 'budget − engagé', prevu - t.engage < 0 ? 'alerte' : '') +
+      '</div>';
+    // Par catégorie : prévu / engagé / payé côte à côte.
+    const cats = FN.FIN_CATEGORIES.map(c => ({ c, prevu: budget.filter(b => b.categorie === c).reduce((s, b) => s + b.prevu, 0), ...t.parCategorie[c] }));
+    const maxC = Math.max(1, ...cats.map(c => Math.max(c.prevu, c.engage)));
+    const catsHtml = cats.map(c => '<div class="fi-cat"><div class="fi-cat-head"><i style="background:' + CAT_COULEUR[c.c] + '"></i><b>' + H(c.c) + '</b><span>' +
+      H(eur(c.engage)) + ' engagé' + (c.prevu ? ' / ' + H(eur(c.prevu)) + ' prévu' : '') + '</span></div>' +
+      '<div class="fi-bars"><div class="fi-bar prevu" style="width:' + (c.prevu / maxC * 100).toFixed(1) + '%" title="Prévu ' + H(eur(c.prevu)) + '"></div>' +
+      '<div class="fi-bar engage" style="width:' + (c.engage / maxC * 100).toFixed(1) + '%;background:' + CAT_COULEUR[c.c] + '99" title="Engagé ' + H(eur(c.engage)) + '"></div>' +
+      '<div class="fi-bar paye" style="width:' + (c.paye / maxC * 100).toFixed(1) + '%;background:' + CAT_COULEUR[c.c] + '" title="Payé ' + H(eur(c.paye)) + '"></div></div></div>').join('');
+    const lignesHtml = '<div class="es-table-wrap"><table class="es-table fi-table"><thead><tr><th>Ligne budgétaire</th><th>Catégorie</th><th class="num">Prévu</th><th class="num">Engagé</th><th class="num">Payé</th><th class="num">Reste</th><th>Consommation</th><th></th></tr></thead><tbody>' +
+      (cons.lignes.length ? cons.lignes.map(l => '<tr data-fin-ligne="' + l.ligne.id + '"><td class="ttl">' + H(l.ligne.libelle) + (l.ligne.financeur ? '<div class="es-muted" style="font-weight:400;font-size:12px">' + H(l.ligne.financeur) + '</div>' : '') +
+        '</td><td>' + H(l.ligne.categorie) + '</td><td class="num">' + H(eur(l.ligne.prevu)) + '</td><td class="num">' + H(eur(l.engage)) + '</td><td class="num">' + H(eur(l.paye)) +
+        '</td><td class="num' + (l.reste < 0 ? ' fi-neg' : '') + '">' + H(eur(l.reste)) + '</td><td>' + jauge(l.taux) + '</td><td><button type="button" class="es-x" data-fin-suppr-ligne="' + l.ligne.id + '" aria-label="Supprimer la ligne">×</button></td></tr>').join('')
+        : '<tr><td colspan="8" class="es-empty">Aucune ligne budgétaire pour ' + exo + '. Ajoutez-en une ci-dessous.</td></tr>') +
+      '</tbody></table></div>' +
+      '<form class="es-form" data-fin-ajout-ligne><input class="grow" name="libelle" placeholder="Nouvelle ligne (ex. Missions, Équipement GPU…)" required>' +
+      '<select class="es-select" name="categorie">' + FN.FIN_CATEGORIES.map(c => '<option' + (c === 'Fonctionnement' ? ' selected' : '') + '>' + c + '</option>').join('') + '</select>' +
+      '<input name="prevu" type="number" min="0" step="100" placeholder="Montant prévu" required style="width:140px"><input name="financeur" placeholder="Financeur" style="width:140px">' +
+      '<button class="es-btn primary" type="submit">Ajouter à ' + exo + '</button></form>';
+    const aTrier = cons.nonAffectees.nb
+      ? '<div class="fi-trier"><b>' + cons.nonAffectees.nb + ' dépense(s)</b> de ' + exo + ' (' + H(eur(cons.nonAffectees.montant)) + ') ne sont rattachées à aucune ligne budgétaire. ' +
+        '<button type="button" class="es-btn" data-fin-voir="non-affectees">Les trier</button></div>' : '';
+    const orph = orphelines ? '<div class="fi-trier warn"><b>' + orphelines + ' dépense(s)</b> ne figurent plus dans le dernier export SIFAC (annulées ou déplacées ?). <button type="button" class="es-btn" data-fin-voir="orphelines">Voir</button></div>' : '';
+    const top = FN.topFournisseurs(depensesExo, 8);
+    const maxT = Math.max(1, ...top.map(x => x.montant));
+    const topHtml = top.length ? top.map(x => '<div class="es-hbar"><span class="nom" title="' + H(x.nom) + '">' + H(x.nom) + '</span><div class="track"><div class="fill" style="width:' +
+      (x.montant / maxT * 100).toFixed(1) + '%;background:#9cc3ab"></div></div><span class="n" style="width:auto">' + H(formatMontantCompact(x.montant)) + '</span></div>').join('') : '<div class="es-empty">Aucune dépense.</div>';
+    return kpis + aTrier + orph +
+      '<div class="es-grid-2"><div class="es-card es-chart"><div class="es-card-head"><h3>Consommation ' + exo + '</h3><span class="aside">cumul mois par mois</span></div><div class="es-card-body">' + courbeFinance(exo, prevu) + '</div></div>' +
+      '<div class="es-card"><div class="es-card-head"><h3>Par catégorie</h3><span class="aside">prévu · engagé · payé</span></div><div class="es-card-body">' + catsHtml + '</div></div></div>' +
+      '<div class="es-grid-2"><div class="es-card"><div class="es-card-head"><h3>Lignes budgétaires ' + exo + '</h3></div><div class="es-card-body">' + lignesHtml + '</div></div>' +
+      '<div class="es-card"><div class="es-card-head"><h3>Principaux fournisseurs</h3><span class="aside">' + exo + '</span></div><div class="es-card-body fi-top">' + topHtml + '</div></div></div>';
+  }
+
+  function financeDepenses() {
+    const f = ui.finance;
+    const exo = Number(f.exercice);
+    let liste = financeFiltresPfi(F.depenses).filter(d => d.exercices.includes(exo) || (f.affect === 'orphelines' && d.orpheline));
+    liste = liste.filter(d =>
+      (!f.statut || d.statut === f.statut) && (!f.categorie || d.categorie === f.categorie) &&
+      (f.affect !== 'non-affectees' || (!d.budgetLigne && !d.orpheline)) && (f.affect !== 'orphelines' || d.orpheline) &&
+      correspond(f.q, [d.flux, d.libelle, d.fournisseur, d.libelleCompte, d.notes, (F.bById.get(d.budgetLigne) || {}).libelle]));
+    liste.sort((a, b) => (Number(b.dateEngagement || b.dateFacture || 0)) - (Number(a.dateEngagement || a.dateFacture || 0)));
+    const lignesBudget = F.budget.filter(b => b.exercice === exo || !b.exercice);
+    const projets = D.projets.slice().sort((a, b) => a.title.localeCompare(b.title, 'fr'));
+    const tot = (k) => liste.reduce((s, d) => s + (Number(d[k]) || 0), 0);
+    const MAX = 400;
+    const toolbar = '<div class="es-toolbar"><input class="es-search" data-q="finance" placeholder="Rechercher un flux, un fournisseur, un libellé…" value="' + H(f.q) + '">' +
+      '<select class="es-select" data-set="finance.statut"><option value="">Tous statuts</option>' + ['Engagé', 'Livré', 'Payé'].map(s => '<option' + (s === f.statut ? ' selected' : '') + '>' + s + '</option>').join('') + '</select>' +
+      '<select class="es-select" data-set="finance.categorie"><option value="">Toutes catégories</option>' + FN.FIN_CATEGORIES.map(s => '<option' + (s === f.categorie ? ' selected' : '') + '>' + s + '</option>').join('') + '</select>' +
+      '<select class="es-select" data-set="finance.affect"><option value="">Toutes</option><option value="non-affectees"' + (f.affect === 'non-affectees' ? ' selected' : '') + '>À trier (sans ligne)</option><option value="orphelines"' + (f.affect === 'orphelines' ? ' selected' : '') + '>Absentes de SIFAC</option></select>' +
+      '<span class="grow"></span><span class="es-count">' + liste.length + ' dépense(s)</span><button type="button" class="es-btn" data-fin-nouvelle>+ Dépense manuelle</button></div>';
+    const optLignes = (sel) => '<option value="">—</option>' + lignesBudget.map(b => '<option value="' + b.id + '"' + (b.id === sel ? ' selected' : '') + '>' + H(b.libelle) + '</option>').join('');
+    const optProjets = (sel) => '<option value="">—</option>' + projets.map(p => '<option value="' + p.id + '"' + (p.id === sel ? ' selected' : '') + '>' + H(p.title.length > 40 ? p.title.slice(0, 39) + '…' : p.title) + '</option>').join('');
+    const nouvelle = f.nouvelle ? '<div class="es-card"><div class="es-card-body"><form class="es-form" data-fin-ajout-depense style="margin:0">' +
+      '<input class="grow" name="libelle" placeholder="Libellé" required><input name="fournisseur" placeholder="Fournisseur" style="width:160px">' +
+      '<select class="es-select" name="categorie">' + FN.FIN_CATEGORIES.map(c => '<option' + (c === 'Fonctionnement' ? ' selected' : '') + '>' + c + '</option>').join('') + '</select>' +
+      '<select class="es-select" name="statut"><option>Engagé</option><option>Livré</option><option>Payé</option></select>' +
+      '<input name="montant" type="number" step="0.01" placeholder="Montant" required style="width:120px"><input name="date" type="date" required>' +
+      '<select class="es-select" name="ligne">' + optLignes(null) + '</select><button class="es-btn primary" type="submit">Enregistrer</button></form>' +
+      '<div class="es-muted" style="font-size:12px;margin-top:6px">Pour ce que SIFAC ne voit pas encore (devis signé, mission à venir). Elle ne sera jamais touchée par un import.</div></div></div>' : '';
+    const table = '<div class="es-card es-table-wrap"><table class="es-table fi-table"><thead><tr><th>Date</th><th>Libellé</th><th>Catégorie</th><th>Statut</th><th class="num">Engagé</th><th class="num">Facturé</th><th class="num">Payé</th><th>Ligne budgétaire</th><th>Projet</th></tr></thead><tbody>' +
+      liste.slice(0, MAX).map(d => '<tr data-open="depense:' + d.id + '"' + (d.orpheline ? ' class="fi-orph"' : '') + '><td class="num">' + H(formatDate(d.dateEngagement || d.dateFacture || d.datePaiement)) +
+        '</td><td class="ttl">' + H(d.libelle || '(sans libellé)') + '<div class="es-muted" style="font-weight:400;font-size:12px">' + H([d.fournisseur, d.flux ? 'flux ' + d.flux : 'saisie manuelle'].filter(Boolean).join(' · ')) +
+        (d.orpheline ? ' · <b style="color:var(--es-warn)">absente du dernier import</b>' : '') + '</div></td><td>' + H(d.categorie) + '</td><td>' + badgeStatutDepense(d.statut) +
+        '</td><td class="num">' + H(eur2(d.engage)) + '</td><td class="num">' + H(eur2(d.facture)) + '</td><td class="num">' + H(eur2(d.paye)) +
+        '</td><td><select class="es-select fi-sel" data-fin-affecter="' + d.id + '" aria-label="Ligne budgétaire">' + optLignes(d.budgetLigne) + '</select></td>' +
+        '<td><select class="es-select fi-sel" data-fin-projet="' + d.id + '" aria-label="Projet">' + optProjets(d.projet) + '</select></td></tr>').join('') +
+      '</tbody><tfoot><tr><td></td><td class="ttl">Total</td><td></td><td></td><td class="num">' + H(eur2(tot('engage'))) + '</td><td class="num">' + H(eur2(tot('facture'))) + '</td><td class="num">' + H(eur2(tot('paye'))) + '</td><td colspan="2"></td></tr></tfoot></table>' +
+      (liste.length ? '' : '<div class="es-empty">Aucune dépense pour ces filtres.</div>') +
+      (liste.length > MAX ? '<div class="es-empty">' + (liste.length - MAX) + ' dépenses de plus : affinez la recherche.</div>' : '') + '</div>';
+    return toolbar + nouvelle + table +
+      '<div class="es-count">Vue groupée : une ligne par flux, tous exercices confondus (une commande engagée en ' + (exo - 1) + ' et payée en ' + exo + ' reste une seule dépense). Pour des totaux exacts année par année, voir « Écritures SIFAC ».</div>';
+  }
+
+  function financeEcritures() {
+    const f = ui.finance;
+    const exo = Number(f.exercice);
+    const liste = financeFiltresPfi(F.ecritures).filter(e => e.exercice === exo &&
+      correspond(f.q, [e.flux, e.libelleFlux, e.tiers, e.numFacture, e.libelleCompte, e.rubrique]))
+      .sort((a, b) => (a.flux.localeCompare(b.flux)) || ((a.dateEngagement || 0) - (b.dateEngagement || 0)));
+    const tot = (k) => liste.reduce((s, e) => s + (Number(e[k]) || 0), 0);
+    const MAX = 500;
+    return '<div class="es-toolbar"><input class="es-search" data-q="finance" placeholder="Rechercher un flux, un tiers, une facture…" value="' + H(f.q) + '">' +
+      '<span class="grow"></span><span class="es-count">' + liste.length + ' écriture(s) sur ' + exo + '</span></div>' +
+      '<div class="es-card es-table-wrap"><table class="es-table fi-table"><thead><tr><th>Flux</th><th>Libellé</th><th>Tiers</th><th>Rubrique</th><th class="num">Engagé</th><th class="num">Facturé</th><th class="num">Payé</th><th class="num">Report</th><th class="num">Facture</th><th class="num">Paiement</th></tr></thead><tbody>' +
+      liste.slice(0, MAX).map(e => '<tr><td>' + H(e.flux) + '</td><td>' + H(e.libelleFlux) + '</td><td>' + H(e.tiers) + '</td><td>' + H(e.rubrique) +
+        '</td><td class="num">' + H(e.engage ? eur2(e.engage) : '') + '</td><td class="num">' + H(e.facture ? eur2(e.facture) : '') + '</td><td class="num">' + H(e.paye ? eur2(e.paye) : '') +
+        '</td><td class="num">' + H(e.report ? eur2(e.report) : '') + '</td><td class="num">' + H(e.numFacture ? e.numFacture + ' · ' + formatDate(e.dateFacture) : '') + '</td><td class="num">' + H(formatDate(e.datePaiement)) + '</td></tr>').join('') +
+      '</tbody><tfoot><tr><td></td><td class="ttl">Total</td><td></td><td></td><td class="num">' + H(eur2(tot('engage'))) + '</td><td class="num">' + H(eur2(tot('facture'))) + '</td><td class="num">' + H(eur2(tot('paye'))) + '</td><td class="num">' + H(eur2(tot('report'))) + '</td><td colspan="2"></td></tr></tfoot></table>' +
+      (liste.length ? '' : '<div class="es-empty">Aucune écriture importée pour ' + exo + '.</div>') + (liste.length > MAX ? '<div class="es-empty">' + (liste.length - MAX) + ' écritures de plus : affinez la recherche.</div>' : '') + '</div>' +
+      '<div class="es-count">Les écritures brutes, telles que SIFAC les exporte : chacune porte sa date et son montant, donc ces totaux se recoupent avec un relevé SIFAC de l’exercice.</div>';
+  }
+
+  // ---- Import ----
+  let apercu = null; // { nomFichier, pfi, exercice, ecritures, avertissements }
+
+  function planImport(a) {
+    // Les écritures du même PFI sur les autres exercices restent en place ; celles
+    // de l'exercice importé sont remplacées. Les dépenses sont recalculées sur
+    // l'ensemble, pour qu'un report d'un exercice sur l'autre retombe sur le même flux.
+    const remplacees = F.ecritures.filter(e => e.pfi === a.pfi && e.exercice === Number(a.exercice));
+    const autres = F.ecritures.filter(e => e.pfi === a.pfi && e.exercice !== Number(a.exercice));
+    const agregats = FN.agregerParFlux(autres.concat(a.ecritures));
+    const rappro = FN.rapprocher(agregats, F.depenses, a.pfi);
+    return { remplacees, agregats, rappro };
+  }
+
+  function financeImport() {
+    const intro = '<div class="es-card"><div class="es-card-body fi-import">' +
+      '<h3 style="margin:0 0 6px;font-size:15px">Importer un export SIFAC</h3>' +
+      '<p class="es-muted" style="margin:0 0 12px;font-size:13px">Un fichier par PFI et par exercice, au format Excel (.xlsx) ou CSV : l’état des dépenses du PFI tel que SIFAC l’exporte. ' +
+      'Réimporter le même PFI sur le même exercice remplace ses écritures ; les rattachements faits à la main (ligne budgétaire, projet, notes) sont conservés.</p>' +
+      '<label class="fi-drop"><input type="file" id="fin-fichier" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv" hidden>' +
+      '<b>Choisir un fichier</b> ou le déposer ici</label></div></div>';
+    if (!apercu) return intro;
+    if (apercu.erreur) return intro + '<div class="es-card fi-setup warn"><div class="es-card-body"><b>' + H(apercu.nomFichier) + '</b> : ' + H(apercu.erreur) + '</div></div>';
+    const p = planImport(apercu);
+    const somme = (k) => apercu.ecritures.reduce((s, e) => s + (Number(e[k]) || 0), 0);
+    return intro + '<div class="es-card"><div class="es-card-head"><h3>Aperçu — ' + H(apercu.nomFichier) + '</h3></div><div class="es-card-body">' +
+      '<div class="es-info fi-info"><div><span>PFI</span><b>' + H(apercu.pfi) + '</b></div><div><span>Exercice</span><b><input type="number" id="fin-exo" value="' + H(apercu.exercice) + '" min="2000" max="2100" style="width:90px;font:inherit;font-weight:600;border:1px solid var(--border);border-radius:6px;padding:2px 6px"></b></div>' +
+      '<div><span>Écritures lues</span><b>' + apercu.ecritures.length + '</b></div><div><span>Flux</span><b>' + new Set(apercu.ecritures.map(e => e.flux)).size + '</b></div>' +
+      '<div><span>Engagé / facturé</span><b>' + H(eur(somme('engage'))) + ' / ' + H(eur(somme('facture'))) + '</b></div><div><span>Payé</span><b>' + H(eur(somme('paye'))) + '</b></div></div>' +
+      '<ul class="fi-plan"><li><b>' + p.remplacees.length + '</b> écriture(s) déjà présentes pour ' + H(apercu.pfi) + ' / ' + H(apercu.exercice) + ' seront remplacées par les <b>' + apercu.ecritures.length + '</b> du fichier.</li>' +
+      '<li><b>' + p.rappro.aCreer.length + '</b> nouvelle(s) dépense(s), <b>' + p.rappro.aMettreAJour.length + '</b> mise(s) à jour.</li>' +
+      (p.rappro.orphelines.length ? '<li><b>' + p.rappro.orphelines.length + '</b> dépense(s) absentes de SIFAC seront signalées (jamais supprimées).</li>' : '') + '</ul>' +
+      (apercu.avertissements.length ? '<div class="fi-trier warn">' + apercu.avertissements.map(H).join('<br>') + '</div>' : '') +
+      '<div style="display:flex;gap:8px;margin-top:12px"><button type="button" class="es-btn primary" data-fin-importer>Importer</button><button type="button" class="es-btn" data-fin-annuler>Annuler</button></div>' +
+      '<div class="es-muted" style="font-size:12px;margin-top:8px">L’exercice est deviné d’après les dates du fichier ; corrigez-le si besoin avant d’importer.</div></div></div>';
+  }
+
+  async function lireFichier(fichier) {
+    const nom = fichier.name || 'fichier';
+    try {
+      let lignes;
+      if (/\.csv$/i.test(nom) || fichier.type === 'text/csv') lignes = FN.lireCsv(await fichier.text());
+      else {
+        if (typeof window.readXlsxFile !== 'function') throw new Error('Lecteur Excel indisponible — exportez en CSV.');
+        lignes = await window.readXlsxFile(fichier);
+      }
+      const lu = FN.lireExportSifac(lignes);
+      apercu = Object.assign({ nomFichier: nom }, lu);
+    } catch (err) {
+      apercu = { nomFichier: nom, erreur: err && err.message ? err.message : String(err) };
+    }
+    render();
+  }
+
+  async function importer() {
+    if (!apercu || apercu.erreur) return;
+    const exo = Number(apercu.exercice);
+    if (!exo) { toast('Exercice invalide', true); return; }
+    const p = planImport(apercu);
+    const tE = FN.FIN_TABLES.ecritures.tableId, tD = FN.FIN_TABLES.depenses.tableId;
+    const actions = [];
+    if (p.remplacees.length) actions.push(['BulkRemoveRecord', tE, p.remplacees.map(e => e.id)]);
+    const nouvelles = apercu.ecritures.map(e => FN.champsEcriture(e, exo));
+    if (nouvelles.length) actions.push(['BulkAddRecord', tE, nouvelles.map(() => null), FN.enColonnes(nouvelles)]);
+    const aCreer = p.rappro.aCreer.map(FN.champsSifac);
+    if (aCreer.length) actions.push(['BulkAddRecord', tD, aCreer.map(() => null), FN.enColonnes(aCreer)]);
+    const maj = p.rappro.aMettreAJour.map(u => FN.champsSifac(u.agregat));
+    if (maj.length) actions.push(['BulkUpdateRecord', tD, p.rappro.aMettreAJour.map(u => u.id), FN.enColonnes(maj)]);
+    if (p.rappro.orphelines.length) actions.push(['BulkUpdateRecord', tD, p.rappro.orphelines, { Orpheline: p.rappro.orphelines.map(() => true) }]);
+    setStatus('Import en cours…');
+    try {
+      // Une seule transaction : un échec ne laisse jamais un exercice à moitié remplacé.
+      await grist.docApi.applyUserActions(actions);
+      apercu = null;
+      await chargerFinance(true);
+      ui.finance.exercice = exo;
+      ui.finance.sous = 'synthese';
+      render();
+      setStatus('Import terminé ✓');
+      toast('Import terminé : ' + nouvelles.length + ' écritures, ' + aCreer.length + ' nouvelles dépenses, ' + maj.length + ' mises à jour');
+    } catch (err) {
+      console.error(err);
+      toast('Import refusé par le document : ' + (err && err.message ? err.message : err), true);
+      setStatus('');
+    }
+  }
+
+  async function financeEcrire(actions, msg) {
+    try {
+      await grist.docApi.applyUserActions(actions);
+      await chargerFinance(true);
+      render();
+      setStatus(msg || 'Enregistré ✓');
+    } catch (err) {
+      console.error(err);
+      toast('Enregistrement impossible : ' + (err && err.message ? err.message : err), true);
+    }
+  }
+
+  function ficheDepense(d) {
+    const ecr = F.ecritures.filter(e => e.flux && e.flux === d.flux && e.pfi === d.pfi)
+      .sort((a, b) => (a.dateEngagement || a.dateFacture || 0) - (b.dateEngagement || b.dateFacture || 0));
+    const ligne = F.bById.get(d.budgetLigne);
+    const projet = d.projet ? D.pById.get(d.projet) : null;
+    const head = '<div class="es-sheet-top">' + badgeStatutDepense(d.statut) + (d.categorie ? '<span class="es-badge">' + H(d.categorie) + '</span>' : '') +
+      (d.orpheline ? '<span class="es-badge" style="background:#fef3c7">Absente du dernier import</span>' : '') +
+      '<button type="button" class="es-btn icon close" data-close aria-label="Fermer">✕</button></div>' +
+      '<h2>' + H(d.libelle || '(sans libellé)') + '</h2><div class="desc">' + H([d.fournisseur, d.flux ? 'flux ' + d.flux : 'saisie manuelle', d.pfi].filter(Boolean).join(' · ')) + '</div>' +
+      '<div class="es-pills">' + (ligne ? '<span class="es-pill">' + H(ligne.libelle) + ' <small>ligne budgétaire</small></span>' : '') +
+      (projet ? '<button type="button" class="es-pill" data-open="projet:' + projet.id + '">' + H(projet.title) + ' <small>projet</small></button>' : '') + '</div>';
+    const body = '<div class="es-info"><div><span>Montant</span><b>' + H(eur2(d.montant)) + '</b></div><div><span>Engagé</span><b>' + H(eur2(d.engage)) + '</b></div>' +
+      '<div><span>Facturé</span><b>' + H(eur2(d.facture)) + '</b></div><div><span>Payé</span><b>' + H(eur2(d.paye)) + '</b></div>' +
+      '<div><span>Engagement</span><b>' + H(formatDate(d.dateEngagement) || '—') + '</b></div><div><span>Paiement</span><b>' + H(formatDate(d.datePaiement) || '—') + '</b></div>' +
+      '<div><span>Compte</span><b>' + H([d.compte, d.libelleCompte].filter(Boolean).join(' — ') || '—') + '</b></div><div><span>OTP</span><b>' + H(d.otp || '—') + '</b></div></div>' +
+      '<div class="es-section"><h5>Notes</h5><form data-fin-notes="' + d.id + '"><textarea name="notes" rows="3" style="width:100%;font:inherit;font-size:13px;border:1px solid var(--border);border-radius:8px;padding:8px">' + H(d.notes) + '</textarea>' +
+      '<button class="es-btn" type="submit" style="margin-top:6px">Enregistrer la note</button></form></div>' +
+      (ecr.length ? '<div class="es-section"><h5>Écritures SIFAC (' + ecr.length + ')</h5><div class="es-list">' + ecr.map(e =>
+        '<div class="es-row"><span class="d">' + H(formatDate(e.datePaiement || e.dateFacture || e.dateEngagement) || '—') + '</span><div style="min-width:0;flex:1"><div class="t">' +
+        H([e.rubrique, e.numFacture && 'facture ' + e.numFacture].filter(Boolean).join(' · ') || 'Écriture') + '</div><div class="s">Exercice ' + H(e.exercice) + '</div></div><span class="r">' +
+        H([e.engage && 'engagé ' + eur2(e.engage), e.facture && 'facturé ' + eur2(e.facture), e.paye && 'payé ' + eur2(e.paye), e.report && 'report ' + eur2(e.report)].filter(Boolean).join(' · ')) + '</span></div>').join('') + '</div></div>' : '') +
+      (d.source !== 'SIFAC' ? '<div class="es-section"><button type="button" class="es-btn" data-fin-suppr-depense="' + d.id + '" style="color:var(--es-late)">Supprimer cette dépense manuelle</button></div>' : '');
+    return { head, tabs: [], body };
+  }
+
+  // ---------------------------------------------------------------------
+  // Rendu
+  // ---------------------------------------------------------------------
+  function render() {
+    if (!D) return;
+    renderTop();
+    const vues = { dashboard: vueDashboard, projets: vueProjets, partenaires: vuePartenaires, contacts: vueContacts, actions: vueActions, finance: vueFinance };
+    const main = $('main');
+    const focus = document.activeElement && document.activeElement.dataset && document.activeElement.dataset.q;
+    const caret = focus ? document.activeElement.selectionStart : null;
+    main.innerHTML = (vues[ui.vue] || vueDashboard)();
+    if (focus) {
+      const champ = main.querySelector('[data-q="' + focus + '"]');
+      if (champ) { champ.focus(); champ.setSelectionRange(caret, caret); }
+    }
+    renderSheet();
+  }
+
+  // ---------------------------------------------------------------------
+  // Écritures
+  // ---------------------------------------------------------------------
+  async function ecrire(tableId, rowId, fields, msg) {
+    try {
+      await updateRecord(tableId, rowId, fields);
+      await charger(false);
+      render();
+      setStatus(msg || 'Enregistré ✓');
+    } catch (err) {
+      console.error(err);
+      setStatus('Enregistrement impossible');
+      toast('Enregistrement impossible : ' + (err && err.message ? err.message : err), true);
+    }
+  }
+  function basculerFaite(id, fait) {
+    const ac = related.actions;
+    if (!ac.cols.Fait) return;
+    const fields = { [ac.cols.Fait]: fait };
+    if (ac.cols.FaitLe) fields[ac.cols.FaitLe] = fait ? inputValueToGristDate(new Date().toISOString().slice(0, 10)) : null;
+    ecrire(ac.tableId, id, fields, fait ? 'Action faite ✓' : 'Action rouverte');
+  }
+  function deplacerProjet(id, etape) {
+    const op = related.opportunites;
+    const p = D.pById.get(id);
+    if (!op.cols.Statut || !p || p.stage === etape || etape === 'Sans étape') return;
+    ecrire(op.tableId, id, { [op.cols.Statut]: etape }, 'Étape : ' + etape);
+  }
+  function deplacerAction(id, statut) {
+    const ac = related.actions;
+    const a = D.aById.get(id);
+    if (!ac.cols.Statut || !a || a.statut === statut) return;
+    ecrire(ac.tableId, id, { [ac.cols.Statut]: statut === 'Sans statut' ? '' : statut }, 'Statut : ' + statut);
+  }
+  async function ajouterAction(projetId, label, due) {
+    const ac = related.actions;
+    const p = D.pById.get(projetId);
+    if (!ac.tableId || !p) return;
+    const fields = {};
+    if (ac.cols.Intitule) fields[ac.cols.Intitule] = label;
+    if (ac.cols.Echeance && due) fields[ac.cols.Echeance] = inputValueToGristDate(due);
+    if (ac.cols.Opportunite) fields[ac.cols.Opportunite] = colValue(ac, ac.cols.Opportunite, [projetId]);
+    if (ac.cols.Partenaires && p.partnerIds.length) fields[ac.cols.Partenaires] = colValue(ac, ac.cols.Partenaires, p.partnerIds);
+    if (ac.cols.Contacts && moi()) fields[ac.cols.Contacts] = colValue(ac, ac.cols.Contacts, [moi().id]);
+    try {
+      await addRecord(ac.tableId, fields);
+      await charger(false);
+      render();
+      setStatus('Action ajoutée ✓');
+    } catch (err) { console.error(err); toast('Ajout impossible', true); }
+  }
+  function enregistrerLiens(projetId, liens) {
+    const op = related.opportunites;
+    if (!op.cols.Liens) return;
+    ecrire(op.tableId, projetId, { [op.cols.Liens]: E.ecrireLiens(liens) }, 'Liens enregistrés ✓');
+  }
+
+  // ---------------------------------------------------------------------
+  // Événements (délégués)
+  // ---------------------------------------------------------------------
+  function poser(chemin, valeur) {
+    const [vue, cle] = chemin.split('.');
+    ui[vue][cle] = valeur;
+  }
+
+  document.addEventListener('click', (e) => {
+    const t = e.target;
+    const hors = !t.closest('.es-pop') && !t.closest('#btn-moi') && !t.closest('#btn-cloche');
+    if (hors) fermerPop();
+
+    if (t.closest('#btn-moi')) {
+      if ($('pop-host').innerHTML) return fermerPop();
+      ouvrirPop(popProfil(''), $('btn-moi'));
+      const q = $('pop-q'); if (q) q.focus();
+      return;
+    }
+    if (t.closest('#btn-cloche')) {
+      if ($('pop-host').innerHTML) return fermerPop();
+      ouvrirPop(popAlertes(), $('btn-cloche'));
+      return;
+    }
+    if (t.closest('#btn-refresh')) { charger(true).then(() => { render(); setStatus('À jour ✓'); }); return; }
+    const moiBtn = t.closest('[data-moi]');
+    if (moiBtn) {
+      moiId = Number(moiBtn.dataset.moi) || null;
+      ecrireLocal('moi', moiId);
+      fermerPop(); render(); return;
+    }
+    const alerte = t.closest('[data-alerte]');
+    if (alerte) {
+      const id = alerte.dataset.alerte;
+      if (!alertesVues.includes(id)) { alertesVues = alertesVues.concat(id).slice(-300); ecrireLocal('alertes-vues', alertesVues); }
+      fermerPop();
+      const [kind, rid] = id.split(':');
+      ouvrir((kind === 'projet' ? 'projet:' : 'action:') + rid);
+      renderTop();
+      return;
+    }
+    const tab = t.closest('.es-tab');
+    if (tab) { ui.vue = tab.dataset.vue; ui.sheet = null; render(); $('main').scrollTop = 0; return; }
+    const kpiVue = t.closest('.es-kpi[data-vue]');
+    if (kpiVue) { ui.vue = kpiVue.dataset.vue; render(); return; }
+    if (t.closest('[data-close]') || t === $('backdrop')) { ui.sheet = null; renderSheet(); return; }
+    const onglet = t.closest('.es-sheet-tabs [data-tab]');
+    if (onglet) { ui.sheet.tab = onglet.dataset.tab; renderSheet(); return; }
+    const copier = t.closest('[data-copier]');
+    if (copier) { copierTexte(copier.dataset.copier).then(() => toast('Copié ✓')); return; }
+    const suppr = t.closest('[data-suppr-lien]');
+    if (suppr && ui.sheet) {
+      const p = D.pById.get(ui.sheet.id);
+      enregistrerLiens(p.id, p.liens.filter((_, i) => i !== Number(suppr.dataset.supprLien)));
+      return;
+    }
+    if (t.matches('[data-fait]')) return; // géré par « change »
+    if (t.closest('[data-fin-creer]')) {
+      const manquantes = Object.keys(FN.FIN_TABLES).filter(k => !F.tables[k]);
+      if (!confirm('Créer ' + manquantes.length + ' table(s) dans le document : ' + manquantes.map(k => FN.FIN_TABLES[k].tableId).join(', ') + ' ?')) return;
+      financeEcrire(FN.actionsCreationTables(manquantes), 'Tables créées ✓');
+      return;
+    }
+    const voir = t.closest('[data-fin-voir]');
+    if (voir) { Object.assign(ui.finance, { sous: 'depenses', affect: voir.dataset.finVoir, statut: '', categorie: '', q: '' }); render(); return; }
+    if (t.closest('[data-fin-nouvelle]')) { ui.finance.nouvelle = !ui.finance.nouvelle; render(); return; }
+    if (t.closest('[data-fin-annuler]')) { apercu = null; render(); return; }
+    if (t.closest('[data-fin-importer]')) { importer(); return; }
+    const supprLigne = t.closest('[data-fin-suppr-ligne]');
+    if (supprLigne) {
+      const b = F.bById.get(Number(supprLigne.dataset.finSupprLigne));
+      if (b && confirm('Supprimer la ligne budgétaire « ' + b.libelle + ' » ? Les dépenses rattachées redeviendront « à trier ».')) {
+        financeEcrire([['RemoveRecord', FN.FIN_TABLES.budget.tableId, b.id]], 'Ligne supprimée');
+      }
+      return;
+    }
+    const supprDep = t.closest('[data-fin-suppr-depense]');
+    if (supprDep) {
+      if (confirm('Supprimer cette dépense manuelle ?')) {
+        ui.sheet = null;
+        financeEcrire([['RemoveRecord', FN.FIN_TABLES.depenses.tableId, Number(supprDep.dataset.finSupprDepense)]], 'Dépense supprimée');
+      }
+      return;
+    }
+    // Un champ dans une ligne cliquable ne doit pas ouvrir la fiche.
+    if (t.closest('select, input, textarea, .fi-drop')) return;
+    const set = t.closest('button[data-set]');
+    if (set) { poser(set.dataset.set, set.dataset.val); render(); return; }
+    const tog = t.closest('[data-toggle]');
+    if (tog) { const [v, k] = tog.dataset.toggle.split('.'); ui[v][k] = !ui[v][k]; render(); return; }
+    const tri = t.closest('th[data-tri]');
+    if (tri) {
+      const f = ui[tri.dataset.tri];
+      if (f.tri === tri.dataset.val) f.asc = !f.asc; else { f.tri = tri.dataset.val; f.asc = true; }
+      render(); return;
+    }
+    const an = t.closest('[data-annee]');
+    if (an) { ui.projets.annee += Number(an.dataset.annee); render(); return; }
+    const mois = t.closest('[data-mois]');
+    if (mois) {
+      const n = Number(mois.dataset.mois);
+      const base = ui.actions.mois ? new Date(ui.actions.mois) : new Date();
+      ui.actions.mois = n === 0 ? null : new Date(base.getFullYear(), base.getMonth() + n, 1).getTime();
+      render(); return;
+    }
+    const open = t.closest('[data-open]');
+    if (open) { ouvrir(open.dataset.open); return; }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { fermerPop(); if (ui.sheet) { ui.sheet = null; renderSheet(); } }
+    if (e.key === 'Enter' && e.target.closest && e.target.closest('.nd[data-open]')) ouvrir(e.target.closest('.nd').dataset.open);
+  });
+
+  document.addEventListener('input', debounce((e) => {
+    const t = e.target;
+    if (t.id === 'pop-q') {
+      const q = t.value;
+      $('pop-host').querySelector('.es-pop').innerHTML = popProfil(q);
+      const champ = $('pop-q'); champ.focus(); champ.setSelectionRange(q.length, q.length);
+      return;
+    }
+    if (t.dataset && t.dataset.q) { ui[t.dataset.q].q = t.value; render(); }
+  }, 180));
+
+  document.addEventListener('change', (e) => {
+    const t = e.target;
+    if (t.matches('[data-fait]')) { basculerFaite(Number(t.dataset.fait), t.checked); return; }
+    if (t.matches('[data-fin-affecter]')) {
+      financeEcrire([['UpdateRecord', FN.FIN_TABLES.depenses.tableId, Number(t.dataset.finAffecter), { Budget_ligne: Number(t.value) || 0 }]], 'Dépense rattachée ✓');
+      return;
+    }
+    if (t.matches('[data-fin-projet]')) {
+      financeEcrire([['UpdateRecord', FN.FIN_TABLES.depenses.tableId, Number(t.dataset.finProjet), { Opportunite: Number(t.value) || 0 }]], 'Projet rattaché ✓');
+      return;
+    }
+    if (t.id === 'fin-fichier' && t.files && t.files[0]) { lireFichier(t.files[0]); return; }
+    if (t.id === 'fin-exo' && apercu) { apercu.exercice = Number(t.value) || apercu.exercice; render(); return; }
+    if (t.matches('select[data-set]')) { poser(t.dataset.set, t.value); render(); }
+  });
+
+  document.addEventListener('submit', (e) => {
+    const form = e.target;
+    if (form.hasAttribute('data-fin-ajout-ligne')) {
+      e.preventDefault();
+      financeEcrire([['AddRecord', FN.FIN_TABLES.budget.tableId, null, {
+        Libelle: form.libelle.value.trim(), Categorie: form.categorie.value, Montant_prevu: Number(form.prevu.value) || 0,
+        Financeur: form.financeur.value.trim(), Exercice: Number(ui.finance.exercice), PFI: ui.finance.pfi || ''
+      }]], 'Ligne budgétaire ajoutée ✓');
+      return;
+    }
+    if (form.hasAttribute('data-fin-ajout-depense')) {
+      e.preventDefault();
+      const m = Number(form.montant.value) || 0, st = form.statut.value, dt = inputValueToGristDate(form.date.value);
+      ui.finance.nouvelle = false;
+      financeEcrire([['AddRecord', FN.FIN_TABLES.depenses.tableId, null, {
+        Libelle: form.libelle.value.trim(), Fournisseur: form.fournisseur.value.trim(), Categorie: form.categorie.value, Statut: st,
+        Montant: m, Montant_engage: m, Montant_facture: st === 'Engagé' ? 0 : m, Montant_paye: st === 'Payé' ? m : 0,
+        Date_engagement: dt, Date_paiement: st === 'Payé' ? dt : null, Source: 'Manuelle', PFI: ui.finance.pfi || '',
+        Budget_ligne: Number(form.ligne.value) || 0
+      }]], 'Dépense ajoutée ✓');
+      return;
+    }
+    if (form.dataset.finNotes) {
+      e.preventDefault();
+      financeEcrire([['UpdateRecord', FN.FIN_TABLES.depenses.tableId, Number(form.dataset.finNotes), { Notes: form.notes.value }]], 'Note enregistrée ✓');
+      return;
+    }
+    if (form.dataset.ajoutAction) {
+      e.preventDefault();
+      const label = form.label.value.trim();
+      if (label) ajouterAction(Number(form.dataset.ajoutAction), label, form.due.value);
+    } else if (form.dataset.ajoutLien) {
+      e.preventDefault();
+      const p = D.pById.get(Number(form.dataset.ajoutLien));
+      const url = form.url.value.trim();
+      if (!/^https?:\/\//i.test(url)) { toast('Adresse invalide : elle doit commencer par http:// ou https://', true); return; }
+      enregistrerLiens(p.id, p.liens.concat({ libelle: form.libelle.value.trim() || url, url }));
+    }
+  });
+
+  // Dépôt d'un fichier SIFAC sur la zone d'import.
+  document.addEventListener('dragover', (e) => { if (e.target.closest && e.target.closest('.fi-drop')) { e.preventDefault(); e.target.closest('.fi-drop').classList.add('over'); } });
+  document.addEventListener('dragleave', (e) => { if (e.target.closest && e.target.closest('.fi-drop')) e.target.closest('.fi-drop').classList.remove('over'); });
+  document.addEventListener('drop', (e) => {
+    const zone = e.target.closest && e.target.closest('.fi-drop');
+    if (!zone || !e.dataTransfer || !e.dataTransfer.files.length) return;
+    e.preventDefault();
+    lireFichier(e.dataTransfer.files[0]);
+  });
+
+  // Glisser-déposer natif : projets entre étapes, actions entre statuts.
+  let glisse = null;
+  document.addEventListener('dragstart', (e) => {
+    const p = e.target.closest && e.target.closest('[data-drag-projet]');
+    const a = e.target.closest && e.target.closest('[data-drag-action]');
+    if (p && ui.projets.groupe === 'etape') glisse = { kind: 'projet', id: Number(p.dataset.dragProjet), el: p };
+    else if (a && related.actions.cols.Statut) glisse = { kind: 'action', id: Number(a.dataset.dragAction), el: a };
+    else { if (p || a) e.preventDefault(); return; }
+    glisse.el.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(glisse.id));
+  });
+  document.addEventListener('dragend', () => { if (glisse) glisse.el.classList.remove('dragging'); glisse = null; document.querySelectorAll('.es-col.over').forEach(c => c.classList.remove('over')); });
+  document.addEventListener('dragover', (e) => {
+    if (!glisse) return;
+    const col = e.target.closest(glisse.kind === 'projet' ? '[data-drop-etape]' : '[data-drop-statut]');
+    if (!col) return;
+    e.preventDefault();
+    document.querySelectorAll('.es-col.over').forEach(c => { if (c !== col) c.classList.remove('over'); });
+    col.classList.add('over');
+  });
+  document.addEventListener('drop', (e) => {
+    if (!glisse) return;
+    const col = e.target.closest(glisse.kind === 'projet' ? '[data-drop-etape]' : '[data-drop-statut]');
+    if (!col) return;
+    e.preventDefault();
+    if (glisse.kind === 'projet') deplacerProjet(glisse.id, col.dataset.dropEtape);
+    else deplacerAction(glisse.id, col.dataset.dropStatut);
+  });
+
+  // ---------------------------------------------------------------------
+  // Démarrage
+  // ---------------------------------------------------------------------
+  grist.onRecords(async function (records, maps) {
+    mappings = maps || {};
+    if (structTableId === null) {
+      try { structTableId = await grist.getTable().getTableId(); } catch (err) { console.error(err); }
+    }
+    await charger(!!D);
+    render();
+  });
+  window.addEventListener('focus', () => { if (D) charger(true).then(render); });
+})();
+</script>
+</body>
+</html>

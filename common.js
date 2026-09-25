@@ -386,9 +386,21 @@ async function uploadAttachments(files) {
       body: form
     });
   } catch (err) {
-    // Réseau, CORS, ou requête bloquée par le cadre : le message brut est plus
-    // utile que « échec de l'upload ».
-    throw new Error('Le document n’a pas pu être joint (' + (err && err.message ? err.message : err) + ')');
+    // « Failed to fetch » ne dit rien : Grist répond toujours avec les en-têtes
+    // CORS, donc la réponse a été coupée avant lui (proxy, taille maximale
+    // d'envoi, pare-feu). Une lecture sur la même adresse départage « l'API
+    // est inaccessible au widget » de « seul l'envoi de fichier est bloqué ».
+    const taille = liste.reduce((t, f) => t + (f.size || 0), 0);
+    let lectureOk = false;
+    try {
+      const probe = await fetch(`${baseUrl}/attachments?auth=${encodeURIComponent(token)}`);
+      lectureOk = probe.ok;
+    } catch (e) { /* lecture bloquée aussi */ }
+    const cause = lectureOk
+      ? 'le serveur lit bien le document, mais refuse l’envoi de fichiers depuis le widget'
+      : 'le widget ne parvient pas à joindre l’API du document';
+    throw new Error('Le document n’a pas pu être joint : ' + cause +
+      ' (' + formatTaille(taille) + ', ' + (err && err.message ? err.message : err) + ')');
   }
   if (!res.ok) {
     const corps = await res.text().catch(() => '');
@@ -402,6 +414,12 @@ async function uploadAttachments(files) {
     .filter(id => id !== null && id !== undefined);
   if (!ids.length) throw new Error('Le document n’a renvoyé aucun identifiant de pièce jointe');
   return ids;
+}
+
+function formatTaille(octets) {
+  if (octets < 1024) return octets + ' o';
+  if (octets < 1024 * 1024) return Math.round(octets / 1024) + ' Ko';
+  return (octets / 1024 / 1024).toFixed(1).replace('.', ',') + ' Mo';
 }
 
 async function getAttachmentMeta(id) {
