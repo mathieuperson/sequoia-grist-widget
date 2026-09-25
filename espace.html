@@ -4,12 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Espace SequoIA — Cluster SequoIA</title>
-<link rel="stylesheet" href="./common.css?v=20260925b">
+<link rel="stylesheet" href="./common.css?v=20260925d">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="./common.js?v=20260925b"></script>
-<script src="./pilotage.js?v=20260925b"></script>
-<script src="./espace.js?v=20260925b"></script>
-<script src="./finance.js?v=20260925b"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+<script src="./common.js?v=20260925d"></script>
+<script src="./pilotage.js?v=20260925d"></script>
+<script src="./espace.js?v=20260925d"></script>
+<script src="./finance.js?v=20260925d"></script>
 <script src="./vendor/read-excel-file-5.8.8.min.js"></script>
 <style>
 /* Une application à onglets, dans la charte de common.css : fond gris
@@ -344,6 +346,101 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 
 .es-status { font-size: 12px; color: var(--text-muted); }
 
+/* ---------- Formulaire d'édition ---------- */
+.ed-actions { display: inline-flex; gap: 6px; margin-left: auto; }
+.ed-actions + .close { margin-left: 6px; }
+.pa-head-actions { display: flex; gap: 6px; flex-wrap: wrap; align-self: flex-start; }
+.pa-mini2 { margin-left: 6px !important; }
+.pa-panel-head .pa-mini + .pa-mini { margin-left: 6px; }
+.pa-ech-tools { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+.ed-crayon { margin-left: auto; align-self: flex-start; font-size: 15px; }
+.ed-form { display: flex; flex-direction: column; gap: 14px; }
+.ed-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
+.ed-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.ed-field.full { grid-column: 1 / -1; }
+.ed-field > label { font-size: 12px; color: var(--text-muted); font-weight: 600; }
+.ed-field input[type=text], .ed-field input[type=number], .ed-field input[type=date], .ed-field input[type=datetime-local], .ed-field select, .ed-field textarea {
+  height: 36px; border: 1px solid var(--border); border-radius: 8px; padding: 0 10px; font: inherit; font-size: 13.5px; background: var(--card-bg); color: var(--text); width: 100%;
+}
+.ed-field textarea { height: auto; padding: 8px 10px; resize: vertical; }
+.ed-field input:focus, .ed-field select:focus, .ed-field textarea:focus, .ed-cr:focus { outline: 2px solid var(--sequoia-green); outline-offset: -1px; }
+.ed-check { display: flex; gap: 8px; align-items: center; font-size: 13.5px; padding-top: 22px; cursor: pointer; }
+.ed-field .ms-filter { width: 100%; }
+.ed-field .ms-filter-btn { width: 100%; min-height: 36px; justify-content: space-between; font-size: 13.5px; }
+.ed-field .ms-filter-btn .ms-label { display: none; }
+.ed-field .ms-filter-btn::after { content: '▾'; color: var(--text-muted); }
+.ed-rte { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.ed-rte-bar { display: flex; gap: 2px; padding: 4px; background: var(--es-surface-2); border-bottom: 1px solid var(--border); }
+.ed-rte-bar button { border: 0; background: none; padding: 4px 9px; border-radius: 6px; cursor: pointer; font-size: 12.5px; font-weight: 600; }
+.ed-rte-bar button:hover { background: var(--card-bg); }
+.ed-cr { min-height: 220px; max-height: 50vh; overflow-y: auto; padding: 10px 12px; font-size: 13.5px; line-height: 1.55; }
+.ed-cr img { max-width: 100%; }
+.ed-foot { display: flex; gap: 8px; align-items: center; position: sticky; bottom: -24px; background: var(--card-bg); padding: 12px 0; border-top: 1px solid var(--es-sep); }
+.ed-foot .grow { flex: 1; }
+.ed-suppr { color: var(--es-late); }
+@media (max-width: 620px) { .ed-grid { grid-template-columns: 1fr; } }
+
+/* ---------- Partenaires : fiche 360° ---------- */
+.pa-layout { display: grid; grid-template-columns: 290px 1fr; gap: 14px; align-items: start; }
+.pa-list { position: sticky; top: 0; max-height: calc(100vh - 130px); overflow-y: auto; padding: 4px 0; }
+.pa-item { display: flex; gap: 10px; align-items: center; width: 100%; text-align: left; border: 0; background: none; padding: 9px 12px; cursor: pointer; border-left: 3px solid transparent; }
+.pa-item:hover { background: var(--es-surface-2); }
+.pa-item.on { background: var(--sequoia-green-light); border-left-color: var(--sequoia-green); }
+.pa-item-txt { min-width: 0; flex: 1; display: flex; flex-direction: column; line-height: 1.25; }
+.pa-item-txt b { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pa-item-txt small { font-size: 11.5px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pa-dot { width: 8px; height: 8px; border-radius: 50%; background: #f97316; flex-shrink: 0; }
+.pa-logo { width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; overflow: hidden; background: #fff; border: 1px solid var(--border); }
+.pa-logo img { width: 100%; height: 100%; object-fit: contain; padding: 2px; }
+.pa-logo.lg { width: 58px; height: 58px; border-radius: 12px; font-size: 18px; }
+.pa-fiche { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.pa-head { display: flex; gap: 16px; align-items: flex-start; padding: 18px 20px; }
+.pa-head-txt { min-width: 0; flex: 1; }
+.pa-head h2 { margin: 0 0 2px; font-size: 22px; font-weight: 650; }
+.pa-pills { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; font-size: 12.5px; }
+.pa-desc { margin: 10px 0 0; font-size: 13px; color: var(--text-muted); max-width: 80ch; }
+.pa-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+.pa-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.pa-panel-head { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--es-sep); }
+.pa-panel-head h3 { margin: 0; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-muted); font-weight: 650; }
+.pa-n { font-size: 11px; background: var(--es-sep); border-radius: 999px; padding: 1px 7px; }
+.pa-panel-head .pa-mini { margin-left: auto; height: 28px; font-size: 12px; }
+.pa-pad { padding: 0 16px; }
+.pa-panel .es-empty { padding: 18px 10px; }
+.pa-late { color: var(--es-late) !important; }
+.pa-resume { display: flex; flex-wrap: wrap; gap: 8px 22px; font-size: 13px; color: var(--text-muted); }
+.pa-resume b { color: var(--text); font-size: 15px; }
+.pa-resume .alerte b { color: var(--es-late); }
+.pa-timeline { display: flex; flex-direction: column; }
+.pa-ech { border-top: 1px solid var(--es-sep); }
+.pa-ech:first-child { border-top: 0; }
+.pa-ech-head { display: flex; gap: 12px; width: 100%; text-align: left; border: 0; background: none; padding: 11px 16px; cursor: pointer; align-items: flex-start; }
+.pa-ech-head:hover { background: var(--es-surface-2); }
+.pa-ech.open .pa-ech-head { background: #f4f7f5; }
+.pa-ech-date { flex: 0 0 76px; font-size: 12px; color: var(--text-muted); padding-top: 1px; }
+.pa-ech-txt { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.pa-ech-txt b { font-size: 13.5px; font-weight: 600; }
+.pa-ech-txt small { font-size: 12px; color: var(--text-muted); }
+.pa-ech-ext { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.pa-ech-icons { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+.pa-ech-icons span { border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; }
+.pa-ech-body { padding: 4px 16px 16px 104px; background: #f4f7f5; }
+.pa-cr { font-size: 13.5px; line-height: 1.55; background: var(--card-bg); border: 1px solid var(--es-sep); border-radius: 10px; padding: 12px 14px; overflow-wrap: anywhere; }
+.pa-cr > :first-child { margin-top: 0; }
+.pa-cr > :last-child { margin-bottom: 0; }
+.pa-cr img { max-width: 100%; height: auto; border-radius: 6px; }
+.pa-cr h1, .pa-cr h2, .pa-cr h3 { font-size: 14.5px; margin: 12px 0 6px; }
+.pa-cr ul, .pa-cr ol { padding-left: 20px; }
+.pa-suites { margin-top: 10px; font-size: 13px; }
+.pa-pj { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.es-kpi .mt { margin: 6px 0 2px; }
+@media (max-width: 1100px) { .pa-grid { grid-template-columns: 1fr; } }
+@media (max-width: 760px) {
+  .pa-layout { grid-template-columns: 1fr; }
+  .pa-list { position: static; max-height: 260px; }
+  .pa-ech-body { padding-left: 16px; }
+}
+
 /* ---------- Finance ---------- */
 .fi-setup { border-color: #b7d7c2; background: #f3faf5; }
 .fi-setup.warn, .fi-trier.warn { border-color: #f3d19c; background: #fffaf0; }
@@ -415,6 +512,8 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
   const E = window.espace;
   const txt = (v) => (v === null || v === undefined) ? '' : String(formatValue(v)).trim();
   const nowTs = () => Math.floor(Date.now() / 1000);
+  // Une ChoiceList arrive en ['L', …] : une pastille par valeur.
+  const listeChoix = (v) => (Array.isArray(v) ? (v[0] === 'L' ? v.slice(1) : v) : (v ? [v] : [])).map(x => String(x).trim()).filter(Boolean);
   const $ = (id) => document.getElementById(id);
 
   // ---------------------------------------------------------------------
@@ -431,7 +530,10 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     { name: 'PilierSequoia', title: 'Pilier SequoIA', optional: true },
     { name: 'RechercheEquipeLabo', title: 'Laboratoire', optional: true },
     { name: 'RechercheEquipeActivite', title: 'Équipe / activité', optional: true },
-    { name: 'Logo', title: 'URL du logo', optional: true }
+    { name: 'Logo', title: 'URL du logo', optional: true },
+    { name: 'SiteWeb', title: 'Site web', optional: true },
+    { name: 'Description', optional: true },
+    { name: 'Taille', optional: true }
   ];
 
   const RELATED = {
@@ -443,7 +545,8 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         Fonction: ['Fonction', 'Poste'],
         Structures: ['Structures', 'Structure'],
         Email: ['Email', 'Mail', 'Courriel'],
-        Telephone: ['Telephone', 'Téléphone', 'Tel']
+        Telephone: ['Telephone', 'Téléphone', 'Tel'],
+        ContactPrincipal: ['ContactPrincipal', 'Contact_Principal', 'Contact principal', 'Principal']
       }
     },
     interactions: {
@@ -452,6 +555,9 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         Objet: ['Objet', 'Sujet', 'Titre'], Date: ['Date'], Type: ['Type'],
         Partenaires: ['Partenaires', 'Partenaire', 'Structures', 'Structure'],
         Opportunites: ['Opportunites', 'Opportunités', 'Opportunite'],
+        Suites: ['Suites', 'Suite', 'Prochaine action'],
+        ProchaineEcheance: ['ProchaineEcheance', 'Prochaine_Echeance', 'Prochaine échéance', 'Echeance'],
+        PJ: ['PJ', 'Piece_jointe', 'Pièce-jointe', 'PiecesJointes', 'Attachments'],
         CR: ['CR', 'Compte_rendu', 'Compte-rendu', 'CompteRendu']
       }
     },
@@ -500,7 +606,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
   const ui = {
     vue: new URLSearchParams(location.search).get('vue') || 'dashboard',
     projets: { q: '', mode: 'cartes', groupe: 'etape', type: '', tri: 'echeance', asc: true, annee: new Date().getFullYear(), miens: false },
-    partenaires: { q: '', mode: 'cartes', filtre: 'partenaires', type: '' },
+    partenaires: { q: '', mode: 'fiche', filtre: 'partenaires', type: '', sel: null, tri: 'dernier', asc: false, deplies: new Set(), toutDeplier: false },
     contacts: { q: '', mode: 'tableau', tri: 'nom', asc: true },
     actions: { q: '', mode: 'kanban', miennes: false, faites: false, mois: null },
     finance: { sous: 'synthese', exercice: null, pfi: '', q: '', statut: '', categorie: '', affect: '', nouvelle: false },
@@ -613,6 +719,11 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         axe: txt(sf(s, 'AxeSequoia')),
         pilier: txt(sf(s, 'PilierSequoia')),
         logo: txt(sf(s, 'Logo')),
+        site: txt(sf(s, 'SiteWeb')),
+        description: txt(sf(s, 'Description')),
+        taille: txt(sf(s, 'Taille')),
+        piliers: listeChoix(sf(s, 'PilierSequoia')),
+        axes: listeChoix(sf(s, 'AxeSequoia')),
         isTeam: !!(txt(sf(s, 'RechercheEquipeLabo')) || txt(sf(s, 'RechercheEquipeActivite'))),
         isProspect: normalizeKey(categorie).includes('prospect')
       };
@@ -625,7 +736,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
       const nom = txt(r[c.NomComplet]) || [txt(r[c.Prenom]), txt(r[c.Nom])].filter(Boolean).join(' ');
       return {
         id: r.id, name: nom || 'Sans nom', fonction: txt(r[c.Fonction]),
-        email: txt(r[c.Email]), tel: txt(r[c.Telephone]),
+        email: txt(r[c.Email]), tel: txt(r[c.Telephone]), principal: !!(c.ContactPrincipal && r[c.ContactPrincipal]),
         structureIds: idsPar(r, colsVers('contacts', structTableId, c.Structures))
       };
     });
@@ -662,6 +773,10 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
       type: txt(r[ic.Type]),
       objet: txt(r[ic.Objet]),
       cr: ic.CR ? excerpt(r[ic.CR], 260) : '',
+      crBrut: ic.CR ? (r[ic.CR] || '') : '',
+      suites: txt(r[ic.Suites]),
+      prochaine: r[ic.ProchaineEcheance] || null,
+      pj: ic.PJ ? attachmentIdsFromValue(r[ic.PJ]) : [],
       partnerIds: idsPar(r, colsVers('interactions', structTableId, ic.Partenaires)),
       contactIds: idsPar(r, colsVers('interactions', ct.tableId)),
       projectIds: idsPar(r, colsVers('interactions', op.tableId, ic.Opportunites))
@@ -969,6 +1084,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         types.map(t => '<option' + (t === f.type ? ' selected' : '') + '>' + H(t) + '</option>').join('') + '</select>' +
       (moi() ? '<button type="button" class="es-btn' + (f.miens ? ' primary' : '') + '" data-toggle="projets.miens">Mes projets</button>' : '') +
       '<span class="grow"></span><span class="es-count">' + liste.length + ' projet' + (liste.length > 1 ? 's' : '') + '</span>' +
+      '<button type="button" class="es-btn" data-new="opportunites">+ Opportunité</button>' +
       '<div class="es-seg">' + [['cartes', 'Cartes'], ['tableau', 'Tableau'], ['calendrier', 'Calendrier']].map(([k, l]) =>
         '<button type="button" data-set="projets.mode" data-val="' + k + '" class="' + (f.mode === k ? 'on' : '') + '">' + l + '</button>').join('') + '</div></div>';
 
@@ -1031,34 +1147,70 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
   // ---------------------------------------------------------------------
   // Vue : partenaires
   // ---------------------------------------------------------------------
-  function structuresFiltrees() {
-    const f = ui.partenaires;
-    return D.structures.filter(s =>
-      (f.filtre === 'tous' || (f.filtre === 'prospects' ? s.isProspect : f.filtre === 'equipes' ? s.isTeam : (!s.isProspect && !s.isTeam))) &&
-      (!f.type || s.type === f.type) &&
-      correspond(f.q, [s.name, s.type, s.activite, s.axe, s.pilier]));
-  }
-  function statsStructure(s) {
+  const RELANCE_JOURS = 90; // au-delà, un partenaire est « à relancer », comme dans le CRM
+
+  // Ce qu'on sait d'une structure en un coup d'œil : de quoi remplir la fiche,
+  // les cartes et le tableau de la vision globale.
+  function bilanStructure(s) {
+    const now = nowTs();
+    const projets = D.projets.filter(p => p.partnerIds.includes(s.id) || p.teamIds.includes(s.id));
+    const contacts = D.contacts.filter(c => c.structureIds.includes(s.id));
+    const echanges = D.echanges.filter(e => e.partnerIds.includes(s.id));
+    const idsContacts = new Set(contacts.map(c => c.id));
+    const idsProjets = new Set(projets.map(p => p.id));
+    const actions = D.actions.filter(a => a.partnerIds.includes(s.id) || a.projectIds.some(id => idsProjets.has(id)) ||
+      a.contactIds.some(id => idsContacts.has(id)));
+    const der = echanges.length ? echanges[0].date : null; // échanges triés du plus récent au plus ancien
+    const jours = der ? -E.joursAvant(der, now) : null;
+    // Prochaine chose à faire : l'action ouverte la plus proche, sinon la
+    // prochaine échéance notée sur un échange.
+    const ouvertes = actions.filter(a => !a.done).sort((a, b) => (Number(a.due) || Infinity) - (Number(b.due) || Infinity));
+    const echeanceEchange = echanges.filter(e => e.prochaine && E.joursAvant(e.prochaine, now) >= -30)
+      .sort((a, b) => a.prochaine - b.prochaine)[0];
+    const prochaine = ouvertes[0] ? { label: ouvertes[0].label, date: ouvertes[0].due, action: ouvertes[0].id }
+      : echeanceEchange ? { label: echeanceEchange.suites || echeanceEchange.objet || 'Échéance', date: echeanceEchange.prochaine } : null;
+    const actifs = projets.filter(actif);
     return {
-      projets: D.projets.filter(p => p.partnerIds.includes(s.id) || p.teamIds.includes(s.id)),
-      contacts: D.contacts.filter(c => c.structureIds.includes(s.id)),
-      echanges: D.echanges.filter(e => e.partnerIds.includes(s.id))
+      projets, actifs, contacts, echanges, actions, ouvertes, prochaine, der, jours,
+      montant: sumMontants(actifs),
+      aRelancer: !s.isTeam && !s.isProspect && (jours === null || jours > RELANCE_JOURS)
     };
   }
+
+  function structuresFiltrees() {
+    const f = ui.partenaires;
+    return D.structures.filter(s => {
+      const cat = f.filtre === 'tous' ? true : f.filtre === 'prospects' ? s.isProspect : f.filtre === 'equipes' ? s.isTeam
+        : f.filtre === 'relancer' ? bilanStructure(s).aRelancer : (!s.isProspect && !s.isTeam);
+      return cat && (!f.type || s.type === f.type) && correspond(f.q, [s.name, s.type, s.activite, s.axe, s.pilier, s.description]);
+    });
+  }
+  function statsStructure(s) { return bilanStructure(s); }
+
+  function logoStructure(s, grand) {
+    if (s.logo && /^https?:\/\//i.test(s.logo)) {
+      return '<span class="pa-logo' + (grand ? ' lg' : '') + '"><img src="' + H(s.logo) + '" alt="" loading="lazy"></span>';
+    }
+    return '<span class="pa-logo' + (grand ? ' lg' : '') + '" style="background:' + couleurStructure(s) + ';color:#fff">' + H(initials(s.name)) + '</span>';
+  }
+
   function vuePartenaires() {
     const f = ui.partenaires;
     const liste = structuresFiltrees().sort((a, b) => a.name.localeCompare(b.name, 'fr'));
     const types = Array.from(new Set(D.structures.map(s => s.type).filter(Boolean))).sort();
     const toolbar = '<div class="es-toolbar"><h1>Partenaires</h1>' +
       '<input class="es-search" data-q="partenaires" placeholder="Rechercher une structure…" value="' + H(f.q) + '">' +
-      '<div class="es-seg">' + [['partenaires', 'Partenaires'], ['prospects', 'Prospects'], ['equipes', 'Équipes'], ['tous', 'Tous']].map(([k, l]) =>
+      '<div class="es-seg">' + [['partenaires', 'Partenaires'], ['relancer', 'À relancer'], ['prospects', 'Prospects'], ['equipes', 'Équipes'], ['tous', 'Tous']].map(([k, l]) =>
         '<button type="button" data-set="partenaires.filtre" data-val="' + k + '" class="' + (f.filtre === k ? 'on' : '') + '">' + l + '</button>').join('') + '</div>' +
       '<select class="es-select" data-set="partenaires.type"><option value="">Tous les types</option>' + types.map(t => '<option' + (t === f.type ? ' selected' : '') + '>' + H(t) + '</option>').join('') + '</select>' +
       '<span class="grow"></span><span class="es-count">' + liste.length + ' structure' + (liste.length > 1 ? 's' : '') + '</span>' +
-      '<div class="es-seg">' + [['cartes', 'Cartes'], ['graphe', 'Graphe']].map(([k, l]) =>
+      '<button type="button" class="es-btn" data-new="structures">+ Structure</button>' +
+      '<div class="es-seg">' + [['fiche', 'Fiche'], ['tableau', 'Vue globale'], ['cartes', 'Cartes'], ['graphe', 'Graphe']].map(([k, l]) =>
         '<button type="button" data-set="partenaires.mode" data-val="' + k + '" class="' + (f.mode === k ? 'on' : '') + '">' + l + '</button>').join('') + '</div></div>';
     let corps;
-    if (f.mode === 'graphe') {
+    if (f.mode === 'fiche') corps = partenairesFiche(liste);
+    else if (f.mode === 'tableau') corps = partenairesTableau(liste);
+    else if (f.mode === 'graphe') {
       const ids = new Set(liste.map(s => s.id));
       const projets = D.projets.filter(p => p.partnerIds.concat(p.teamIds).some(id => ids.has(id)));
       const edges = [];
@@ -1070,19 +1222,153 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
       corps = '<div class="es-card es-graph">' + graphe(nodes, edges, 1100, 620) + LEGENDE_GRAPHE +
         '<div class="es-graph-legend">Seules les structures rattachées à au moins un projet apparaissent (' + (liste.length - nodes.filter(n => n.id[0] === 's').length) + ' sans projet).</div></div>';
     } else {
-      const now = nowTs();
       corps = liste.length ? '<div class="es-cards">' + liste.map(s => {
-        const st = statsStructure(s);
-        const der = D.dernierEchange.get(s.id);
-        const j = der ? -E.joursAvant(der, now) : null;
-        return '<article class="es-card es-scard" data-open="structure:' + s.id + '"><div class="es-scard-top">' + avatar(s.name, couleurStructure(s), true) +
+        const b = bilanStructure(s);
+        return '<article class="es-card es-scard" data-open="structure:' + s.id + '"><div class="es-scard-top">' + logoStructure(s, true) +
           '<div style="min-width:0"><b>' + H(s.name) + '</b><small>' + H([s.type, s.activite].filter(Boolean).join(' · ') || s.categorie || '—') + '</small></div></div>' +
-          '<div class="es-stats"><div><b>' + st.projets.filter(actif).length + '</b><span>projets</span></div><div><b>' + st.contacts.length +
-          '</b><span>contacts</span></div><div><b>' + st.echanges.length + '</b><span>échanges</span></div></div>' +
-          '<div class="last' + (j !== null && j > 90 ? ' old' : '') + '">' + (j === null ? 'Aucun échange enregistré' : 'Dernier échange ' + H(jRel(-j))) + '</div></article>';
+          '<div class="es-stats"><div><b>' + b.actifs.length + '</b><span>projets</span></div><div><b>' + b.contacts.length +
+          '</b><span>contacts</span></div><div><b>' + b.echanges.length + '</b><span>échanges</span></div></div>' +
+          '<div class="last' + (b.aRelancer ? ' old' : '') + '">' + (b.jours === null ? 'Aucun échange enregistré' : 'Dernier échange ' + H(jRel(-b.jours))) + '</div></article>';
       }).join('') + '</div>' : '<div class="es-card"><div class="es-empty">Aucune structure.</div></div>';
     }
     return '<div class="es-inner">' + toolbar + corps + '</div>';
+  }
+
+  // ---- Vue globale : un tableau triable de toutes les structures ----
+  function partenairesTableau(liste) {
+    const f = ui.partenaires;
+    const lignes = liste.map(s => ({ s, b: bilanStructure(s) }));
+    const val = ({ s, b }, k) => k === 'nom' ? s.name : k === 'type' ? s.type : k === 'projets' ? b.actifs.length : k === 'montant' ? b.montant
+      : k === 'contacts' ? b.contacts.length : k === 'echanges' ? b.echanges.length : k === 'dernier' ? (Number(b.der) || 0)
+      : k === 'actions' ? b.ouvertes.length : k === 'prochaine' ? (b.prochaine && b.prochaine.date ? Number(b.prochaine.date) : Infinity) : '';
+    lignes.sort((x, y) => {
+      const a = val(x, f.tri), c = val(y, f.tri);
+      const r = typeof a === 'number' ? a - c : String(a || '').localeCompare(String(c || ''), 'fr');
+      return f.asc ? r : -r;
+    });
+    const cols = [['nom', 'Structure'], ['type', 'Type'], ['projets', 'Projets actifs'], ['montant', 'Montant'], ['contacts', 'Contacts'],
+      ['echanges', 'Échanges'], ['dernier', 'Dernier contact'], ['actions', 'Actions ouvertes'], ['prochaine', 'Prochaine action']];
+    const aRelancer = lignes.filter(x => x.b.aRelancer).length;
+    return '<div class="pa-resume">' +
+      '<span><b>' + lignes.length + '</b> structures</span><span><b>' + lignes.filter(x => x.b.actifs.length).length + '</b> avec un projet actif</span>' +
+      '<span><b>' + H(formatMontantCompact(lignes.reduce((t, x) => t + x.b.montant, 0)) || '0 €') + '</b> en jeu</span>' +
+      '<span class="' + (aRelancer ? 'alerte' : '') + '"><b>' + aRelancer + '</b> à relancer (sans contact depuis ' + RELANCE_JOURS + ' j)</span></div>' +
+      '<div class="es-card es-table-wrap"><table class="es-table"><thead><tr>' + cols.map(([k, l]) =>
+        '<th data-tri="partenaires" data-val="' + k + '" class="' + (f.tri === k ? 'sorted' + (f.asc ? ' asc' : '') : '') + '">' + l + '</th>').join('') +
+      '</tr></thead><tbody>' + lignes.map(({ s, b }) =>
+        '<tr data-sel-structure="' + s.id + '"><td class="ttl"><span style="display:inline-flex;gap:9px;align-items:center">' + logoStructure(s) + H(s.name) + '</span></td>' +
+        '<td>' + H(s.type) + '</td><td class="num">' + b.actifs.length + '</td><td class="num">' + H(formatMontantOrDash(b.montant)) + '</td>' +
+        '<td class="num">' + b.contacts.length + '</td><td class="num">' + b.echanges.length + '</td>' +
+        '<td class="num' + (b.aRelancer ? ' pa-late' : '') + '">' + (b.der ? H(formatDate(b.der)) + ' <span class="es-muted">(' + b.jours + ' j)</span>' : '—') + '</td>' +
+        '<td class="num">' + b.ouvertes.length + '</td>' +
+        '<td>' + (b.prochaine ? H(excerpt(b.prochaine.label, 50)) + (b.prochaine.date ? ' <span class="es-muted">· ' + H(formatDate(b.prochaine.date)) + '</span>' : '') : '<span class="es-muted">—</span>') + '</td></tr>').join('') +
+      '</tbody></table>' + (lignes.length ? '' : '<div class="es-empty">Aucune structure.</div>') + '</div>';
+  }
+
+  // ---- Fiche : la liste à gauche, la fiche 360° à droite (comme le CRM) ----
+  function partenairesFiche(liste) {
+    const f = ui.partenaires;
+    if (!f.sel || !liste.some(s => s.id === f.sel)) f.sel = liste[0] ? liste[0].id : null;
+    const items = liste.map(s => {
+      const b = bilanStructure(s);
+      return '<button type="button" class="pa-item' + (s.id === f.sel ? ' on' : '') + '" data-sel-structure="' + s.id + '">' + logoStructure(s) +
+        '<span class="pa-item-txt"><b>' + H(s.name) + '</b><small>' + H([s.categorie || s.type, b.contacts.length ? b.contacts.length + ' contact' + (b.contacts.length > 1 ? 's' : '') : ''].filter(Boolean).join(' · ')) + '</small></span>' +
+        (b.aRelancer ? '<span class="pa-dot" title="À relancer — ' + (b.jours === null ? 'aucun échange' : 'dernier contact il y a ' + b.jours + ' j') + '"></span>' : '') + '</button>';
+    }).join('');
+    const s = f.sel ? D.sById.get(f.sel) : null;
+    return '<div class="pa-layout"><nav class="pa-list es-card" aria-label="Structures">' + (items || '<div class="es-empty">Aucune structure.</div>') + '</nav>' +
+      '<div class="pa-fiche">' + (s ? ficheSeptante(s) : '<div class="es-card"><div class="es-empty">Sélectionnez une structure.</div></div>') + '</div></div>';
+  }
+
+  function panneau(titre, n, action, corps) {
+    return '<section class="es-card pa-panel"><div class="pa-panel-head"><h3>' + H(titre) + '</h3>' +
+      (n !== null && n !== undefined ? '<span class="pa-n">' + n + '</span>' : '') + (action || '') + '</div>' + corps + '</section>';
+  }
+
+  function ficheSeptante(s) {
+    const f = ui.partenaires;
+    const b = bilanStructure(s);
+    const meta = [s.type, s.categorie, s.taille, s.activite].filter(Boolean).join(' · ');
+    const tete = '<div class="es-card pa-head">' + logoStructure(s, true) + '<div class="pa-head-txt"><h2>' + H(s.name) + '</h2>' +
+      (meta ? '<div class="es-muted">' + H(meta) + '</div>' : '') +
+      '<div class="pa-pills">' + s.piliers.map(v => '<span class="value-pill ' + pilierClass(v) + '">' + H(v) + '</span>').join('') +
+      s.axes.map(v => '<span class="es-badge">' + H(v) + '</span>').join('') +
+      (s.site ? '<a class="es-link" href="' + H(/^https?:\/\//.test(s.site) ? s.site : 'https://' + s.site) + '" target="_blank" rel="noopener">' + H(s.site.replace(/^https?:\/\//, '')) + ' ↗</a>' : '') + '</div>' +
+      (s.description ? '<p class="pa-desc">' + H(s.description) + '</p>' : '') + '</div>' +
+      '<div class="pa-head-actions"><button type="button" class="es-btn" data-edit="structures:' + s.id + '">✎ Modifier</button>' +
+      '<button type="button" class="es-btn primary" data-new="interactions" data-ctx="structure:' + s.id + '">+ Échange</button></div></div>';
+
+    const kpi = (lbl, val, sub, warn, extra) => '<div class="es-card es-kpi"><div class="lbl">' + H(lbl) + '</div><div class="val' + (warn ? ' pa-late' : '') + '" style="font-size:22px">' + val + '</div>' + (extra || '') + '<div class="sub">' + sub + '</div></div>';
+    const kpis = '<div class="es-kpis">' +
+      kpi('Dernier contact', b.jours === null ? '—' : H(b.jours + ' j'), b.der ? H(formatDate(b.der)) : 'aucun échange', b.aRelancer && b.jours !== null,
+        b.jours === null ? '' : meterMarkup(b.jours, RELANCE_JOURS, { unit: 'jours', label: b.jours > RELANCE_JOURS ? 'à relancer' : 'dans les temps' })) +
+      kpi('Échanges', String(b.echanges.length), b.echanges.length ? 'depuis le début' : 'aucun') +
+      kpi('Projets', String(b.actifs.length) + (b.montant ? ' · ' + H(formatMontantCompact(b.montant)) : ''), b.projets.length - b.actifs.length ? (b.projets.length - b.actifs.length) + ' terminé(s) ou abandonné(s)' : 'en cours ou en montage') +
+      kpi('Prochaine action', b.prochaine ? '<span style="font-size:15px">' + H(excerpt(b.prochaine.label, 44)) + '</span>' : '—', b.prochaine && b.prochaine.date ? 'avant le ' + H(formatDate(b.prochaine.date)) : 'rien de planifié') +
+      '</div>';
+
+    const projetsHtml = b.projets.length ? '<div class="es-list pa-pad">' + b.projets.slice()
+      .sort((x, y) => (actif(y) - actif(x)) || (stageRank(y.stage) - stageRank(x.stage)))
+      .map(p => '<div class="es-row click" data-open="projet:' + p.id + '"><div style="min-width:0;flex:1"><div class="t">' + H(p.title) + '</div><div class="s">' +
+        H([p.type, p.montant ? formatMontantCompact(p.montant) : '', p.echeance ? 'échéance ' + formatDate(p.echeance) : ''].filter(Boolean).join(' · ')) + '</div>' +
+        barreTemps(p) + '</div>' + badgeEtape(p.stage) + '</div>').join('') + '</div>' : '<div class="es-empty">Aucun projet.</div>';
+
+    const contactsHtml = b.contacts.length ? '<div class="es-list pa-pad">' + b.contacts.slice().sort((x, y) => (y.principal - x.principal) || x.name.localeCompare(y.name, 'fr'))
+      .map(c => '<div class="es-row click" data-open="contact:' + c.id + '">' + avatar(c.name, 'var(--sequoia-green)') + '<div style="min-width:0;flex:1"><div class="t">' + H(c.name) +
+        (c.principal ? ' <span class="es-imp" title="Contact principal">★</span>' : '') + '</div><div class="s">' + H([c.fonction, c.email].filter(Boolean).join(' · ')) + '</div></div>' +
+        (c.email ? '<button type="button" class="es-x" data-copier="' + H(c.email) + '" title="Copier l’adresse" aria-label="Copier l’adresse">⧉</button>' : '') + '</div>').join('') + '</div>'
+      : '<div class="es-empty">Aucun contact.</div>';
+    const copierTous = b.contacts.filter(c => c.email).length > 1
+      ? '<button type="button" class="es-btn pa-mini" data-copier="' + H(b.contacts.filter(c => c.email).map(c => c.email).join('; ')) + '">⧉ ' + b.contacts.filter(c => c.email).length + ' adresses</button>' : '';
+
+    const actionsHtml = (b.ouvertes.length ? '<div class="es-list pa-pad">' + b.ouvertes.map(ligneAction).join('') + '</div>' : '<div class="es-empty">Aucune action en cours.</div>') +
+      (related.actions.tableId ? '<form class="es-form pa-pad" data-ajout-action-structure="' + s.id + '" style="margin-top:0;padding-bottom:14px"><input class="grow" name="label" placeholder="Nouvelle action…" required><input type="date" name="due"><button class="es-btn primary" type="submit">Ajouter</button></form>' : '');
+
+    const tous = f.toutDeplier;
+    const echHtml = b.echanges.length ? '<div class="pa-timeline">' + b.echanges.map(e => {
+      const ouvert = tous || f.deplies.has(e.id);
+      const qui = e.contactIds.map(id => (D.cById.get(id) || {}).name).filter(Boolean).join(', ');
+      const autres = e.partnerIds.filter(id => id !== s.id).map(nomS).join(', ');
+      const projets = e.projectIds.map(id => D.pById.get(id)).filter(Boolean);
+      return '<article class="pa-ech' + (ouvert ? ' open' : '') + '"><button type="button" class="pa-ech-head" data-deplier="' + e.id + '" aria-expanded="' + ouvert + '">' +
+        '<span class="pa-ech-date">' + H(e.date ? formatDate(e.date) : '—') + '</span><span class="pa-ech-txt"><b>' + H([e.type, e.objet].filter(Boolean).join(' · ') || 'Sans objet') + '</b>' +
+        '<small>' + H([qui, autres ? 'avec ' + autres : ''].filter(Boolean).join(' · ')) + '</small>' +
+        (!ouvert && e.cr ? '<small class="pa-ech-ext">' + H(excerpt(e.cr, 160)) + '</small>' : '') + '</span>' +
+        '<span class="pa-ech-icons">' + (e.pj.length ? '📎 ' + e.pj.length : '') + (e.crBrut ? ' <span title="Compte rendu">CR</span>' : '') + '</span></button>' +
+        (ouvert ? '<div class="pa-ech-body">' +
+          '<div class="pa-ech-tools"><button type="button" class="es-btn pa-mini" data-edit="interactions:' + e.id + '">✎ Modifier l’échange</button></div>' +
+          (projets.length ? '<div class="pa-pills" style="margin:0 0 8px">' + projets.map(p => '<button type="button" class="es-pill" data-open="projet:' + p.id + '">' + H(p.title) + ' <small>projet</small></button>').join('') + '</div>' : '') +
+          (e.crBrut ? '<div class="pa-cr" data-cr="' + e.id + '"></div>' : '<div class="es-muted" style="font-style:italic;font-size:13px">Pas de compte rendu.</div>') +
+          (e.suites || e.prochaine ? '<div class="pa-suites"><b>Suites</b> ' + H(e.suites || '') + (e.prochaine ? ' <span class="es-muted">· échéance ' + H(formatDate(e.prochaine)) + '</span>' : '') + '</div>' : '') +
+          (e.pj.length ? '<div class="pa-pj">' + e.pj.map(id => '<button type="button" class="es-pill" data-pj="' + id + '">📎 <span data-pj-nom="' + id + '">Pièce jointe #' + id + '</span></button>').join('') + '</div>' : '') +
+          '</div>' : '') + '</article>';
+    }).join('') + '</div>' : '<div class="es-empty">Aucun échange enregistré.</div>';
+    const toggle = b.echanges.length ? '<button type="button" class="es-btn pa-mini" data-toggle="partenaires.toutDeplier">' + (tous ? 'Tout replier' : 'Tout déplier') + '</button>' : '';
+
+    return tete + kpis + '<div class="pa-grid"><div class="pa-col">' +
+      panneau('Projets', b.projets.length, '<button type="button" class="es-btn pa-mini" data-new="opportunites" data-ctx="structure:' + s.id + '">+ Opportunité</button>', projetsHtml) +
+      panneau('Contacts', b.contacts.length, copierTous + '<button type="button" class="es-btn pa-mini' + (copierTous ? ' pa-mini2' : '') + '" data-new="contacts" data-ctx="structure:' + s.id + '">+ Contact</button>', contactsHtml) +
+      '</div><div class="pa-col">' +
+      panneau('Actions', b.ouvertes.length, '', actionsHtml) +
+      panneau('Historique des échanges', b.echanges.length, toggle, echHtml) +
+      '</div></div>';
+  }
+
+  // Les comptes rendus dépliés : HTML nettoyé (DOMPurify) et images servies par
+  // le document. Fait après le rendu, le HTML ne transitant pas par une chaîne.
+  const nomsPj = {};
+  function remplirComptesRendus() {
+    document.querySelectorAll('[data-cr]').forEach(el => {
+      const e = D.eById.get(Number(el.dataset.cr));
+      if (!e) return;
+      el.innerHTML = normalizeCrToHtml(e.crBrut);
+      resolveImagesIn(el);
+    });
+    document.querySelectorAll('[data-pj-nom]').forEach(el => {
+      const id = el.dataset.pjNom;
+      if (nomsPj[id]) { el.textContent = nomsPj[id]; return; }
+      getAttachmentMeta(id).then(m => { nomsPj[id] = m.fileName; el.textContent = m.fileName; }).catch(() => {});
+    });
   }
 
   // ---------------------------------------------------------------------
@@ -1095,6 +1381,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     const toolbar = '<div class="es-toolbar"><h1>Contacts</h1>' +
       '<input class="es-search" data-q="contacts" placeholder="Rechercher un nom, une fonction, une structure…" value="' + H(f.q) + '">' +
       '<span class="grow"></span><span class="es-count">' + liste.length + ' contact' + (liste.length > 1 ? 's' : '') + '</span>' +
+      '<button type="button" class="es-btn" data-new="contacts">+ Contact</button>' +
       '<div class="es-seg">' + [['tableau', 'Tableau'], ['graphe', 'Graphe']].map(([k, l]) =>
         '<button type="button" data-set="contacts.mode" data-val="' + k + '" class="' + (f.mode === k ? 'on' : '') + '">' + l + '</button>').join('') + '</div></div>';
     let corps;
@@ -1218,7 +1505,8 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     return '<div class="es-row"><span class="d">' + H(e.date ? formatDate(e.date) : '—') + '</span><div style="min-width:0">' +
       '<div class="t">' + H([e.type, e.objet].filter(Boolean).join(' · ') || 'Sans objet') + '</div>' +
       (e.partnerIds.length ? '<div class="s">' + H(nomsS(e.partnerIds)) + '</div>' : '') +
-      (e.cr ? '<div class="cr">' + H(e.cr) + '</div>' : '') + '</div></div>';
+      (e.cr ? '<div class="cr">' + H(e.cr) + '</div>' : '') + '</div>' +
+      '<button type="button" class="es-x ed-crayon" data-edit="interactions:' + e.id + '" title="Modifier l’échange" aria-label="Modifier l’échange">✎</button></div>';
   }
   function ligneAction(a) {
     const j = a.due ? E.joursAvant(a.due, nowTs()) : null;
@@ -1242,7 +1530,10 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     const personnes = p.contactIds.map(id => D.cById.get(id)).filter(Boolean);
     const tabs = [['general', 'Général'], ['echanges', 'Échanges', lies.echanges.length], ['actions', 'Actions', lies.actions.filter(a => !a.done).length],
       ['personnes', 'Personnes', personnes.length]].concat(p.liens ? [['liens', 'Liens', p.liens.length]] : []);
-    const head = '<div class="es-sheet-top">' + badgeEtape(p.stage) + badgeType(p.type) + '<button type="button" class="es-btn icon close" data-close aria-label="Fermer">✕</button></div>' +
+    const head = '<div class="es-sheet-top">' + badgeEtape(p.stage) + badgeType(p.type) +
+      '<span class="ed-actions"><button type="button" class="es-btn" data-edit="opportunites:' + p.id + '">✎ Modifier</button>' +
+      '<button type="button" class="es-btn" data-new="interactions" data-ctx="projet:' + p.id + '">+ Échange</button></span>' +
+      '<button type="button" class="es-btn icon close" data-close aria-label="Fermer">✕</button></div>' +
       '<h2>' + H(p.title) + '</h2><div class="desc">' + H(p.partnerIds.length ? '' : 'Projet interne') + '</div>' +
       '<div class="es-pills">' + p.partnerIds.concat(p.teamIds).map(id => '<button type="button" class="es-pill" data-open="structure:' + id + '">' + H(nomS(id)) +
         (p.teamIds.includes(id) ? ' <small>équipe</small>' : '') + '</button>').join('') + '</div>' + barreTemps(p, true);
@@ -1254,8 +1545,9 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         (p.commentaire ? '<div class="es-section"><h5>Journal</h5><div class="es-note">' + H(p.commentaire) + '</div></div>' : '') +
         (lies.echanges.length ? '<div class="es-section"><h5>Dernier échange</h5>' + ligneEchange(lies.echanges[0]) + '</div>' : '');
     } else if (tab === 'echanges') {
-      body = lies.echanges.length ? '<div class="es-list">' + lies.echanges.map(ligneEchange).join('') + '</div>'
-        : vide('Aucun échange rattaché. Renseignez le projet dans la colonne « Opportunités » d’un échange.');
+      body = (lies.echanges.length ? '<div class="es-list">' + lies.echanges.map(ligneEchange).join('') + '</div>'
+        : vide('Aucun échange rattaché. Renseignez le projet dans la colonne « Opportunités » d’un échange.')) +
+        '<button type="button" class="es-btn" data-new="interactions" data-ctx="projet:' + p.id + '" style="margin-top:12px">+ Échange sur ce projet</button>';
     } else if (tab === 'actions') {
       body = (lies.actions.length ? '<div class="es-list">' + lies.actions.slice().sort((a, b) => (a.done - b.done) || ((Number(a.due) || Infinity) - (Number(b.due) || Infinity))).map(ligneAction).join('') + '</div>' : vide('Aucune action.')) +
         (related.actions.tableId ? '<form class="es-form" data-ajout-action="' + p.id + '"><input class="grow" name="label" placeholder="Nouvelle action…" required><input type="date" name="due"><button class="es-btn primary" type="submit">Ajouter</button></form>' : '');
@@ -1289,7 +1581,10 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     const act = D.actions.filter(a => a.contactIds.includes(c.id));
     const proj = D.projets.filter(p => p.contactIds.includes(c.id));
     const tabs = [['echanges', 'Échanges', ech.length], ['actions', 'Actions', act.filter(a => !a.done).length], ['projets', 'Projets', proj.length]];
-    const head = '<div class="es-sheet-top">' + avatar(c.name, '#64748b', true) + '<button type="button" class="es-btn icon close" data-close aria-label="Fermer">✕</button></div>' +
+    const head = '<div class="es-sheet-top">' + avatar(c.name, '#64748b', true) +
+      '<span class="ed-actions"><button type="button" class="es-btn" data-edit="contacts:' + c.id + '">✎ Modifier</button>' +
+      '<button type="button" class="es-btn" data-new="interactions" data-ctx="contact:' + c.id + '">+ Échange</button></span>' +
+      '<button type="button" class="es-btn icon close" data-close aria-label="Fermer">✕</button></div>' +
       '<h2>' + H(c.name) + '</h2><div class="desc">' + H(c.fonction) + '</div>' +
       '<div class="es-pills">' + c.structureIds.map(id => '<button type="button" class="es-pill" data-open="structure:' + id + '">' + H(nomS(id)) + '</button>').join('') +
       (c.email ? '<button type="button" class="es-pill" data-copier="' + H(c.email) + '">✉ ' + H(c.email) + '</button>' : '') +
@@ -1316,10 +1611,296 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     return { head, tabs: [], body };
   }
 
+  // ---------------------------------------------------------------------
+  // Édition : contacts, structures, échanges, opportunités
+  // ---------------------------------------------------------------------
+  // Un seul formulaire, construit d'après le type réel de chaque colonne du
+  // document (texte, nombre, date, choix, référence…) : une colonne ajoutée
+  // dans Grist apparaît d'elle-même, sans toucher au widget. Les colonnes
+  // formules ne sont pas modifiables et n'apparaissent pas.
+  const EDIT_TITRES = { contacts: 'contact', structures: 'structure', interactions: 'échange', opportunites: 'opportunité' };
+  const EDIT_NOUVEAU = { contacts: 'Nouveau contact', structures: 'Nouvelle structure', interactions: 'Nouvel échange', opportunites: 'Nouvelle opportunité' };
+  // Rôles dont la colonne est une date : de quoi la reconnaître même sans métadonnées.
+  const ROLES_DATE = ['Date', 'ProchaineEcheance', 'DateDebut', 'Echeance', 'FaitLe'];
+
+  function tableDe(cle) { return cle === 'structures' ? structTableId : (related[cle] || {}).tableId; }
+
+  // Les colonnes à montrer en premier : celles dont le widget connaît le rôle,
+  // dans l'ordre de la configuration.
+  function rolesPrioritaires(cle) {
+    if (cle === 'structures') return COLUMNS.map(c => mappings[c.name]).filter(Boolean);
+    const r = related[cle];
+    return r ? Object.values(r.cols).filter(Boolean) : [];
+  }
+
+  async function metaEdition(cle) {
+    const tableId = tableDe(cle);
+    const data = await fetchTableCached(tableId);
+    let meta = cle === 'structures' ? await fetchColumnMeta(tableId) : (related[cle].meta || []);
+    const ids = dataColumns(data);
+    // Une colonne que les métadonnées ne décrivent pas (API REST refusée, par
+    // exemple) : son type se devine par les valeurs ; une liste de références
+    // dont on ignore la cible est laissée de côté plutôt que mal écrite.
+    const connues = new Set(meta.map(m => m.id));
+    const colsDate = cle === 'structures' ? [] : ROLES_DATE.map(r => related[cle].cols[r]).filter(Boolean);
+    meta = meta.concat(ids.filter(id => !connues.has(id)).map(id => {
+      const v = (data[id] || []).find(x => x !== null && x !== undefined && x !== '');
+      const type = colsDate.includes(id) ? 'Date' : typeof v === 'number' ? 'Numeric' : typeof v === 'boolean' ? 'Bool' : Array.isArray(v) ? '' : 'Text';
+      return { id, type, label: id, isFormula: false, choices: [] };
+    }).filter(m => m.type));
+    const ordre = rolesPrioritaires(cle);
+    const cols = meta.filter(m => !m.isFormula && m.id !== 'manualSort' && !/^gristHelper_/.test(m.id) && ids.includes(m.id))
+      .sort((a, b) => {
+        const ia = ordre.indexOf(a.id), ib = ordre.indexOf(b.id);
+        return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib);
+      });
+    const records = recordsFromTableData(data);
+    // Les tables visées par les références, pour proposer leurs lignes.
+    const cibles = Array.from(new Set(cols.map(m => (/^Ref(?:List)?:(.+)$/.exec(m.type) || [])[1]).filter(Boolean)));
+    const options = {};
+    for (const t of cibles) options[t] = await optionsReference(t);
+    return { tableId, cols, records, options };
+  }
+
+  // Les lignes d'une table visée par une référence, avec un libellé lisible
+  // et unique (deux contacts homonymes restent distinguables).
+  async function optionsReference(tableId) {
+    let liste;
+    if (tableId === structTableId) liste = D.structures.map(s => ({ id: s.id, label: s.name }));
+    else if (tableId === related.contacts.tableId) liste = D.contacts.map(c => ({ id: c.id, label: c.name + (c.structureIds.length ? ' — ' + nomS(c.structureIds[0]) : '') }));
+    else if (tableId === related.opportunites.tableId) liste = D.projets.map(p => ({ id: p.id, label: p.title }));
+    else if (tableId === related.interactions.tableId) liste = D.echanges.map(e => ({ id: e.id, label: (e.date ? formatDate(e.date) + ' · ' : '') + (e.objet || e.type || 'Échange') }));
+    else {
+      try {
+        const data = await fetchTableCached(tableId);
+        const col = guessDisplayColumn(data);
+        liste = (data.id || []).map((id, i) => ({ id, label: txt(data[col][i]) || '#' + id }));
+      } catch (err) { liste = []; }
+    }
+    const vus = {};
+    liste.forEach(o => { vus[o.label] = (vus[o.label] || 0) + 1; });
+    return liste.map(o => (vus[o.label] > 1 ? { id: o.id, label: o.label + ' (#' + o.id + ')' } : o))
+      .sort((a, b) => a.label.localeCompare(b.label, 'fr'));
+  }
+
+  const estCR = (cle, m) => cle === 'interactions' && m.id === related.interactions.cols.CR;
+
+  function champEdition(cle, m, valeur, options) {
+    const id = 'ed-' + m.id;
+    const lbl = '<label for="' + H(id) + '">' + H(m.label || m.id) + '</label>';
+    const base = m.type.split(':')[0];
+    const cible = (/^Ref(?:List)?:(.+)$/.exec(m.type) || [])[1];
+    if (estCR(cle, m)) {
+      return '<div class="ed-field full"><label>' + H(m.label || 'Compte rendu') + '</label><div class="ed-rte">' +
+        '<div class="ed-rte-bar">' + [['bold', 'G', 'Gras'], ['italic', 'I', 'Italique'], ['insertUnorderedList', '• Liste', 'Liste'], ['formatBlock:h3', 'Titre', 'Titre']]
+          .map(([cmd, t, l]) => '<button type="button" data-rte="' + cmd + '" title="' + l + '">' + t + '</button>').join('') + '</div>' +
+        '<div class="ed-cr" contenteditable="true" data-col="' + H(m.id) + '" data-kind="cr"></div></div></div>';
+    }
+    if (base === 'Bool') return '<div class="ed-field"><label class="ed-check"><input type="checkbox" id="' + H(id) + '" data-col="' + H(m.id) + '" data-kind="bool"' + (valeur ? ' checked' : '') + '> ' + H(m.label || m.id) + '</label></div>';
+    if (base === 'Date') return '<div class="ed-field">' + lbl + '<input type="date" id="' + H(id) + '" data-col="' + H(m.id) + '" data-kind="date" value="' + H(valeur ? gristDateToInputValue(valeur) : '') + '"></div>';
+    if (base === 'DateTime') {
+      const v = valeur ? new Date(valeur * 1000 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '';
+      return '<div class="ed-field">' + lbl + '<input type="datetime-local" id="' + H(id) + '" data-col="' + H(m.id) + '" data-kind="datetime" value="' + H(v) + '"></div>';
+    }
+    if (base === 'Numeric' || base === 'Int') return '<div class="ed-field">' + lbl + '<input type="number" step="' + (base === 'Int' ? '1' : 'any') + '" id="' + H(id) + '" data-col="' + H(m.id) + '" data-kind="' + (base === 'Int' ? 'int' : 'num') + '" value="' + H(valeur === null || valeur === undefined ? '' : valeur) + '"></div>';
+    if (base === 'Choice') {
+      const choix = m.choices.slice();
+      if (valeur && !choix.includes(valeur)) choix.push(valeur);
+      return '<div class="ed-field">' + lbl + '<select id="' + H(id) + '" data-col="' + H(m.id) + '" data-kind="choice"><option value="">—</option>' +
+        choix.map(c => '<option' + (c === valeur ? ' selected' : '') + '>' + H(c) + '</option>').join('') + '</select></div>';
+    }
+    if (base === 'ChoiceList' || base === 'RefList') {
+      return '<div class="ed-field">' + lbl.replace('<label for="' + H(id) + '">', '<label>') + msFilterMarkup(id, m.label || m.id, 'Aucun') + '</div>';
+    }
+    if (base === 'Ref') {
+      const opts = options[cible] || [];
+      return '<div class="ed-field">' + lbl + '<select id="' + H(id) + '" data-col="' + H(m.id) + '" data-kind="ref"><option value="0">—</option>' +
+        opts.map(o => '<option value="' + o.id + '"' + (o.id === valeur ? ' selected' : '') + '>' + H(o.label) + '</option>').join('') + '</select></div>';
+    }
+    if (base === 'Attachments') {
+      const n = attachmentIdsFromValue(valeur).length;
+      return '<div class="ed-field"><label>' + H(m.label || m.id) + '</label><div class="es-muted" style="font-size:12.5px;padding-top:6px">' + n + ' fichier(s) — à gérer depuis le CRM ou la table.</div></div>';
+    }
+    // Texte : une zone sur plusieurs lignes pour les notes et descriptions.
+    // Un texte sur plusieurs lignes (liens, notes) doit garder ses retours à la ligne.
+    const long = /comment|note|descr|suite|detail|détail|journal|lien/i.test(m.id + ' ' + (m.label || '')) || /\n/.test(String(valeur || '')) || String(valeur || '').length > 80;
+    return '<div class="ed-field' + (long ? ' full' : '') + '">' + lbl + (long
+      ? '<textarea id="' + H(id) + '" data-col="' + H(m.id) + '" data-kind="text" rows="3">' + H(valeur || '') + '</textarea>'
+      : '<input type="text" id="' + H(id) + '" data-col="' + H(m.id) + '" data-kind="text" value="' + H(valeur === null || valeur === undefined ? '' : formatValue(valeur)) + '">') + '</div>';
+  }
+
+  let editeur = null; // { cle, id, meta, initial, selects: { colId: { widget, parLabel } } }
+
+  async function ouvrirEditeur(cle, id, defauts) {
+    const tableId = tableDe(cle);
+    if (!tableId) { toast('Table introuvable', true); return; }
+    setStatus('Ouverture…');
+    let meta;
+    try { meta = await metaEdition(cle); } catch (err) { console.error(err); toast('Lecture impossible', true); setStatus(''); return; }
+    setStatus('');
+    const rec = id ? meta.records.find(r => r.id === id) : null;
+    if (id && !rec) { toast('Ligne introuvable', true); return; }
+    const valeurs = {};
+    meta.cols.forEach(m => { valeurs[m.id] = rec ? rec[m.id] : ((defauts || {})[m.id] !== undefined ? defauts[m.id] : null); });
+    const retour = ui.sheet && ui.sheet.kind !== 'edit' ? Object.assign({}, ui.sheet) : null;
+    editeur = { cle, id: id || null, meta, valeurs, selects: {}, retour };
+    ui.sheet = { kind: 'edit' };
+    const nom = rec ? (cle === 'structures' ? nomS(id) : cle === 'contacts' ? (D.cById.get(id) || {}).name : cle === 'opportunites' ? (D.pById.get(id) || {}).title
+      : [formatDate((D.eById.get(id) || {}).date), (D.eById.get(id) || {}).objet].filter(Boolean).join(' · ')) : '';
+    const sheet = $('sheet');
+    sheet.innerHTML = '<div class="es-sheet-head"><div class="es-sheet-top"><span class="es-badge">' + H(id ? 'Modifier ' + EDIT_TITRES[cle] : EDIT_NOUVEAU[cle]) + '</span>' +
+      '<button type="button" class="es-btn icon close" data-ed-annuler aria-label="Fermer">✕</button></div>' +
+      '<h2>' + H(nom || (id ? '' : EDIT_NOUVEAU[cle])) + '</h2></div>' +
+      '<form class="es-sheet-body ed-form" id="ed-form"><div class="ed-grid">' + meta.cols.map(m => champEdition(cle, m, valeurs[m.id], meta.options)).join('') + '</div>' +
+      '<div class="ed-foot">' + (id ? '<button type="button" class="es-btn ed-suppr" data-ed-suppr>Supprimer</button>' : '') +
+      '<span class="grow"></span><button type="button" class="es-btn" data-ed-annuler>Annuler</button><button type="submit" class="es-btn primary">Enregistrer</button></div></form>';
+    sheet.classList.add('open'); $('backdrop').classList.add('open'); sheet.setAttribute('aria-hidden', 'false');
+    // Les listes à choix multiples et l'éditeur de compte rendu ne s'animent
+    // qu'une fois dans la page.
+    meta.cols.forEach(m => {
+      const base = m.type.split(':')[0];
+      if (base !== 'ChoiceList' && base !== 'RefList') return;
+      const root = document.getElementById('ed-' + m.id);
+      if (base === 'ChoiceList') {
+        const courants = listeChoix(valeurs[m.id]);
+        const choix = m.choices.concat(courants.filter(c => !m.choices.includes(c)));
+        editeur.selects[m.id] = { kind: 'choicelist', widget: createMultiSelect(root, { values: choix, selected: courants, labelAll: 'Aucun' }) };
+      } else {
+        const cible = m.type.split(':')[1];
+        const opts = meta.options[cible] || [];
+        const parLabel = new Map(opts.map(o => [o.label, o.id]));
+        const ids = refIdsFromValue(valeurs[m.id]);
+        const selected = opts.filter(o => ids.includes(o.id)).map(o => o.label);
+        editeur.selects[m.id] = { kind: 'reflist', parLabel, widget: createMultiSelect(root, { values: opts.map(o => o.label), selected, labelAll: 'Aucun' }) };
+      }
+    });
+    const cr = sheet.querySelector('[data-kind="cr"]');
+    if (cr) { cr.innerHTML = normalizeCrToHtml(valeurs[cr.dataset.col] || ''); resolveImagesIn(cr); }
+    const premier = sheet.querySelector('.ed-form input[type="text"], .ed-form textarea');
+    if (premier) premier.focus();
+  }
+
+  // Ce que le formulaire contient, dans la forme que Grist attend pour chaque type.
+  function lireFormulaire() {
+    const form = $('ed-form');
+    const out = {};
+    form.querySelectorAll('[data-col]').forEach(el => {
+      const col = el.dataset.col, k = el.dataset.kind;
+      if (k === 'text') out[col] = el.value;
+      else if (k === 'num') out[col] = el.value === '' ? null : Number(el.value);
+      else if (k === 'int') out[col] = el.value === '' ? null : parseInt(el.value, 10);
+      else if (k === 'date') out[col] = el.value ? inputValueToGristDate(el.value) : null;
+      else if (k === 'datetime') out[col] = el.value ? Math.floor(new Date(el.value).getTime() / 1000) : null;
+      else if (k === 'bool') out[col] = el.checked;
+      else if (k === 'choice') out[col] = el.value;
+      else if (k === 'ref') out[col] = Number(el.value) || 0;
+      else if (k === 'cr') out[col] = serializeCrForSave(el);
+    });
+    Object.entries(editeur.selects).forEach(([col, s]) => {
+      const sel = s.widget.getSelected();
+      out[col] = s.kind === 'reflist' ? (sel.length ? ['L', ...sel.map(l => s.parLabel.get(l)).filter(Boolean)] : null) : (sel.length ? ['L', ...sel] : null);
+    });
+    return out;
+  }
+
+  // Seules les colonnes réellement changées partent : une valeur qu'on n'a pas
+  // touchée n'est pas réécrite (et une formule d'initialisation reste en paix).
+  function normaliserPourComparer(v) {
+    if (v === null || v === undefined || v === '' || v === 0 || v === false) return '';
+    if (Array.isArray(v)) return JSON.stringify(v[0] === 'L' ? v.slice(1) : v);
+    return JSON.stringify(v);
+  }
+
+  async function enregistrerEditeur() {
+    const { cle, id, valeurs } = editeur;
+    const tableId = tableDe(cle);
+    const saisie = lireFormulaire();
+    const champs = {};
+    Object.keys(saisie).forEach(col => {
+      // Une création envoie tout ce qui est rempli, valeurs préremplies comprises ;
+      // une modification, seulement ce qui a changé.
+      const garde = id ? normaliserPourComparer(saisie[col]) !== normaliserPourComparer(valeurs[col]) : normaliserPourComparer(saisie[col]) !== '';
+      if (garde) champs[col] = saisie[col];
+    });
+    if (id && !Object.keys(champs).length) { fermerEditeur(); return; }
+    try {
+      let nouvelId = id;
+      if (id) await updateRecord(tableId, id, champs);
+      else nouvelId = await addRecord(tableId, champs);
+      const retour = editeur.retour;
+      editeur = null;
+      await charger(true);
+      if (cle === 'structures' && !id && nouvelId) { voirStructure(nouvelId); }
+      else if (!id && nouvelId && cle === 'opportunites') { ui.sheet = { kind: 'projet', id: nouvelId, tab: null }; render(); }
+      else if (!id && nouvelId && cle === 'contacts') { ui.sheet = { kind: 'contact', id: nouvelId, tab: null }; render(); }
+      else { ui.sheet = retour; render(); }
+      setStatus(id ? 'Modifications enregistrées ✓' : 'Créé ✓');
+    } catch (err) {
+      console.error(err);
+      toast('Enregistrement refusé par le document : ' + (err && err.message ? err.message : err), true);
+    }
+  }
+
+  async function supprimerEditeur(bouton) {
+    if (!bouton.dataset.arme) {
+      bouton.dataset.arme = '1';
+      bouton.textContent = 'Confirmer la suppression';
+      return;
+    }
+    const { cle, id } = editeur;
+    try {
+      await removeRecord(tableDe(cle), id);
+      editeur = null;
+      ui.sheet = null;
+      if (cle === 'structures') ui.partenaires.sel = null;
+      await charger(true);
+      render();
+      setStatus('Supprimé');
+    } catch (err) { console.error(err); toast('Suppression impossible', true); }
+  }
+
+  function fermerEditeur() {
+    const retour = editeur && editeur.retour;
+    editeur = null;
+    ui.sheet = retour;
+    renderSheet();
+  }
+
+  // Valeurs de départ d'une création, selon d'où on la lance.
+  function defautsCreation(cle, contexte) {
+    const d = {};
+    const today = inputValueToGristDate(new Date().toISOString().slice(0, 10));
+    const r = cle === 'structures' ? null : related[cle];
+    const liste = (col, ids) => { if (col && ids && ids.length) d[col] = colValue(r, col, ids); };
+    if (cle === 'interactions') {
+      if (r.cols.Date) d[r.cols.Date] = today;
+      if (contexte.structure) liste(r.cols.Partenaires, [contexte.structure]);
+      if (contexte.projet) {
+        const p = D.pById.get(contexte.projet);
+        liste(r.cols.Opportunites, [contexte.projet]);
+        if (p) liste(r.cols.Partenaires, p.partnerIds);
+      }
+      if (contexte.contact) {
+        const col = colsVers('interactions', related.contacts.tableId)[0];
+        liste(col, [contexte.contact]);
+        const c = D.cById.get(contexte.contact);
+        if (c && c.structureIds.length) liste(r.cols.Partenaires, c.structureIds.slice(0, 1));
+      }
+    } else if (cle === 'contacts' && contexte.structure) liste(r.cols.Structures, [contexte.structure]);
+    else if (cle === 'opportunites') {
+      if (contexte.structure) liste(r.cols.Partenaires, [contexte.structure]);
+      if (r.cols.Statut && D.etapes.length) d[r.cols.Statut] = D.etapes[0];
+      if (r.cols.DateDebut) d[r.cols.DateDebut] = today;
+    }
+    return d;
+  }
+
   function renderSheet() {
     const s = ui.sheet;
     const sheet = $('sheet');
     if (!s || !D) { sheet.classList.remove('open'); $('backdrop').classList.remove('open'); sheet.setAttribute('aria-hidden', 'true'); return; }
+    // Un formulaire en cours ne se redessine pas : on perdrait la saisie.
+    if (s.kind === 'edit') { if (!editeur) { ui.sheet = null; renderSheet(); } return; }
     let f = null;
     if (s.kind === 'projet' && D.pById.has(s.id)) f = ficheProjet(D.pById.get(s.id), s.tab || 'general');
     else if (s.kind === 'structure' && D.sById.has(s.id)) f = ficheStructure(D.sById.get(s.id), s.tab || 'projets');
@@ -1335,8 +1916,24 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     sheet.classList.add('open'); $('backdrop').classList.add('open'); sheet.setAttribute('aria-hidden', 'false');
   }
 
+  function voirStructure(id) {
+    const s = D.sById.get(id);
+    if (!s) return;
+    const f = ui.partenaires;
+    f.mode = 'fiche'; f.sel = id; f.toutDeplier = false;
+    // La structure doit figurer dans la liste filtrée, sinon la fiche retomberait sur la première.
+    if (!structuresFiltrees().some(x => x.id === id)) { f.filtre = 'tous'; f.type = ''; f.q = ''; }
+    ui.vue = 'partenaires'; ui.sheet = null;
+    render();
+    const item = document.querySelector('.pa-item.on');
+    if (item) item.scrollIntoView({ block: 'nearest' });
+    $('main').scrollTop = 0;
+  }
+
   function ouvrir(ref) {
     const [kind, id] = String(ref).split(':');
+    // Une structure s'ouvre dans sa fiche complète, onglet Partenaires.
+    if (kind === 'structure') { voirStructure(Number(id)); return; }
     ui.sheet = { kind, id: Number(id), tab: null };
     renderSheet();
   }
@@ -1730,6 +2327,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
       const champ = main.querySelector('[data-q="' + focus + '"]');
       if (champ) { champ.focus(); champ.setSelectionRange(caret, caret); }
     }
+    if (ui.vue === 'partenaires') remplirComptesRendus();
     renderSheet();
   }
 
@@ -1784,6 +2382,22 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
       setStatus('Action ajoutée ✓');
     } catch (err) { console.error(err); toast('Ajout impossible', true); }
   }
+  async function ajouterActionStructure(structureId, label, due) {
+    const ac = related.actions;
+    if (!ac.tableId) return;
+    const fields = {};
+    if (ac.cols.Intitule) fields[ac.cols.Intitule] = label;
+    if (ac.cols.Echeance && due) fields[ac.cols.Echeance] = inputValueToGristDate(due);
+    if (ac.cols.Partenaires) fields[ac.cols.Partenaires] = colValue(ac, ac.cols.Partenaires, [structureId]);
+    if (ac.cols.Contacts && moi()) fields[ac.cols.Contacts] = colValue(ac, ac.cols.Contacts, [moi().id]);
+    try {
+      await addRecord(ac.tableId, fields);
+      await charger(false);
+      render();
+      setStatus('Action ajoutée ✓');
+    } catch (err) { console.error(err); toast('Ajout impossible', true); }
+  }
+
   function enregistrerLiens(projetId, liens) {
     const op = related.opportunites;
     if (!op.cols.Liens) return;
@@ -1835,7 +2449,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     if (tab) { ui.vue = tab.dataset.vue; ui.sheet = null; render(); $('main').scrollTop = 0; return; }
     const kpiVue = t.closest('.es-kpi[data-vue]');
     if (kpiVue) { ui.vue = kpiVue.dataset.vue; render(); return; }
-    if (t.closest('[data-close]') || t === $('backdrop')) { ui.sheet = null; renderSheet(); return; }
+    if (t.closest('[data-close]') || t === $('backdrop')) { if (editeur) fermerEditeur(); else { ui.sheet = null; renderSheet(); } return; }
     const onglet = t.closest('.es-sheet-tabs [data-tab]');
     if (onglet) { ui.sheet.tab = onglet.dataset.tab; renderSheet(); return; }
     const copier = t.closest('[data-copier]');
@@ -1847,6 +2461,39 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
       return;
     }
     if (t.matches('[data-fait]')) return; // géré par « change »
+    if (t.closest('[data-ed-annuler]')) { fermerEditeur(); return; }
+    const suppr2 = t.closest('[data-ed-suppr]');
+    if (suppr2) { supprimerEditeur(suppr2); return; }
+    const rte = t.closest('[data-rte]');
+    if (rte) {
+      const [cmd, arg] = rte.dataset.rte.split(':');
+      document.execCommand(cmd, false, arg || null);
+      const zone = document.querySelector('.ed-cr'); if (zone) zone.focus();
+      return;
+    }
+    const edit = t.closest('[data-edit]');
+    if (edit) { const [cle, id] = edit.dataset.edit.split(':'); ouvrirEditeur(cle, Number(id)); return; }
+    const nouv = t.closest('[data-new]');
+    if (nouv) {
+      const ctx = {};
+      if (nouv.dataset.ctx) { const [k, v] = nouv.dataset.ctx.split(':'); ctx[k] = Number(v); }
+      ouvrirEditeur(nouv.dataset.new, null, defautsCreation(nouv.dataset.new, ctx));
+      return;
+    }
+    const selS = t.closest('[data-sel-structure]');
+    if (selS) { voirStructure(Number(selS.dataset.selStructure)); return; }
+    const dep = t.closest('[data-deplier]');
+    if (dep) {
+      const id = Number(dep.dataset.deplier), d = ui.partenaires.deplies;
+      if (ui.partenaires.toutDeplier) { ui.partenaires.toutDeplier = false; D.echanges.forEach(e => d.add(e.id)); d.delete(id); }
+      else if (d.has(id)) d.delete(id); else d.add(id);
+      render(); return;
+    }
+    const pj = t.closest('[data-pj]');
+    if (pj) {
+      getAttachmentDownloadUrl(pj.dataset.pj).then(url => window.open(url, '_blank', 'noopener')).catch(() => toast('Pièce jointe indisponible', true));
+      return;
+    }
     if (t.closest('[data-fin-creer]')) {
       const manquantes = Object.keys(FN.FIN_TABLES).filter(k => !F.tables[k]);
       if (!confirm('Créer ' + manquantes.length + ' table(s) dans le document : ' + manquantes.map(k => FN.FIN_TABLES[k].tableId).join(', ') + ' ?')) return;
@@ -1900,7 +2547,11 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
   });
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { fermerPop(); if (ui.sheet) { ui.sheet = null; renderSheet(); } }
+    if (e.key === 'Escape') {
+      fermerPop();
+      if (document.querySelector('.ms-filter-panel:not([hidden])')) { document.querySelectorAll('.ms-filter-panel').forEach(p => { p.hidden = true; }); return; }
+      if (editeur) fermerEditeur(); else if (ui.sheet) { ui.sheet = null; renderSheet(); }
+    }
     if (e.key === 'Enter' && e.target.closest && e.target.closest('.nd[data-open]')) ouvrir(e.target.closest('.nd').dataset.open);
   });
 
@@ -1933,6 +2584,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 
   document.addEventListener('submit', (e) => {
     const form = e.target;
+    if (form.id === 'ed-form') { e.preventDefault(); enregistrerEditeur(); return; }
     if (form.hasAttribute('data-fin-ajout-ligne')) {
       e.preventDefault();
       financeEcrire([['AddRecord', FN.FIN_TABLES.budget.tableId, null, {
@@ -1956,6 +2608,12 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     if (form.dataset.finNotes) {
       e.preventDefault();
       financeEcrire([['UpdateRecord', FN.FIN_TABLES.depenses.tableId, Number(form.dataset.finNotes), { Notes: form.notes.value }]], 'Note enregistrée ✓');
+      return;
+    }
+    if (form.dataset.ajoutActionStructure) {
+      e.preventDefault();
+      const label = form.label.value.trim();
+      if (label) ajouterActionStructure(Number(form.dataset.ajoutActionStructure), label, form.due.value);
       return;
     }
     if (form.dataset.ajoutAction) {
