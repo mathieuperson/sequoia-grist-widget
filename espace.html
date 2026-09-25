@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Espace SequoIA — Cluster SequoIA</title>
-<link rel="stylesheet" href="./common.css?v=20260925d">
+<link rel="stylesheet" href="./common.css?v=20260925g">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-<script src="./common.js?v=20260925d"></script>
-<script src="./pilotage.js?v=20260925d"></script>
-<script src="./espace.js?v=20260925d"></script>
-<script src="./finance.js?v=20260925d"></script>
+<script src="./common.js?v=20260925g"></script>
+<script src="./pilotage.js?v=20260925g"></script>
+<script src="./espace.js?v=20260925g"></script>
+<script src="./finance.js?v=20260925g"></script>
 <script src="./vendor/read-excel-file-5.8.8.min.js"></script>
 <style>
 /* Une application à onglets, dans la charte de common.css : fond gris
@@ -345,6 +345,22 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .es-x:hover { color: var(--es-late); }
 
 .es-status { font-size: 12px; color: var(--text-muted); }
+.pa-badge { display: inline-flex; align-items: center; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--es-surface-2); color: var(--text); white-space: nowrap; }
+.pa-badge.cat { background: var(--sequoia-green-light); color: var(--sequoia-green-dark); border-color: transparent; }
+.pa-badge.prospect { background: #fff4e5; color: #9a5b00; border-color: transparent; }
+.pa-badge.secteur { font-weight: 500; }
+.pa-badge.taille { font-weight: 500; color: var(--text-muted); }
+.pa-badge.axe { background: #eef2ff; color: #3730a3; border-color: transparent; }
+.pa-pills:empty { display: none; }
+.doc-ico { flex: 0 0 22px; font-size: 16px; line-height: 1.2; }
+.doc-nom { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: var(--sequoia-green-dark); cursor: pointer; text-align: left; word-break: break-word; }
+.doc-nom:hover { text-decoration: underline; }
+.doc-drop { margin-top: 10px; padding: 18px; }
+.doc-err { margin-top: 10px; font-size: 12.5px; line-height: 1.5; }
+.doc-setup p { font-size: 13.5px; margin: 0 0 12px; line-height: 1.5; }
+.doc-setup-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.doc-setup.small { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-muted); }
+.es-x.arme { font-size: 12px; color: var(--es-late); font-weight: 600; }
 
 /* ---------- Formulaire d'édition ---------- */
 .ed-actions { display: inline-flex; gap: 6px; margin-left: auto; }
@@ -375,6 +391,27 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .ed-rte-bar button:hover { background: var(--card-bg); }
 .ed-cr { min-height: 220px; max-height: 50vh; overflow-y: auto; padding: 10px 12px; font-size: 13.5px; line-height: 1.55; }
 .ed-cr img { max-width: 100%; }
+.ed-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.ed-chips:empty { display: none; }
+.ed-chip { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; background: var(--sequoia-green-light); color: var(--sequoia-green-dark); border-radius: 999px; padding: 2px 4px 2px 10px; max-width: 100%; }
+.ed-chip button { border: 0; background: none; cursor: pointer; color: inherit; font-size: 14px; line-height: 1; padding: 0 4px; }
+.ed-cr h1, .lecture-cr h1 { font-size: 18px; margin: 14px 0 8px; line-height: 1.3; }
+.ed-cr h2, .lecture-cr h2 { font-size: 16px; margin: 14px 0 6px; line-height: 1.3; }
+.ed-cr h3, .lecture-cr h3, .ed-cr h4, .lecture-cr h4 { font-size: 14.5px; margin: 12px 0 6px; }
+.ed-cr > :first-child, .lecture-cr > :first-child { margin-top: 0; }
+.lecture-cr { font-size: 14.5px; line-height: 1.65; max-width: 72ch; overflow-wrap: anywhere; }
+.lecture-cr p { margin: 0 0 10px; }
+.lecture-cr ul, .lecture-cr ol { padding-left: 22px; margin: 0 0 10px; }
+.lecture-cr li { margin: 3px 0; }
+.lecture-cr img { max-width: 100%; height: auto; border-radius: 8px; }
+.lecture-cr table { border-collapse: collapse; font-size: 13px; margin: 8px 0; }
+.lecture-cr td, .lecture-cr th { border: 1px solid var(--border); padding: 5px 8px; }
+.lecture-cr blockquote { margin: 8px 0; padding-left: 12px; border-left: 3px solid var(--border); color: var(--text-muted); }
+.lecture-qui { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; }
+.lecture-personne { display: inline-flex; align-items: center; gap: 6px; border: 0; background: none; padding: 0; font: inherit; font-size: 12.5px; cursor: pointer; color: var(--text); }
+.lecture-personne .es-avatar { width: 22px; height: 22px; font-size: 9.5px; }
+.lecture-personne:hover { text-decoration: underline; }
+.lire-cr { display: inline-block; margin-top: 5px; font-size: 12px; font-weight: 600; color: var(--sequoia-green-dark); }
 .ed-foot { display: flex; gap: 8px; align-items: center; position: sticky; bottom: -24px; background: var(--card-bg); padding: 12px 0; border-top: 1px solid var(--es-sep); }
 .ed-foot .grow { flex: 1; }
 .ed-suppr { color: var(--es-late); }
@@ -429,7 +466,8 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .pa-cr > :first-child { margin-top: 0; }
 .pa-cr > :last-child { margin-bottom: 0; }
 .pa-cr img { max-width: 100%; height: auto; border-radius: 6px; }
-.pa-cr h1, .pa-cr h2, .pa-cr h3 { font-size: 14.5px; margin: 12px 0 6px; }
+.pa-cr h1 { font-size: 16px; margin: 12px 0 6px; }
+.pa-cr h2, .pa-cr h3 { font-size: 14.5px; margin: 12px 0 6px; }
 .pa-cr ul, .pa-cr ol { padding-left: 20px; }
 .pa-suites { margin-top: 10px; font-size: 13px; }
 .pa-pj { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
@@ -572,7 +610,9 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         Echeance: ['Echeance', 'Echéance', 'Date_fin', 'Date de dépôt'],
         AxeSequoia: ['AxeSequoia', 'Axe_Sequoia', 'Axe SequoIA', 'Axe'],
         Commentaire: ['Commentaire', 'Commentaires', 'Notes'],
-        Liens: ['Liens', 'Documents', 'Liens_documents', 'Pieces_jointes_liens']
+        Liens: ['Liens', 'Liens_documents', 'Pieces_jointes_liens'],
+        // Colonne Pièces jointes : retenue seulement si le document la déclare de ce type.
+        Documents: ['Documents', 'Fichiers', 'Pieces_jointes', 'PJ', 'Attachments']
       }
     },
     actions: {
@@ -696,7 +736,11 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     statutActionChoices = statuts.choices;
     let structures = [];
     if (structTableId) {
-      try { structures = recordsFromTableData(await fetchTableCached(structTableId)).map(r => mapRecord(r, mappings)); }
+      try {
+        const data = await fetchTableCached(structTableId);
+        colsStructure = resoudreColsStructure(dataColumns(data), data);
+        structures = recordsFromTableData(data);
+      }
       catch (err) { console.error('Structures illisibles', err); }
     }
     D = construire(structures);
@@ -706,8 +750,61 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
   // ---------------------------------------------------------------------
   // Modèle normalisé
   // ---------------------------------------------------------------------
+  // Texte brut d'un compte rendu pour les extraits : les anciens CR sont en
+  // Markdown, et « # Réunion … **Mathieu** » ne se lit pas dans un aperçu.
+  function texteCR(brut) {
+    const t = String(brut || '');
+    if (looksLikeHtml(t)) return t;
+    return t.replace(/^\s{0,3}#{1,6}\s*/gm, '').replace(/\*\*(.+?)\*\*/g, '$1').replace(/__(.+?)__/g, '$1')
+      .replace(/(^|[\s(])[*_]([^*_\n]+)[*_]/g, '$1$2').replace(/`([^`]+)`/g, '$1').replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/^\s*[-*+]\s+/gm, '· ').replace(/^\s*>\s?/gm, '');
+  }
+
+  // La colonne de fichiers des opportunités, si elle existe et qu'elle est bien
+  // de type Pièces jointes (un texte nommé « Documents » n'en est pas une).
+  function colDocuments() {
+    const op = related.opportunites;
+    const col = op && op.cols.Documents;
+    if (!col) return null;
+    const m = (op.meta || []).find(x => x.id === col);
+    return m && m.type === 'Attachments' ? col : null;
+  }
+
+  // Les colonnes de la table Structures : celles associées dans les réglages du
+  // widget d'abord, sinon retrouvées par leur nom — une colonne url_logo ou
+  // pilier_sequoia n'a pas à être associée à la main pour s'afficher.
+  const STRUCT_ROLES = {
+    Nom: ['nom_acteur', 'Nom', 'Nom_structure', 'Name'],
+    TypeActeur: ['type_acteur', 'TypeActeur', 'Type_acteur', "Type d'acteur"],
+    Categorie: ['acteur_categorie', 'Categorie', 'Catégorie', 'categorie_acteur', 'Statut_partenaire', 'Relation'],
+    Activite: ['entreprise_activite', 'secteur_activite', 'Secteur', 'Activite', 'Activité'],
+    Taille: ['entreprise_taille', 'Taille'],
+    AxeSequoia: ['axe_sequoia', 'AxeSequoia', 'Axe_SequoIA'],
+    PilierSequoia: ['pilier_sequoia', 'PilierSequoia', 'Pilier_SequoIA'],
+    Logo: ['url_logo', 'Logo', 'logo_url', 'URL_logo'],
+    SiteWeb: ['site_web', 'SiteWeb', 'url_site', 'Site'],
+    Description: ['description', 'Description', 'presentation'],
+    RechercheEquipeLabo: ['recherche_equipe_labo', 'RechercheEquipeLabo'],
+    RechercheEquipeActivite: ['recherche_equipe_activite', 'RechercheEquipeActivite'],
+    RechercheStructure: ['recherche_structure', 'RechercheStructure']
+  };
+  let colsStructure = {};
+  function resoudreColsStructure(ids, data) {
+    const devinees = resolveColumns(ids, STRUCT_ROLES);
+    const out = {};
+    Object.keys(STRUCT_ROLES).forEach(role => { out[role] = (mappings[role] && ids.includes(mappings[role]) ? mappings[role] : devinees[role]) || null; });
+    // La catégorie est ce qui distingue un prospect d'un partenaire. Si son nom
+    // ne dit rien, on prend la colonne qui contient la valeur « Prospect ».
+    const aProspect = (col) => (data && data[col] || []).some(v => listeChoix(v).some(x => normalizeKey(x) === 'prospect'));
+    if (!out.Categorie || !aProspect(out.Categorie)) {
+      const col = ids.find(aProspect);
+      if (col) out.Categorie = col;
+    }
+    return out;
+  }
+
   function construire(structuresBrutes) {
-    const sf = (s, role) => (mappings[role] ? s[role] : undefined);
+    const sf = (s, role) => (colsStructure[role] ? s[colsStructure[role]] : undefined);
     const structures = structuresBrutes.map(s => {
       const categorie = txt(sf(s, 'Categorie'));
       return {
@@ -725,6 +822,8 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         piliers: listeChoix(sf(s, 'PilierSequoia')),
         axes: listeChoix(sf(s, 'AxeSequoia')),
         isTeam: !!(txt(sf(s, 'RechercheEquipeLabo')) || txt(sf(s, 'RechercheEquipeActivite'))),
+        // « Laboratoire », « Équipe », « Institut »… : ce que la structure est dans la recherche.
+        roleRecherche: normalizeKey(txt(sf(s, 'RechercheStructure'))),
         isProspect: normalizeKey(categorie).includes('prospect')
       };
     });
@@ -758,6 +857,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         axe: txt(r[oc.AxeSequoia]),
         commentaire: oc.Commentaire ? stripHtml(String(r[oc.Commentaire] || '')) : '',
         liens: oc.Liens ? E.lireLiens(r[oc.Liens]) : null,
+        docs: colDocuments() ? attachmentIdsFromValue(r[colDocuments()]) : null,
         partnerIds,
         teamIds: toutes.filter(id => !partnerIds.includes(id)),
         contactIds: idsPar(r, colsVers('opportunites', ct.tableId))
@@ -772,7 +872,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
       date: r[ic.Date] || null,
       type: txt(r[ic.Type]),
       objet: txt(r[ic.Objet]),
-      cr: ic.CR ? excerpt(r[ic.CR], 260) : '',
+      cr: ic.CR ? excerpt(texteCR(r[ic.CR]), 260) : '',
       crBrut: ic.CR ? (r[ic.CR] || '') : '',
       suites: txt(r[ic.Suites]),
       prochaine: r[ic.ProchaineEcheance] || null,
@@ -1288,11 +1388,16 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
   function ficheSeptante(s) {
     const f = ui.partenaires;
     const b = bilanStructure(s);
-    const meta = [s.type, s.categorie, s.taille, s.activite].filter(Boolean).join(' · ');
+    const coul = couleurStructure(s);
+    const badge = (texte, titre, cls, style) => texte ? '<span class="pa-badge' + (cls ? ' ' + cls : '') + '" title="' + H(titre) + '"' + (style ? ' style="' + style + '"' : '') + '>' + H(texte) + '</span>' : '';
     const tete = '<div class="es-card pa-head">' + logoStructure(s, true) + '<div class="pa-head-txt"><h2>' + H(s.name) + '</h2>' +
-      (meta ? '<div class="es-muted">' + H(meta) + '</div>' : '') +
-      '<div class="pa-pills">' + s.piliers.map(v => '<span class="value-pill ' + pilierClass(v) + '">' + H(v) + '</span>').join('') +
-      s.axes.map(v => '<span class="es-badge">' + H(v) + '</span>').join('') +
+      '<div class="pa-pills">' +
+      badge(s.type, "Type d'acteur", 'type', 'background:' + coul + '1a;color:' + coul + ';border-color:' + coul + '55') +
+      badge(s.categorie, 'Catégorie', s.isProspect ? 'prospect' : 'cat') +
+      badge(s.activite ? '◆ ' + s.activite : '', "Secteur d'activité", 'secteur') +
+      badge(s.taille, 'Taille', 'taille') +
+      '</div><div class="pa-pills">' + s.piliers.map(v => '<span class="value-pill ' + pilierClass(v) + '" title="Pilier SequoIA">' + H(v) + '</span>').join('') +
+      s.axes.map(v => '<span class="pa-badge axe" title="Axe SequoIA">' + H(v) + '</span>').join('') +
       (s.site ? '<a class="es-link" href="' + H(/^https?:\/\//.test(s.site) ? s.site : 'https://' + s.site) + '" target="_blank" rel="noopener">' + H(s.site.replace(/^https?:\/\//, '')) + ' ↗</a>' : '') + '</div>' +
       (s.description ? '<p class="pa-desc">' + H(s.description) + '</p>' : '') + '</div>' +
       '<div class="pa-head-actions"><button type="button" class="es-btn" data-edit="structures:' + s.id + '">✎ Modifier</button>' +
@@ -1336,7 +1441,8 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         (!ouvert && e.cr ? '<small class="pa-ech-ext">' + H(excerpt(e.cr, 160)) + '</small>' : '') + '</span>' +
         '<span class="pa-ech-icons">' + (e.pj.length ? '📎 ' + e.pj.length : '') + (e.crBrut ? ' <span title="Compte rendu">CR</span>' : '') + '</span></button>' +
         (ouvert ? '<div class="pa-ech-body">' +
-          '<div class="pa-ech-tools"><button type="button" class="es-btn pa-mini" data-edit="interactions:' + e.id + '">✎ Modifier l’échange</button></div>' +
+          '<div class="pa-ech-tools"><button type="button" class="es-btn pa-mini" data-open="echange:' + e.id + '">📖 Lire en grand</button>' +
+          '<button type="button" class="es-btn pa-mini" data-edit="interactions:' + e.id + '">✎ Modifier l’échange</button></div>' +
           (projets.length ? '<div class="pa-pills" style="margin:0 0 8px">' + projets.map(p => '<button type="button" class="es-pill" data-open="projet:' + p.id + '">' + H(p.title) + ' <small>projet</small></button>').join('') + '</div>' : '') +
           (e.crBrut ? '<div class="pa-cr" data-cr="' + e.id + '"></div>' : '<div class="es-muted" style="font-style:italic;font-size:13px">Pas de compte rendu.</div>') +
           (e.suites || e.prochaine ? '<div class="pa-suites"><b>Suites</b> ' + H(e.suites || '') + (e.prochaine ? ' <span class="es-muted">· échéance ' + H(formatDate(e.prochaine)) + '</span>' : '') + '</div>' : '') +
@@ -1364,10 +1470,14 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
       el.innerHTML = normalizeCrToHtml(e.crBrut);
       resolveImagesIn(el);
     });
+    const poser = (id, m) => {
+      document.querySelectorAll('[data-pj-nom="' + id + '"]').forEach(el => { el.textContent = m.fileName; });
+      document.querySelectorAll('[data-pj-taille="' + id + '"]').forEach(el => { el.textContent = m.fileSize ? formatTaille(m.fileSize) : ''; });
+    };
     document.querySelectorAll('[data-pj-nom]').forEach(el => {
       const id = el.dataset.pjNom;
-      if (nomsPj[id]) { el.textContent = nomsPj[id]; return; }
-      getAttachmentMeta(id).then(m => { nomsPj[id] = m.fileName; el.textContent = m.fileName; }).catch(() => {});
+      if (nomsPj[id]) { poser(id, nomsPj[id]); return; }
+      getAttachmentMeta(id).then(m => { nomsPj[id] = m; poser(id, m); }).catch(() => {});
     });
   }
 
@@ -1502,12 +1612,31 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
   // Fiche latérale
   // ---------------------------------------------------------------------
   function ligneEchange(e) {
-    return '<div class="es-row"><span class="d">' + H(e.date ? formatDate(e.date) : '—') + '</span><div style="min-width:0">' +
+    return '<div class="es-row click" data-open="echange:' + e.id + '" title="Lire le compte rendu"><span class="d">' + H(e.date ? formatDate(e.date) : '—') + '</span><div style="min-width:0">' +
       '<div class="t">' + H([e.type, e.objet].filter(Boolean).join(' · ') || 'Sans objet') + '</div>' +
       (e.partnerIds.length ? '<div class="s">' + H(nomsS(e.partnerIds)) + '</div>' : '') +
-      (e.cr ? '<div class="cr">' + H(e.cr) + '</div>' : '') + '</div>' +
+      (e.cr ? '<div class="cr">' + H(e.cr) + '</div>' : '') +
+      (e.crBrut ? '<span class="lire-cr">📖 Lire le compte rendu</span>' : '') + '</div>' +
       '<button type="button" class="es-x ed-crayon" data-edit="interactions:' + e.id + '" title="Modifier l’échange" aria-label="Modifier l’échange">✎</button></div>';
   }
+  // Un échange en pleine page : de quoi lire un compte rendu confortablement.
+  function ficheEchange(e, retour) {
+    const qui = e.contactIds.map(id => D.cById.get(id)).filter(Boolean);
+    const projets = e.projectIds.map(id => D.pById.get(id)).filter(Boolean);
+    const head = '<div class="es-sheet-top">' + (retour ? '<button type="button" class="es-btn" data-retour>← Retour</button>' : '') +
+      (e.type ? '<span class="es-badge">' + H(e.type) + '</span>' : '') + '<span class="es-muted" style="font-size:13px">' + H(e.date ? formatDate(e.date) : '') + '</span>' +
+      '<span class="ed-actions"><button type="button" class="es-btn" data-edit="interactions:' + e.id + '">✎ Modifier</button></span>' +
+      '<button type="button" class="es-btn icon close" data-close aria-label="Fermer">✕</button></div>' +
+      '<h2>' + H(e.objet || 'Sans objet') + '</h2>' +
+      '<div class="es-pills">' + e.partnerIds.map(id => '<button type="button" class="es-pill" data-open="structure:' + id + '">' + H(nomS(id)) + '</button>').join('') +
+      projets.map(p => '<button type="button" class="es-pill" data-open="projet:' + p.id + '">' + H(p.title) + ' <small>projet</small></button>').join('') + '</div>' +
+      (qui.length ? '<div class="lecture-qui">' + qui.map(c => '<button type="button" class="lecture-personne" data-open="contact:' + c.id + '">' + avatar(c.name, '#64748b') + H(c.name) + '</button>').join('') + '</div>' : '');
+    const body = (e.crBrut ? '<article class="lecture-cr" data-cr="' + e.id + '"></article>' : vide('Pas de compte rendu pour cet échange.')) +
+      (e.suites || e.prochaine ? '<div class="es-section"><h5>Suites</h5><div class="es-note">' + H(e.suites || '') + (e.prochaine ? '\nÉchéance : ' + H(formatDate(e.prochaine)) : '') + '</div></div>' : '') +
+      (e.pj.length ? '<div class="es-section"><h5>Pièces jointes</h5><div class="pa-pj">' + e.pj.map(id => '<button type="button" class="es-pill" data-pj="' + id + '">📎 <span data-pj-nom="' + id + '">Pièce jointe #' + id + '</span></button>').join('') + '</div></div>' : '');
+    return { head, tabs: [], body };
+  }
+
   function ligneAction(a) {
     const j = a.due ? E.joursAvant(a.due, nowTs()) : null;
     return '<div class="es-row"><input type="checkbox" data-fait="' + a.id + '"' + (a.done ? ' checked' : '') + (related.actions.cols.Fait ? '' : ' disabled') + ' aria-label="Faite">' +
@@ -1529,7 +1658,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     const lies = D.liesProjet.get(p.id);
     const personnes = p.contactIds.map(id => D.cById.get(id)).filter(Boolean);
     const tabs = [['general', 'Général'], ['echanges', 'Échanges', lies.echanges.length], ['actions', 'Actions', lies.actions.filter(a => !a.done).length],
-      ['personnes', 'Personnes', personnes.length]].concat(p.liens ? [['liens', 'Liens', p.liens.length]] : []);
+      ['personnes', 'Personnes', personnes.length], ['documents', 'Documents', (p.docs || []).length + (p.liens || []).length]];
     const head = '<div class="es-sheet-top">' + badgeEtape(p.stage) + badgeType(p.type) +
       '<span class="ed-actions"><button type="button" class="es-btn" data-edit="opportunites:' + p.id + '">✎ Modifier</button>' +
       '<button type="button" class="es-btn" data-new="interactions" data-ctx="projet:' + p.id + '">+ Échange</button></span>' +
@@ -1553,6 +1682,8 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         (related.actions.tableId ? '<form class="es-form" data-ajout-action="' + p.id + '"><input class="grow" name="label" placeholder="Nouvelle action…" required><input type="date" name="due"><button class="es-btn primary" type="submit">Ajouter</button></form>' : '');
     } else if (tab === 'personnes') {
       body = personnes.length ? '<div class="es-list">' + personnes.map(ligneContact).join('') + '</div>' : vide('Personne n’est rattaché à ce projet.');
+    } else if (tab === 'documents') {
+      body = documentsProjet(p);
     } else if (tab === 'liens') {
       body = (p.liens.length ? '<div class="es-list">' + p.liens.map((l, i) => '<div class="es-row"><div style="min-width:0;flex:1"><a class="es-link" href="' + H(l.url) + '" target="_blank" rel="noopener">' + H(l.libelle) + '</a>' +
         (l.libelle !== l.url ? '<div class="s">' + H(l.url) + '</div>' : '') + '</div><button type="button" class="es-x" data-suppr-lien="' + i + '" aria-label="Retirer">×</button></div>').join('') + '</div>'
@@ -1560,6 +1691,79 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         '<form class="es-form" data-ajout-lien="' + p.id + '"><input name="libelle" placeholder="Libellé"><input class="grow" name="url" type="url" placeholder="https://…" required><button class="es-btn primary" type="submit">Ajouter</button></form>';
     }
     return { head, tabs, body };
+  }
+
+  // Les fichiers d'un projet (colonne Pièces jointes) et ses liens (colonne
+  // texte). Chaque bloc n'apparaît que si sa colonne existe ; sinon, le widget
+  // propose de la créer.
+  let envoiEnCours = null; // { projet, message, erreur }
+  function documentsProjet(p) {
+    const op = related.opportunites;
+    const aDocs = !!colDocuments(), aLiens = !!op.cols.Liens;
+    let html = '';
+    if (!aDocs && !aLiens) {
+      return '<div class="doc-setup"><p>Pour joindre des fichiers (brief, PDF, convention…) à un projet, il faut une colonne de type <b>Pièces jointes</b> dans la table ' + H(op.tableId) + '. ' +
+        'Pour des liens vers un drive ou un site, une colonne texte <b>Liens</b>.</p>' +
+        '<div class="doc-setup-btns"><button type="button" class="es-btn primary" data-doc-colonne="Documents">Ajouter la colonne Documents</button>' +
+        '<button type="button" class="es-btn" data-doc-colonne="Liens">Ajouter la colonne Liens</button></div></div>';
+    }
+    if (aDocs) {
+      const etat = envoiEnCours && envoiEnCours.projet === p.id ? envoiEnCours : null;
+      html += '<div class="es-section" style="margin-top:0"><h5>Fichiers</h5>' +
+        (p.docs.length ? '<div class="es-list">' + p.docs.map(id =>
+          '<div class="es-row"><span class="doc-ico">📄</span><div style="min-width:0;flex:1"><button type="button" class="doc-nom" data-pj="' + id + '"><span data-pj-nom="' + id + '">Fichier #' + id + '</span></button>' +
+          '<div class="s" data-pj-taille="' + id + '"></div></div>' +
+          '<button type="button" class="es-x" data-doc-retirer="' + id + '" title="Retirer du projet" aria-label="Retirer du projet">×</button></div>').join('') + '</div>'
+          : '<div class="es-muted" style="font-size:13px;font-style:italic;margin-bottom:8px">Aucun fichier.</div>') +
+        '<label class="fi-drop doc-drop" data-doc-projet="' + p.id + '"><input type="file" multiple hidden data-doc-upload="' + p.id + '">' +
+        (etat && !etat.erreur ? '<b>' + H(etat.message) + '</b>' : '<b>Déposer un fichier</b> ou cliquer pour parcourir') + '</label>' +
+        (etat && etat.erreur ? '<div class="fi-trier warn doc-err"><div><b>Le fichier n’a pas pu être envoyé.</b> ' + H(etat.message) +
+          '<br>En attendant, déposez-le directement dans la cellule <b>' + H(colDocuments()) + '</b> de ce projet, dans la table ' + H(op.tableId) + ' de Grist : il apparaîtra ici.' +
+          (aLiens ? ' Ou ajoutez ci-dessous un lien vers le fichier.' : '') + '</div></div>' : '') + '</div>';
+    } else {
+      html += '<div class="doc-setup small"><span>Pas encore de colonne de fichiers.</span><button type="button" class="es-btn" data-doc-colonne="Documents">Ajouter la colonne Documents</button></div>';
+    }
+    if (aLiens) {
+      html += '<div class="es-section"><h5>Liens</h5>' + (p.liens.length ? '<div class="es-list">' + p.liens.map((l, i) => '<div class="es-row"><span class="doc-ico">🔗</span><div style="min-width:0;flex:1"><a class="es-link" href="' + H(l.url) + '" target="_blank" rel="noopener">' + H(l.libelle) + '</a>' +
+        (l.libelle !== l.url ? '<div class="s">' + H(l.url) + '</div>' : '') + '</div><button type="button" class="es-x" data-suppr-lien="' + i + '" aria-label="Retirer">×</button></div>').join('') + '</div>'
+        : '<div class="es-muted" style="font-size:13px;font-style:italic">Aucun lien.</div>') +
+        '<form class="es-form" data-ajout-lien="' + p.id + '"><input name="libelle" placeholder="Libellé"><input class="grow" name="url" type="url" placeholder="https://…" required><button class="es-btn primary" type="submit">Ajouter</button></form></div>';
+    }
+    return html;
+  }
+
+  async function envoyerDocuments(projetId, fichiers) {
+    const liste = Array.from(fichiers || []).filter(Boolean);
+    const col = colDocuments();
+    const p = D.pById.get(projetId);
+    if (!liste.length || !col || !p) return;
+    envoiEnCours = { projet: projetId, message: 'Envoi de ' + liste.length + ' fichier(s)…', erreur: false };
+    renderSheet();
+    try {
+      const ids = await uploadAttachments(liste);
+      await updateRecord(related.opportunites.tableId, projetId, { [col]: ['L', ...p.docs, ...ids] });
+      envoiEnCours = null;
+      await charger(false);
+      render();
+      setStatus(ids.length + ' fichier(s) ajouté(s) ✓');
+    } catch (err) {
+      console.error(err);
+      envoiEnCours = { projet: projetId, message: err && err.message ? err.message : String(err), erreur: true };
+      renderSheet();
+    }
+  }
+
+  async function ajouterColonneProjet(nom) {
+    const op = related.opportunites;
+    const def = nom === 'Documents' ? { type: 'Attachments', label: 'Documents', isFormula: false } : { type: 'Text', label: 'Liens', isFormula: false };
+    try {
+      await grist.docApi.applyUserActions([['AddColumn', op.tableId, nom, def]]);
+      invalidateTableCache(op.tableId);
+      if (typeof _colMetaCache !== 'undefined') delete _colMetaCache[op.tableId];
+      await charger(true);
+      render();
+      setStatus('Colonne ' + nom + ' ajoutée ✓');
+    } catch (err) { console.error(err); toast('Ajout de la colonne impossible : ' + (err && err.message ? err.message : err), true); }
   }
 
   function ficheStructure(s, tab) {
@@ -1628,7 +1832,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
   // Les colonnes à montrer en premier : celles dont le widget connaît le rôle,
   // dans l'ordre de la configuration.
   function rolesPrioritaires(cle) {
-    if (cle === 'structures') return COLUMNS.map(c => mappings[c.name]).filter(Boolean);
+    if (cle === 'structures') return Object.values(colsStructure).filter(Boolean);
     const r = related[cle];
     return r ? Object.values(r.cols).filter(Boolean) : [];
   }
@@ -1659,7 +1863,31 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     const cibles = Array.from(new Set(cols.map(m => (/^Ref(?:List)?:(.+)$/.exec(m.type) || [])[1]).filter(Boolean)));
     const options = {};
     for (const t of cibles) options[t] = await optionsReference(t);
-    return { tableId, cols, records, options };
+    // Une colonne « Laboratoire(s) Cluster » ne propose que des laboratoires,
+    // « Équipe(s) Cluster » que des équipes, « Établissement(s) » que des
+    // établissements — comme le formulaire du Pilotage.
+    const optionsCol = {};
+    cols.forEach(m => {
+      const cible = (/^Ref(?:List)?:(.+)$/.exec(m.type) || [])[1];
+      if (cible !== structTableId) return;
+      const filtre = filtreRoleStructure(m);
+      if (!filtre) return;
+      const gardes = new Set(D.structures.filter(filtre).map(x => x.id));
+      const courants = new Set(records.flatMap(r => refIdsFromValue(r[m.id])));
+      const sousListe = (options[cible] || []).filter(o => gardes.has(o.id) || courants.has(o.id));
+      // Aucune structure typée ainsi : la liste entière plutôt qu'un champ vide.
+      if (gardes.size) optionsCol[m.id] = sousListe;
+    });
+    return { tableId, cols, records, options, optionsCol };
+  }
+
+  function filtreRoleStructure(m) {
+    const k = normalizeKey((m.id || '') + ' ' + (m.label || ''));
+    const type = (s) => normalizeKey(s.type);
+    if (k.includes('labo')) return (s) => s.roleRecherche.includes('laboratoire');
+    if (k.includes('equipe')) return (s) => s.roleRecherche.includes('equipe') || s.isTeam;
+    if (k.includes('etablissement')) return (s) => type(s).includes('academique') || s.roleRecherche === 'institut' || s.roleRecherche.includes('etablissement');
+    return null;
   }
 
   // Les lignes d'une table visée par une référence, avec un libellé lisible
@@ -1685,7 +1913,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 
   const estCR = (cle, m) => cle === 'interactions' && m.id === related.interactions.cols.CR;
 
-  function champEdition(cle, m, valeur, options) {
+  function champEdition(cle, m, valeur, options, optionsCol) {
     const id = 'ed-' + m.id;
     const lbl = '<label for="' + H(id) + '">' + H(m.label || m.id) + '</label>';
     const base = m.type.split(':')[0];
@@ -1710,16 +1938,17 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         choix.map(c => '<option' + (c === valeur ? ' selected' : '') + '>' + H(c) + '</option>').join('') + '</select></div>';
     }
     if (base === 'ChoiceList' || base === 'RefList') {
-      return '<div class="ed-field">' + lbl.replace('<label for="' + H(id) + '">', '<label>') + msFilterMarkup(id, m.label || m.id, 'Aucun') + '</div>';
+      return '<div class="ed-field">' + lbl.replace('<label for="' + H(id) + '">', '<label>') + msFilterMarkup(id, m.label || m.id, 'Aucun') +
+        '<div class="ed-chips" id="ed-chips-' + H(m.id) + '"></div></div>';
     }
     if (base === 'Ref') {
-      const opts = options[cible] || [];
+      const opts = (optionsCol && optionsCol[m.id]) || options[cible] || [];
       return '<div class="ed-field">' + lbl + '<select id="' + H(id) + '" data-col="' + H(m.id) + '" data-kind="ref"><option value="0">—</option>' +
         opts.map(o => '<option value="' + o.id + '"' + (o.id === valeur ? ' selected' : '') + '>' + H(o.label) + '</option>').join('') + '</select></div>';
     }
     if (base === 'Attachments') {
       const n = attachmentIdsFromValue(valeur).length;
-      return '<div class="ed-field"><label>' + H(m.label || m.id) + '</label><div class="es-muted" style="font-size:12.5px;padding-top:6px">' + n + ' fichier(s) — à gérer depuis le CRM ou la table.</div></div>';
+      return '<div class="ed-field"><label>' + H(m.label || m.id) + '</label><div class="es-muted" style="font-size:12.5px;padding-top:6px">' + n + ' fichier(s) — à gérer dans l’onglet Documents de la fiche.</div></div>';
     }
     // Texte : une zone sur plusieurs lignes pour les notes et descriptions.
     // Un texte sur plusieurs lignes (liens, notes) doit garder ses retours à la ligne.
@@ -1751,7 +1980,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     sheet.innerHTML = '<div class="es-sheet-head"><div class="es-sheet-top"><span class="es-badge">' + H(id ? 'Modifier ' + EDIT_TITRES[cle] : EDIT_NOUVEAU[cle]) + '</span>' +
       '<button type="button" class="es-btn icon close" data-ed-annuler aria-label="Fermer">✕</button></div>' +
       '<h2>' + H(nom || (id ? '' : EDIT_NOUVEAU[cle])) + '</h2></div>' +
-      '<form class="es-sheet-body ed-form" id="ed-form"><div class="ed-grid">' + meta.cols.map(m => champEdition(cle, m, valeurs[m.id], meta.options)).join('') + '</div>' +
+      '<form class="es-sheet-body ed-form" id="ed-form"><div class="ed-grid">' + meta.cols.map(m => champEdition(cle, m, valeurs[m.id], meta.options, meta.optionsCol)).join('') + '</div>' +
       '<div class="ed-foot">' + (id ? '<button type="button" class="es-btn ed-suppr" data-ed-suppr>Supprimer</button>' : '') +
       '<span class="grow"></span><button type="button" class="es-btn" data-ed-annuler>Annuler</button><button type="submit" class="es-btn primary">Enregistrer</button></div></form>';
     sheet.classList.add('open'); $('backdrop').classList.add('open'); sheet.setAttribute('aria-hidden', 'false');
@@ -1764,20 +1993,30 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
       if (base === 'ChoiceList') {
         const courants = listeChoix(valeurs[m.id]);
         const choix = m.choices.concat(courants.filter(c => !m.choices.includes(c)));
-        editeur.selects[m.id] = { kind: 'choicelist', widget: createMultiSelect(root, { values: choix, selected: courants, labelAll: 'Aucun' }) };
+        editeur.selects[m.id] = { kind: 'choicelist', widget: createMultiSelect(root, { values: choix, selected: courants, labelAll: 'Aucun', onChange: (sel) => pastilles(m.id, sel) }) };
+        pastilles(m.id, courants);
       } else {
         const cible = m.type.split(':')[1];
-        const opts = meta.options[cible] || [];
+        const opts = meta.optionsCol[m.id] || meta.options[cible] || [];
         const parLabel = new Map(opts.map(o => [o.label, o.id]));
         const ids = refIdsFromValue(valeurs[m.id]);
         const selected = opts.filter(o => ids.includes(o.id)).map(o => o.label);
-        editeur.selects[m.id] = { kind: 'reflist', parLabel, widget: createMultiSelect(root, { values: opts.map(o => o.label), selected, labelAll: 'Aucun' }) };
+        editeur.selects[m.id] = { kind: 'reflist', parLabel, widget: createMultiSelect(root, { values: opts.map(o => o.label), selected, labelAll: 'Aucun', onChange: (sel) => pastilles(m.id, sel) }) };
+        pastilles(m.id, selected);
       }
     });
     const cr = sheet.querySelector('[data-kind="cr"]');
     if (cr) { cr.innerHTML = normalizeCrToHtml(valeurs[cr.dataset.col] || ''); resolveImagesIn(cr); }
     const premier = sheet.querySelector('.ed-form input[type="text"], .ed-form textarea');
     if (premier) premier.focus();
+  }
+
+  // Les valeurs retenues d'une liste multiple, en clair sous le bouton : « 1
+  // sélectionné » ne dit pas lequel. Un clic sur la croix retire la valeur.
+  function pastilles(col, valeurs) {
+    const el = document.getElementById('ed-chips-' + col);
+    if (!el) return;
+    el.innerHTML = valeurs.map(v => '<span class="ed-chip">' + H(v) + '<button type="button" data-chip-retirer="' + H(col) + '" data-val="' + H(v) + '" aria-label="Retirer ' + H(v) + '">×</button></span>').join('');
   }
 
   // Ce que le formulaire contient, dans la forme que Grist attend pour chaque type.
@@ -1906,6 +2145,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     else if (s.kind === 'structure' && D.sById.has(s.id)) f = ficheStructure(D.sById.get(s.id), s.tab || 'projets');
     else if (s.kind === 'contact' && D.cById.has(s.id)) f = ficheContact(D.cById.get(s.id), s.tab || 'echanges');
     else if (s.kind === 'action' && D.aById.has(s.id)) f = ficheAction(D.aById.get(s.id));
+    else if (s.kind === 'echange' && D.eById.has(s.id)) f = ficheEchange(D.eById.get(s.id), s.retour);
     else if (s.kind === 'depense' && F) { const d = F.depenses.find(x => x.id === s.id); if (d) f = ficheDepense(d); }
     if (!f) { ui.sheet = null; return renderSheet(); }
     const actif = s.tab || (f.tabs[0] || [])[0];
@@ -1914,6 +2154,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         (n !== undefined ? '<span class="n">' + n + '</span>' : '') + '</button>').join('') + '</div>' : '') +
       '<div class="es-sheet-body">' + f.body + '</div>';
     sheet.classList.add('open'); $('backdrop').classList.add('open'); sheet.setAttribute('aria-hidden', 'false');
+    remplirComptesRendus();
   }
 
   function voirStructure(id) {
@@ -1934,7 +2175,9 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     const [kind, id] = String(ref).split(':');
     // Une structure s'ouvre dans sa fiche complète, onglet Partenaires.
     if (kind === 'structure') { voirStructure(Number(id)); return; }
-    ui.sheet = { kind, id: Number(id), tab: null };
+    // Le lecteur de compte rendu garde la fiche d'où l'on vient, pour y revenir.
+    const retour = kind === 'echange' && ui.sheet && ui.sheet.kind !== 'edit' && ui.sheet.kind !== 'echange' ? Object.assign({}, ui.sheet) : null;
+    ui.sheet = { kind, id: Number(id), tab: null, retour };
     renderSheet();
   }
 
@@ -2462,6 +2705,25 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     }
     if (t.matches('[data-fait]')) return; // géré par « change »
     if (t.closest('[data-ed-annuler]')) { fermerEditeur(); return; }
+    if (t.closest('[data-retour]') && ui.sheet && ui.sheet.retour) { ui.sheet = ui.sheet.retour; renderSheet(); return; }
+    const chip = t.closest('[data-chip-retirer]');
+    if (chip && editeur) {
+      const sel = editeur.selects[chip.dataset.chipRetirer];
+      const reste = sel.widget.getSelected().filter(v => v !== chip.dataset.val);
+      sel.widget.setSelected(reste);
+      pastilles(chip.dataset.chipRetirer, reste);
+      return;
+    }
+    const docCol = t.closest('[data-doc-colonne]');
+    if (docCol) { ajouterColonneProjet(docCol.dataset.docColonne); return; }
+    const retirer = t.closest('[data-doc-retirer]');
+    if (retirer && ui.sheet) {
+      const p = D.pById.get(ui.sheet.id);
+      if (!retirer.dataset.arme) { retirer.dataset.arme = '1'; retirer.textContent = 'Retirer ?'; retirer.classList.add('arme'); return; }
+      const reste = p.docs.filter(x => String(x) !== retirer.dataset.docRetirer);
+      ecrire(related.opportunites.tableId, p.id, { [colDocuments()]: reste.length ? ['L', ...reste] : null }, 'Fichier retiré du projet');
+      return;
+    }
     const suppr2 = t.closest('[data-ed-suppr]');
     if (suppr2) { supprimerEditeur(suppr2); return; }
     const rte = t.closest('[data-rte]');
@@ -2578,6 +2840,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
       return;
     }
     if (t.id === 'fin-fichier' && t.files && t.files[0]) { lireFichier(t.files[0]); return; }
+    if (t.dataset && t.dataset.docUpload && t.files && t.files.length) { envoyerDocuments(Number(t.dataset.docUpload), t.files); return; }
     if (t.id === 'fin-exo' && apercu) { apercu.exercice = Number(t.value) || apercu.exercice; render(); return; }
     if (t.matches('select[data-set]')) { poser(t.dataset.set, t.value); render(); }
   });
@@ -2636,7 +2899,8 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     const zone = e.target.closest && e.target.closest('.fi-drop');
     if (!zone || !e.dataTransfer || !e.dataTransfer.files.length) return;
     e.preventDefault();
-    lireFichier(e.dataTransfer.files[0]);
+    if (zone.dataset.docProjet) envoyerDocuments(Number(zone.dataset.docProjet), e.dataTransfer.files);
+    else lireFichier(e.dataTransfer.files[0]);
   });
 
   // Glisser-déposer natif : projets entre étapes, actions entre statuts.

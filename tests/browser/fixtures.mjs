@@ -210,8 +210,8 @@ export function pilotageConfig() {
     acteur_categorie: partners.map(p => p[2]).concat(teams.map(() => 'Partenaire')),
     entreprise_activite: partners.map(p => p[3]).concat(teams.map(() => '')),
     entreprise_taille: partners.map(p => p[4]).concat(teams.map(() => '')),
-    axe_sequoia: partners.map(() => '').concat(teams.map(() => '')),
-    pilier_sequoia: partners.map(() => '').concat(teams.map(() => '')),
+    axe_sequoia: partners.map((_, i) => (i === 4 ? ['L', 'Cybersécurité'] : '')).concat(teams.map(() => '')),
+    pilier_sequoia: partners.map((_, i) => (i === 4 ? ['L', 'IA & sécurité'] : '')).concat(teams.map(() => '')),
     recherche_structure: partners.map(() => '').concat(teams.map(t => t[1])),
     // Ces deux colonnes sont ce qui distingue une équipe de recherche d'un
     // partenaire dans le widget.
@@ -365,6 +365,12 @@ export function espaceConfig() {
   opp.data.ContactCluster = opp.data.id.map((_, i) => (i % 3 === 0 ? ['L', 201] : i % 3 === 1 ? ['L', 204, 205] : null));
   opp.data.Liens = opp.data.id.map((_, i) => (i === 1 ? 'Dossier ANR | https://drive.example.org/visionmer\nhttps://anr.fr' : ''));
   cfg.columnsMeta.Opportunites.push(refCol('ContactCluster', 'RefList:Contacts', 'Contact(s) Cluster'));
+  // Un ancien compte rendu en Markdown, tel que le CRM les stockait.
+  cfg.tables.Interactions.data.CR[12] = '# Réunion Kerlink – revue annuelle du partenariat\n\n## Participants\n- **Julien Faure** (Kerlink)\n- **Mathieu** (Cluster)\n\n## Points clés\nLe projet *VisionMer* avance : les capteurs sont déployés sur deux sites.\n\n## Décisions\n1. Déposer le dossier ANR avant le 26/10\n2. Associer OBELIX au montage';
+  // Des fichiers joints au projet VisionMer (colonne Pièces jointes).
+  opp.colIds.push('Documents');
+  opp.data.Documents = opp.data.id.map((_, i) => (i === 1 ? ['L', 801, 802] : null));
+  cfg.columnsMeta.Opportunites.push({ id: 'Documents', fields: { type: 'Attachments', label: 'Documents' } });
 
   // [intitulé, échéance (jours), fait, statut, opportunité (401…), partenaire, contacts, important, échange]
   const acts = [
