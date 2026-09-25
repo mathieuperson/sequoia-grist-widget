@@ -30,9 +30,15 @@ async function shot(name, { width = 1440, height = 1000, vue = null, apres = nul
     const tableId = decodeURIComponent(new URL(r.request().url()).pathname.split('/tables/')[1].split('/')[0]);
     r.fulfill({ contentType: 'application/json', body: JSON.stringify({ columns: (cfg.columnsMeta || {})[tableId] || [] }) });
   });
-  // Hors ligne : marked et DOMPurify remplacés par des doublures.
-  await page.route('**/cdn.jsdelivr.net/**', (r) => r.fulfill({ contentType: 'application/javascript',
-    body: 'window.marked = { parse: (s) => s }; window.DOMPurify = { sanitize: (s) => s };' }));
+  // Hors ligne : marked et DOMPurify servis depuis node_modules (devDependencies),
+  // pour que les comptes rendus Markdown s'affichent comme en vrai.
+  await page.route('**/cdn.jsdelivr.net/**', (r) => {
+    const url = r.request().url();
+    const fichier = /marked/.test(url) ? 'marked/lib/marked.umd.js' : /purify/.test(url) ? 'dompurify/dist/purify.min.js' : null;
+    const chemin = fichier && path.join(REPO, 'node_modules', fichier);
+    if (chemin && fs.existsSync(chemin)) return r.fulfill({ contentType: 'application/javascript', body: fs.readFileSync(chemin, 'utf8') });
+    return r.fulfill({ contentType: 'application/javascript', body: 'window.marked = { parse: (s) => s }; window.DOMPurify = { sanitize: (s) => s };' });
+  });
   await page.route('**/attachments/**', (r) => r.fulfill({ contentType: 'application/json', body: JSON.stringify({ fileName: 'CR_signe.pdf', fileSize: 2048 }) }));
   await page.goto('file://' + path.join(REPO, 'espace.html') + (vue ? '?vue=' + vue : ''));
   await page.waitForSelector('.es-inner');
@@ -61,6 +67,9 @@ await shot('espace-edition-echange', { vue: 'partenaires', apres: async (p) => {
 } });
 await shot('espace-edition-projet', { vue: 'projets', apres: async (p) => {
   await p.click('.es-pcard >> text=VisionMer'); await p.click('[data-edit^="opportunites:"]'); await p.waitForSelector('#ed-form');
+} });
+await shot('espace-lecture-cr', { vue: 'projets', apres: async (p) => {
+  await p.click('.es-pcard >> text=VisionMer'); await p.click('[data-tab="echanges"]'); await p.click('.es-row >> text=Revue annuelle');
 } });
 await shot('espace-partenaires-globale', { vue: 'partenaires', apres: (p) => p.click('[data-set="partenaires.mode"][data-val="tableau"]') });
 await shot('espace-partenaires-cartes', { vue: 'partenaires', apres: (p) => p.click('[data-set="partenaires.mode"][data-val="cartes"]') });

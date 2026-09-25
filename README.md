@@ -217,6 +217,15 @@ relations), sur le modèle de données du Cluster. Aucun code n'en est repris.
   une colonne ajoutée dans Grist y apparaît sans toucher au widget ; les colonnes formules n'y figurent pas. Seules
   les valeurs changées sont écrites ; la suppression demande une confirmation.
 
+- **Lire un compte rendu** : un clic sur un échange (fiche projet, contact) ou « 📖 Lire en grand » (fiche
+  partenaire) ouvre le CR en pleine page, mis en forme (y compris les anciens CR en Markdown), avec ses participants,
+  projets, suites et pièces jointes ; « ← Retour » ramène à la fiche d'origine.
+- **Colonnes des structures** : associées dans les réglages du widget, ou à défaut retrouvées par leur nom
+  (`url_logo`, `type_acteur`, `pilier_sequoia`, `axe_sequoia`, `entreprise_activite`, `recherche_structure`…).
+  La fiche affiche type d'acteur, catégorie, secteur, taille, piliers et axes en badges.
+- Dans les formulaires, les listes multiples montrent leurs valeurs en pastilles (retirables d'un clic) ; les colonnes
+  « Laboratoire(s) / Équipe(s) / Établissement(s) Cluster » ne proposent que des structures de ce rôle.
+
 `espace.html?vue=projets` (ou `partenaires`, `contacts`, `actions`, `finance`) ouvre directement une vue. La logique pure vit
 dans `espace.js`, testée par `tests/espace.test.mjs`.
 
