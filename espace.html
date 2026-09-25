@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Espace SequoIA — Cluster SequoIA</title>
-<link rel="stylesheet" href="./common.css?v=20260925c">
+<link rel="stylesheet" href="./common.css?v=20260925d">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-<script src="./common.js?v=20260925c"></script>
-<script src="./pilotage.js?v=20260925c"></script>
-<script src="./espace.js?v=20260925c"></script>
-<script src="./finance.js?v=20260925c"></script>
+<script src="./common.js?v=20260925d"></script>
+<script src="./pilotage.js?v=20260925d"></script>
+<script src="./espace.js?v=20260925d"></script>
+<script src="./finance.js?v=20260925d"></script>
 <script src="./vendor/read-excel-file-5.8.8.min.js"></script>
 <style>
 /* Une application à onglets, dans la charte de common.css : fond gris
@@ -345,6 +345,40 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .es-x:hover { color: var(--es-late); }
 
 .es-status { font-size: 12px; color: var(--text-muted); }
+
+/* ---------- Formulaire d'édition ---------- */
+.ed-actions { display: inline-flex; gap: 6px; margin-left: auto; }
+.ed-actions + .close { margin-left: 6px; }
+.pa-head-actions { display: flex; gap: 6px; flex-wrap: wrap; align-self: flex-start; }
+.pa-mini2 { margin-left: 6px !important; }
+.pa-panel-head .pa-mini + .pa-mini { margin-left: 6px; }
+.pa-ech-tools { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+.ed-crayon { margin-left: auto; align-self: flex-start; font-size: 15px; }
+.ed-form { display: flex; flex-direction: column; gap: 14px; }
+.ed-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
+.ed-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.ed-field.full { grid-column: 1 / -1; }
+.ed-field > label { font-size: 12px; color: var(--text-muted); font-weight: 600; }
+.ed-field input[type=text], .ed-field input[type=number], .ed-field input[type=date], .ed-field input[type=datetime-local], .ed-field select, .ed-field textarea {
+  height: 36px; border: 1px solid var(--border); border-radius: 8px; padding: 0 10px; font: inherit; font-size: 13.5px; background: var(--card-bg); color: var(--text); width: 100%;
+}
+.ed-field textarea { height: auto; padding: 8px 10px; resize: vertical; }
+.ed-field input:focus, .ed-field select:focus, .ed-field textarea:focus, .ed-cr:focus { outline: 2px solid var(--sequoia-green); outline-offset: -1px; }
+.ed-check { display: flex; gap: 8px; align-items: center; font-size: 13.5px; padding-top: 22px; cursor: pointer; }
+.ed-field .ms-filter { width: 100%; }
+.ed-field .ms-filter-btn { width: 100%; min-height: 36px; justify-content: space-between; font-size: 13.5px; }
+.ed-field .ms-filter-btn .ms-label { display: none; }
+.ed-field .ms-filter-btn::after { content: '▾'; color: var(--text-muted); }
+.ed-rte { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.ed-rte-bar { display: flex; gap: 2px; padding: 4px; background: var(--es-surface-2); border-bottom: 1px solid var(--border); }
+.ed-rte-bar button { border: 0; background: none; padding: 4px 9px; border-radius: 6px; cursor: pointer; font-size: 12.5px; font-weight: 600; }
+.ed-rte-bar button:hover { background: var(--card-bg); }
+.ed-cr { min-height: 220px; max-height: 50vh; overflow-y: auto; padding: 10px 12px; font-size: 13.5px; line-height: 1.55; }
+.ed-cr img { max-width: 100%; }
+.ed-foot { display: flex; gap: 8px; align-items: center; position: sticky; bottom: -24px; background: var(--card-bg); padding: 12px 0; border-top: 1px solid var(--es-sep); }
+.ed-foot .grow { flex: 1; }
+.ed-suppr { color: var(--es-late); }
+@media (max-width: 620px) { .ed-grid { grid-template-columns: 1fr; } }
 
 /* ---------- Partenaires : fiche 360° ---------- */
 .pa-layout { display: grid; grid-template-columns: 290px 1fr; gap: 14px; align-items: start; }
@@ -1050,6 +1084,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         types.map(t => '<option' + (t === f.type ? ' selected' : '') + '>' + H(t) + '</option>').join('') + '</select>' +
       (moi() ? '<button type="button" class="es-btn' + (f.miens ? ' primary' : '') + '" data-toggle="projets.miens">Mes projets</button>' : '') +
       '<span class="grow"></span><span class="es-count">' + liste.length + ' projet' + (liste.length > 1 ? 's' : '') + '</span>' +
+      '<button type="button" class="es-btn" data-new="opportunites">+ Opportunité</button>' +
       '<div class="es-seg">' + [['cartes', 'Cartes'], ['tableau', 'Tableau'], ['calendrier', 'Calendrier']].map(([k, l]) =>
         '<button type="button" data-set="projets.mode" data-val="' + k + '" class="' + (f.mode === k ? 'on' : '') + '">' + l + '</button>').join('') + '</div></div>';
 
@@ -1169,6 +1204,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         '<button type="button" data-set="partenaires.filtre" data-val="' + k + '" class="' + (f.filtre === k ? 'on' : '') + '">' + l + '</button>').join('') + '</div>' +
       '<select class="es-select" data-set="partenaires.type"><option value="">Tous les types</option>' + types.map(t => '<option' + (t === f.type ? ' selected' : '') + '>' + H(t) + '</option>').join('') + '</select>' +
       '<span class="grow"></span><span class="es-count">' + liste.length + ' structure' + (liste.length > 1 ? 's' : '') + '</span>' +
+      '<button type="button" class="es-btn" data-new="structures">+ Structure</button>' +
       '<div class="es-seg">' + [['fiche', 'Fiche'], ['tableau', 'Vue globale'], ['cartes', 'Cartes'], ['graphe', 'Graphe']].map(([k, l]) =>
         '<button type="button" data-set="partenaires.mode" data-val="' + k + '" class="' + (f.mode === k ? 'on' : '') + '">' + l + '</button>').join('') + '</div></div>';
     let corps;
@@ -1258,7 +1294,9 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
       '<div class="pa-pills">' + s.piliers.map(v => '<span class="value-pill ' + pilierClass(v) + '">' + H(v) + '</span>').join('') +
       s.axes.map(v => '<span class="es-badge">' + H(v) + '</span>').join('') +
       (s.site ? '<a class="es-link" href="' + H(/^https?:\/\//.test(s.site) ? s.site : 'https://' + s.site) + '" target="_blank" rel="noopener">' + H(s.site.replace(/^https?:\/\//, '')) + ' ↗</a>' : '') + '</div>' +
-      (s.description ? '<p class="pa-desc">' + H(s.description) + '</p>' : '') + '</div></div>';
+      (s.description ? '<p class="pa-desc">' + H(s.description) + '</p>' : '') + '</div>' +
+      '<div class="pa-head-actions"><button type="button" class="es-btn" data-edit="structures:' + s.id + '">✎ Modifier</button>' +
+      '<button type="button" class="es-btn primary" data-new="interactions" data-ctx="structure:' + s.id + '">+ Échange</button></div></div>';
 
     const kpi = (lbl, val, sub, warn, extra) => '<div class="es-card es-kpi"><div class="lbl">' + H(lbl) + '</div><div class="val' + (warn ? ' pa-late' : '') + '" style="font-size:22px">' + val + '</div>' + (extra || '') + '<div class="sub">' + sub + '</div></div>';
     const kpis = '<div class="es-kpis">' +
@@ -1298,6 +1336,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         (!ouvert && e.cr ? '<small class="pa-ech-ext">' + H(excerpt(e.cr, 160)) + '</small>' : '') + '</span>' +
         '<span class="pa-ech-icons">' + (e.pj.length ? '📎 ' + e.pj.length : '') + (e.crBrut ? ' <span title="Compte rendu">CR</span>' : '') + '</span></button>' +
         (ouvert ? '<div class="pa-ech-body">' +
+          '<div class="pa-ech-tools"><button type="button" class="es-btn pa-mini" data-edit="interactions:' + e.id + '">✎ Modifier l’échange</button></div>' +
           (projets.length ? '<div class="pa-pills" style="margin:0 0 8px">' + projets.map(p => '<button type="button" class="es-pill" data-open="projet:' + p.id + '">' + H(p.title) + ' <small>projet</small></button>').join('') + '</div>' : '') +
           (e.crBrut ? '<div class="pa-cr" data-cr="' + e.id + '"></div>' : '<div class="es-muted" style="font-style:italic;font-size:13px">Pas de compte rendu.</div>') +
           (e.suites || e.prochaine ? '<div class="pa-suites"><b>Suites</b> ' + H(e.suites || '') + (e.prochaine ? ' <span class="es-muted">· échéance ' + H(formatDate(e.prochaine)) + '</span>' : '') + '</div>' : '') +
@@ -1307,8 +1346,8 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     const toggle = b.echanges.length ? '<button type="button" class="es-btn pa-mini" data-toggle="partenaires.toutDeplier">' + (tous ? 'Tout replier' : 'Tout déplier') + '</button>' : '';
 
     return tete + kpis + '<div class="pa-grid"><div class="pa-col">' +
-      panneau('Projets', b.projets.length, '', projetsHtml) +
-      panneau('Contacts', b.contacts.length, copierTous, contactsHtml) +
+      panneau('Projets', b.projets.length, '<button type="button" class="es-btn pa-mini" data-new="opportunites" data-ctx="structure:' + s.id + '">+ Opportunité</button>', projetsHtml) +
+      panneau('Contacts', b.contacts.length, copierTous + '<button type="button" class="es-btn pa-mini' + (copierTous ? ' pa-mini2' : '') + '" data-new="contacts" data-ctx="structure:' + s.id + '">+ Contact</button>', contactsHtml) +
       '</div><div class="pa-col">' +
       panneau('Actions', b.ouvertes.length, '', actionsHtml) +
       panneau('Historique des échanges', b.echanges.length, toggle, echHtml) +
@@ -1342,6 +1381,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     const toolbar = '<div class="es-toolbar"><h1>Contacts</h1>' +
       '<input class="es-search" data-q="contacts" placeholder="Rechercher un nom, une fonction, une structure…" value="' + H(f.q) + '">' +
       '<span class="grow"></span><span class="es-count">' + liste.length + ' contact' + (liste.length > 1 ? 's' : '') + '</span>' +
+      '<button type="button" class="es-btn" data-new="contacts">+ Contact</button>' +
       '<div class="es-seg">' + [['tableau', 'Tableau'], ['graphe', 'Graphe']].map(([k, l]) =>
         '<button type="button" data-set="contacts.mode" data-val="' + k + '" class="' + (f.mode === k ? 'on' : '') + '">' + l + '</button>').join('') + '</div></div>';
     let corps;
@@ -1465,7 +1505,8 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     return '<div class="es-row"><span class="d">' + H(e.date ? formatDate(e.date) : '—') + '</span><div style="min-width:0">' +
       '<div class="t">' + H([e.type, e.objet].filter(Boolean).join(' · ') || 'Sans objet') + '</div>' +
       (e.partnerIds.length ? '<div class="s">' + H(nomsS(e.partnerIds)) + '</div>' : '') +
-      (e.cr ? '<div class="cr">' + H(e.cr) + '</div>' : '') + '</div></div>';
+      (e.cr ? '<div class="cr">' + H(e.cr) + '</div>' : '') + '</div>' +
+      '<button type="button" class="es-x ed-crayon" data-edit="interactions:' + e.id + '" title="Modifier l’échange" aria-label="Modifier l’échange">✎</button></div>';
   }
   function ligneAction(a) {
     const j = a.due ? E.joursAvant(a.due, nowTs()) : null;
@@ -1489,7 +1530,10 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     const personnes = p.contactIds.map(id => D.cById.get(id)).filter(Boolean);
     const tabs = [['general', 'Général'], ['echanges', 'Échanges', lies.echanges.length], ['actions', 'Actions', lies.actions.filter(a => !a.done).length],
       ['personnes', 'Personnes', personnes.length]].concat(p.liens ? [['liens', 'Liens', p.liens.length]] : []);
-    const head = '<div class="es-sheet-top">' + badgeEtape(p.stage) + badgeType(p.type) + '<button type="button" class="es-btn icon close" data-close aria-label="Fermer">✕</button></div>' +
+    const head = '<div class="es-sheet-top">' + badgeEtape(p.stage) + badgeType(p.type) +
+      '<span class="ed-actions"><button type="button" class="es-btn" data-edit="opportunites:' + p.id + '">✎ Modifier</button>' +
+      '<button type="button" class="es-btn" data-new="interactions" data-ctx="projet:' + p.id + '">+ Échange</button></span>' +
+      '<button type="button" class="es-btn icon close" data-close aria-label="Fermer">✕</button></div>' +
       '<h2>' + H(p.title) + '</h2><div class="desc">' + H(p.partnerIds.length ? '' : 'Projet interne') + '</div>' +
       '<div class="es-pills">' + p.partnerIds.concat(p.teamIds).map(id => '<button type="button" class="es-pill" data-open="structure:' + id + '">' + H(nomS(id)) +
         (p.teamIds.includes(id) ? ' <small>équipe</small>' : '') + '</button>').join('') + '</div>' + barreTemps(p, true);
@@ -1501,8 +1545,9 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         (p.commentaire ? '<div class="es-section"><h5>Journal</h5><div class="es-note">' + H(p.commentaire) + '</div></div>' : '') +
         (lies.echanges.length ? '<div class="es-section"><h5>Dernier échange</h5>' + ligneEchange(lies.echanges[0]) + '</div>' : '');
     } else if (tab === 'echanges') {
-      body = lies.echanges.length ? '<div class="es-list">' + lies.echanges.map(ligneEchange).join('') + '</div>'
-        : vide('Aucun échange rattaché. Renseignez le projet dans la colonne « Opportunités » d’un échange.');
+      body = (lies.echanges.length ? '<div class="es-list">' + lies.echanges.map(ligneEchange).join('') + '</div>'
+        : vide('Aucun échange rattaché. Renseignez le projet dans la colonne « Opportunités » d’un échange.')) +
+        '<button type="button" class="es-btn" data-new="interactions" data-ctx="projet:' + p.id + '" style="margin-top:12px">+ Échange sur ce projet</button>';
     } else if (tab === 'actions') {
       body = (lies.actions.length ? '<div class="es-list">' + lies.actions.slice().sort((a, b) => (a.done - b.done) || ((Number(a.due) || Infinity) - (Number(b.due) || Infinity))).map(ligneAction).join('') + '</div>' : vide('Aucune action.')) +
         (related.actions.tableId ? '<form class="es-form" data-ajout-action="' + p.id + '"><input class="grow" name="label" placeholder="Nouvelle action…" required><input type="date" name="due"><button class="es-btn primary" type="submit">Ajouter</button></form>' : '');
@@ -1536,7 +1581,10 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     const act = D.actions.filter(a => a.contactIds.includes(c.id));
     const proj = D.projets.filter(p => p.contactIds.includes(c.id));
     const tabs = [['echanges', 'Échanges', ech.length], ['actions', 'Actions', act.filter(a => !a.done).length], ['projets', 'Projets', proj.length]];
-    const head = '<div class="es-sheet-top">' + avatar(c.name, '#64748b', true) + '<button type="button" class="es-btn icon close" data-close aria-label="Fermer">✕</button></div>' +
+    const head = '<div class="es-sheet-top">' + avatar(c.name, '#64748b', true) +
+      '<span class="ed-actions"><button type="button" class="es-btn" data-edit="contacts:' + c.id + '">✎ Modifier</button>' +
+      '<button type="button" class="es-btn" data-new="interactions" data-ctx="contact:' + c.id + '">+ Échange</button></span>' +
+      '<button type="button" class="es-btn icon close" data-close aria-label="Fermer">✕</button></div>' +
       '<h2>' + H(c.name) + '</h2><div class="desc">' + H(c.fonction) + '</div>' +
       '<div class="es-pills">' + c.structureIds.map(id => '<button type="button" class="es-pill" data-open="structure:' + id + '">' + H(nomS(id)) + '</button>').join('') +
       (c.email ? '<button type="button" class="es-pill" data-copier="' + H(c.email) + '">✉ ' + H(c.email) + '</button>' : '') +
@@ -1563,10 +1611,296 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     return { head, tabs: [], body };
   }
 
+  // ---------------------------------------------------------------------
+  // Édition : contacts, structures, échanges, opportunités
+  // ---------------------------------------------------------------------
+  // Un seul formulaire, construit d'après le type réel de chaque colonne du
+  // document (texte, nombre, date, choix, référence…) : une colonne ajoutée
+  // dans Grist apparaît d'elle-même, sans toucher au widget. Les colonnes
+  // formules ne sont pas modifiables et n'apparaissent pas.
+  const EDIT_TITRES = { contacts: 'contact', structures: 'structure', interactions: 'échange', opportunites: 'opportunité' };
+  const EDIT_NOUVEAU = { contacts: 'Nouveau contact', structures: 'Nouvelle structure', interactions: 'Nouvel échange', opportunites: 'Nouvelle opportunité' };
+  // Rôles dont la colonne est une date : de quoi la reconnaître même sans métadonnées.
+  const ROLES_DATE = ['Date', 'ProchaineEcheance', 'DateDebut', 'Echeance', 'FaitLe'];
+
+  function tableDe(cle) { return cle === 'structures' ? structTableId : (related[cle] || {}).tableId; }
+
+  // Les colonnes à montrer en premier : celles dont le widget connaît le rôle,
+  // dans l'ordre de la configuration.
+  function rolesPrioritaires(cle) {
+    if (cle === 'structures') return COLUMNS.map(c => mappings[c.name]).filter(Boolean);
+    const r = related[cle];
+    return r ? Object.values(r.cols).filter(Boolean) : [];
+  }
+
+  async function metaEdition(cle) {
+    const tableId = tableDe(cle);
+    const data = await fetchTableCached(tableId);
+    let meta = cle === 'structures' ? await fetchColumnMeta(tableId) : (related[cle].meta || []);
+    const ids = dataColumns(data);
+    // Une colonne que les métadonnées ne décrivent pas (API REST refusée, par
+    // exemple) : son type se devine par les valeurs ; une liste de références
+    // dont on ignore la cible est laissée de côté plutôt que mal écrite.
+    const connues = new Set(meta.map(m => m.id));
+    const colsDate = cle === 'structures' ? [] : ROLES_DATE.map(r => related[cle].cols[r]).filter(Boolean);
+    meta = meta.concat(ids.filter(id => !connues.has(id)).map(id => {
+      const v = (data[id] || []).find(x => x !== null && x !== undefined && x !== '');
+      const type = colsDate.includes(id) ? 'Date' : typeof v === 'number' ? 'Numeric' : typeof v === 'boolean' ? 'Bool' : Array.isArray(v) ? '' : 'Text';
+      return { id, type, label: id, isFormula: false, choices: [] };
+    }).filter(m => m.type));
+    const ordre = rolesPrioritaires(cle);
+    const cols = meta.filter(m => !m.isFormula && m.id !== 'manualSort' && !/^gristHelper_/.test(m.id) && ids.includes(m.id))
+      .sort((a, b) => {
+        const ia = ordre.indexOf(a.id), ib = ordre.indexOf(b.id);
+        return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib);
+      });
+    const records = recordsFromTableData(data);
+    // Les tables visées par les références, pour proposer leurs lignes.
+    const cibles = Array.from(new Set(cols.map(m => (/^Ref(?:List)?:(.+)$/.exec(m.type) || [])[1]).filter(Boolean)));
+    const options = {};
+    for (const t of cibles) options[t] = await optionsReference(t);
+    return { tableId, cols, records, options };
+  }
+
+  // Les lignes d'une table visée par une référence, avec un libellé lisible
+  // et unique (deux contacts homonymes restent distinguables).
+  async function optionsReference(tableId) {
+    let liste;
+    if (tableId === structTableId) liste = D.structures.map(s => ({ id: s.id, label: s.name }));
+    else if (tableId === related.contacts.tableId) liste = D.contacts.map(c => ({ id: c.id, label: c.name + (c.structureIds.length ? ' — ' + nomS(c.structureIds[0]) : '') }));
+    else if (tableId === related.opportunites.tableId) liste = D.projets.map(p => ({ id: p.id, label: p.title }));
+    else if (tableId === related.interactions.tableId) liste = D.echanges.map(e => ({ id: e.id, label: (e.date ? formatDate(e.date) + ' · ' : '') + (e.objet || e.type || 'Échange') }));
+    else {
+      try {
+        const data = await fetchTableCached(tableId);
+        const col = guessDisplayColumn(data);
+        liste = (data.id || []).map((id, i) => ({ id, label: txt(data[col][i]) || '#' + id }));
+      } catch (err) { liste = []; }
+    }
+    const vus = {};
+    liste.forEach(o => { vus[o.label] = (vus[o.label] || 0) + 1; });
+    return liste.map(o => (vus[o.label] > 1 ? { id: o.id, label: o.label + ' (#' + o.id + ')' } : o))
+      .sort((a, b) => a.label.localeCompare(b.label, 'fr'));
+  }
+
+  const estCR = (cle, m) => cle === 'interactions' && m.id === related.interactions.cols.CR;
+
+  function champEdition(cle, m, valeur, options) {
+    const id = 'ed-' + m.id;
+    const lbl = '<label for="' + H(id) + '">' + H(m.label || m.id) + '</label>';
+    const base = m.type.split(':')[0];
+    const cible = (/^Ref(?:List)?:(.+)$/.exec(m.type) || [])[1];
+    if (estCR(cle, m)) {
+      return '<div class="ed-field full"><label>' + H(m.label || 'Compte rendu') + '</label><div class="ed-rte">' +
+        '<div class="ed-rte-bar">' + [['bold', 'G', 'Gras'], ['italic', 'I', 'Italique'], ['insertUnorderedList', '• Liste', 'Liste'], ['formatBlock:h3', 'Titre', 'Titre']]
+          .map(([cmd, t, l]) => '<button type="button" data-rte="' + cmd + '" title="' + l + '">' + t + '</button>').join('') + '</div>' +
+        '<div class="ed-cr" contenteditable="true" data-col="' + H(m.id) + '" data-kind="cr"></div></div></div>';
+    }
+    if (base === 'Bool') return '<div class="ed-field"><label class="ed-check"><input type="checkbox" id="' + H(id) + '" data-col="' + H(m.id) + '" data-kind="bool"' + (valeur ? ' checked' : '') + '> ' + H(m.label || m.id) + '</label></div>';
+    if (base === 'Date') return '<div class="ed-field">' + lbl + '<input type="date" id="' + H(id) + '" data-col="' + H(m.id) + '" data-kind="date" value="' + H(valeur ? gristDateToInputValue(valeur) : '') + '"></div>';
+    if (base === 'DateTime') {
+      const v = valeur ? new Date(valeur * 1000 - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16) : '';
+      return '<div class="ed-field">' + lbl + '<input type="datetime-local" id="' + H(id) + '" data-col="' + H(m.id) + '" data-kind="datetime" value="' + H(v) + '"></div>';
+    }
+    if (base === 'Numeric' || base === 'Int') return '<div class="ed-field">' + lbl + '<input type="number" step="' + (base === 'Int' ? '1' : 'any') + '" id="' + H(id) + '" data-col="' + H(m.id) + '" data-kind="' + (base === 'Int' ? 'int' : 'num') + '" value="' + H(valeur === null || valeur === undefined ? '' : valeur) + '"></div>';
+    if (base === 'Choice') {
+      const choix = m.choices.slice();
+      if (valeur && !choix.includes(valeur)) choix.push(valeur);
+      return '<div class="ed-field">' + lbl + '<select id="' + H(id) + '" data-col="' + H(m.id) + '" data-kind="choice"><option value="">—</option>' +
+        choix.map(c => '<option' + (c === valeur ? ' selected' : '') + '>' + H(c) + '</option>').join('') + '</select></div>';
+    }
+    if (base === 'ChoiceList' || base === 'RefList') {
+      return '<div class="ed-field">' + lbl.replace('<label for="' + H(id) + '">', '<label>') + msFilterMarkup(id, m.label || m.id, 'Aucun') + '</div>';
+    }
+    if (base === 'Ref') {
+      const opts = options[cible] || [];
+      return '<div class="ed-field">' + lbl + '<select id="' + H(id) + '" data-col="' + H(m.id) + '" data-kind="ref"><option value="0">—</option>' +
+        opts.map(o => '<option value="' + o.id + '"' + (o.id === valeur ? ' selected' : '') + '>' + H(o.label) + '</option>').join('') + '</select></div>';
+    }
+    if (base === 'Attachments') {
+      const n = attachmentIdsFromValue(valeur).length;
+      return '<div class="ed-field"><label>' + H(m.label || m.id) + '</label><div class="es-muted" style="font-size:12.5px;padding-top:6px">' + n + ' fichier(s) — à gérer depuis le CRM ou la table.</div></div>';
+    }
+    // Texte : une zone sur plusieurs lignes pour les notes et descriptions.
+    // Un texte sur plusieurs lignes (liens, notes) doit garder ses retours à la ligne.
+    const long = /comment|note|descr|suite|detail|détail|journal|lien/i.test(m.id + ' ' + (m.label || '')) || /\n/.test(String(valeur || '')) || String(valeur || '').length > 80;
+    return '<div class="ed-field' + (long ? ' full' : '') + '">' + lbl + (long
+      ? '<textarea id="' + H(id) + '" data-col="' + H(m.id) + '" data-kind="text" rows="3">' + H(valeur || '') + '</textarea>'
+      : '<input type="text" id="' + H(id) + '" data-col="' + H(m.id) + '" data-kind="text" value="' + H(valeur === null || valeur === undefined ? '' : formatValue(valeur)) + '">') + '</div>';
+  }
+
+  let editeur = null; // { cle, id, meta, initial, selects: { colId: { widget, parLabel } } }
+
+  async function ouvrirEditeur(cle, id, defauts) {
+    const tableId = tableDe(cle);
+    if (!tableId) { toast('Table introuvable', true); return; }
+    setStatus('Ouverture…');
+    let meta;
+    try { meta = await metaEdition(cle); } catch (err) { console.error(err); toast('Lecture impossible', true); setStatus(''); return; }
+    setStatus('');
+    const rec = id ? meta.records.find(r => r.id === id) : null;
+    if (id && !rec) { toast('Ligne introuvable', true); return; }
+    const valeurs = {};
+    meta.cols.forEach(m => { valeurs[m.id] = rec ? rec[m.id] : ((defauts || {})[m.id] !== undefined ? defauts[m.id] : null); });
+    const retour = ui.sheet && ui.sheet.kind !== 'edit' ? Object.assign({}, ui.sheet) : null;
+    editeur = { cle, id: id || null, meta, valeurs, selects: {}, retour };
+    ui.sheet = { kind: 'edit' };
+    const nom = rec ? (cle === 'structures' ? nomS(id) : cle === 'contacts' ? (D.cById.get(id) || {}).name : cle === 'opportunites' ? (D.pById.get(id) || {}).title
+      : [formatDate((D.eById.get(id) || {}).date), (D.eById.get(id) || {}).objet].filter(Boolean).join(' · ')) : '';
+    const sheet = $('sheet');
+    sheet.innerHTML = '<div class="es-sheet-head"><div class="es-sheet-top"><span class="es-badge">' + H(id ? 'Modifier ' + EDIT_TITRES[cle] : EDIT_NOUVEAU[cle]) + '</span>' +
+      '<button type="button" class="es-btn icon close" data-ed-annuler aria-label="Fermer">✕</button></div>' +
+      '<h2>' + H(nom || (id ? '' : EDIT_NOUVEAU[cle])) + '</h2></div>' +
+      '<form class="es-sheet-body ed-form" id="ed-form"><div class="ed-grid">' + meta.cols.map(m => champEdition(cle, m, valeurs[m.id], meta.options)).join('') + '</div>' +
+      '<div class="ed-foot">' + (id ? '<button type="button" class="es-btn ed-suppr" data-ed-suppr>Supprimer</button>' : '') +
+      '<span class="grow"></span><button type="button" class="es-btn" data-ed-annuler>Annuler</button><button type="submit" class="es-btn primary">Enregistrer</button></div></form>';
+    sheet.classList.add('open'); $('backdrop').classList.add('open'); sheet.setAttribute('aria-hidden', 'false');
+    // Les listes à choix multiples et l'éditeur de compte rendu ne s'animent
+    // qu'une fois dans la page.
+    meta.cols.forEach(m => {
+      const base = m.type.split(':')[0];
+      if (base !== 'ChoiceList' && base !== 'RefList') return;
+      const root = document.getElementById('ed-' + m.id);
+      if (base === 'ChoiceList') {
+        const courants = listeChoix(valeurs[m.id]);
+        const choix = m.choices.concat(courants.filter(c => !m.choices.includes(c)));
+        editeur.selects[m.id] = { kind: 'choicelist', widget: createMultiSelect(root, { values: choix, selected: courants, labelAll: 'Aucun' }) };
+      } else {
+        const cible = m.type.split(':')[1];
+        const opts = meta.options[cible] || [];
+        const parLabel = new Map(opts.map(o => [o.label, o.id]));
+        const ids = refIdsFromValue(valeurs[m.id]);
+        const selected = opts.filter(o => ids.includes(o.id)).map(o => o.label);
+        editeur.selects[m.id] = { kind: 'reflist', parLabel, widget: createMultiSelect(root, { values: opts.map(o => o.label), selected, labelAll: 'Aucun' }) };
+      }
+    });
+    const cr = sheet.querySelector('[data-kind="cr"]');
+    if (cr) { cr.innerHTML = normalizeCrToHtml(valeurs[cr.dataset.col] || ''); resolveImagesIn(cr); }
+    const premier = sheet.querySelector('.ed-form input[type="text"], .ed-form textarea');
+    if (premier) premier.focus();
+  }
+
+  // Ce que le formulaire contient, dans la forme que Grist attend pour chaque type.
+  function lireFormulaire() {
+    const form = $('ed-form');
+    const out = {};
+    form.querySelectorAll('[data-col]').forEach(el => {
+      const col = el.dataset.col, k = el.dataset.kind;
+      if (k === 'text') out[col] = el.value;
+      else if (k === 'num') out[col] = el.value === '' ? null : Number(el.value);
+      else if (k === 'int') out[col] = el.value === '' ? null : parseInt(el.value, 10);
+      else if (k === 'date') out[col] = el.value ? inputValueToGristDate(el.value) : null;
+      else if (k === 'datetime') out[col] = el.value ? Math.floor(new Date(el.value).getTime() / 1000) : null;
+      else if (k === 'bool') out[col] = el.checked;
+      else if (k === 'choice') out[col] = el.value;
+      else if (k === 'ref') out[col] = Number(el.value) || 0;
+      else if (k === 'cr') out[col] = serializeCrForSave(el);
+    });
+    Object.entries(editeur.selects).forEach(([col, s]) => {
+      const sel = s.widget.getSelected();
+      out[col] = s.kind === 'reflist' ? (sel.length ? ['L', ...sel.map(l => s.parLabel.get(l)).filter(Boolean)] : null) : (sel.length ? ['L', ...sel] : null);
+    });
+    return out;
+  }
+
+  // Seules les colonnes réellement changées partent : une valeur qu'on n'a pas
+  // touchée n'est pas réécrite (et une formule d'initialisation reste en paix).
+  function normaliserPourComparer(v) {
+    if (v === null || v === undefined || v === '' || v === 0 || v === false) return '';
+    if (Array.isArray(v)) return JSON.stringify(v[0] === 'L' ? v.slice(1) : v);
+    return JSON.stringify(v);
+  }
+
+  async function enregistrerEditeur() {
+    const { cle, id, valeurs } = editeur;
+    const tableId = tableDe(cle);
+    const saisie = lireFormulaire();
+    const champs = {};
+    Object.keys(saisie).forEach(col => {
+      // Une création envoie tout ce qui est rempli, valeurs préremplies comprises ;
+      // une modification, seulement ce qui a changé.
+      const garde = id ? normaliserPourComparer(saisie[col]) !== normaliserPourComparer(valeurs[col]) : normaliserPourComparer(saisie[col]) !== '';
+      if (garde) champs[col] = saisie[col];
+    });
+    if (id && !Object.keys(champs).length) { fermerEditeur(); return; }
+    try {
+      let nouvelId = id;
+      if (id) await updateRecord(tableId, id, champs);
+      else nouvelId = await addRecord(tableId, champs);
+      const retour = editeur.retour;
+      editeur = null;
+      await charger(true);
+      if (cle === 'structures' && !id && nouvelId) { voirStructure(nouvelId); }
+      else if (!id && nouvelId && cle === 'opportunites') { ui.sheet = { kind: 'projet', id: nouvelId, tab: null }; render(); }
+      else if (!id && nouvelId && cle === 'contacts') { ui.sheet = { kind: 'contact', id: nouvelId, tab: null }; render(); }
+      else { ui.sheet = retour; render(); }
+      setStatus(id ? 'Modifications enregistrées ✓' : 'Créé ✓');
+    } catch (err) {
+      console.error(err);
+      toast('Enregistrement refusé par le document : ' + (err && err.message ? err.message : err), true);
+    }
+  }
+
+  async function supprimerEditeur(bouton) {
+    if (!bouton.dataset.arme) {
+      bouton.dataset.arme = '1';
+      bouton.textContent = 'Confirmer la suppression';
+      return;
+    }
+    const { cle, id } = editeur;
+    try {
+      await removeRecord(tableDe(cle), id);
+      editeur = null;
+      ui.sheet = null;
+      if (cle === 'structures') ui.partenaires.sel = null;
+      await charger(true);
+      render();
+      setStatus('Supprimé');
+    } catch (err) { console.error(err); toast('Suppression impossible', true); }
+  }
+
+  function fermerEditeur() {
+    const retour = editeur && editeur.retour;
+    editeur = null;
+    ui.sheet = retour;
+    renderSheet();
+  }
+
+  // Valeurs de départ d'une création, selon d'où on la lance.
+  function defautsCreation(cle, contexte) {
+    const d = {};
+    const today = inputValueToGristDate(new Date().toISOString().slice(0, 10));
+    const r = cle === 'structures' ? null : related[cle];
+    const liste = (col, ids) => { if (col && ids && ids.length) d[col] = colValue(r, col, ids); };
+    if (cle === 'interactions') {
+      if (r.cols.Date) d[r.cols.Date] = today;
+      if (contexte.structure) liste(r.cols.Partenaires, [contexte.structure]);
+      if (contexte.projet) {
+        const p = D.pById.get(contexte.projet);
+        liste(r.cols.Opportunites, [contexte.projet]);
+        if (p) liste(r.cols.Partenaires, p.partnerIds);
+      }
+      if (contexte.contact) {
+        const col = colsVers('interactions', related.contacts.tableId)[0];
+        liste(col, [contexte.contact]);
+        const c = D.cById.get(contexte.contact);
+        if (c && c.structureIds.length) liste(r.cols.Partenaires, c.structureIds.slice(0, 1));
+      }
+    } else if (cle === 'contacts' && contexte.structure) liste(r.cols.Structures, [contexte.structure]);
+    else if (cle === 'opportunites') {
+      if (contexte.structure) liste(r.cols.Partenaires, [contexte.structure]);
+      if (r.cols.Statut && D.etapes.length) d[r.cols.Statut] = D.etapes[0];
+      if (r.cols.DateDebut) d[r.cols.DateDebut] = today;
+    }
+    return d;
+  }
+
   function renderSheet() {
     const s = ui.sheet;
     const sheet = $('sheet');
     if (!s || !D) { sheet.classList.remove('open'); $('backdrop').classList.remove('open'); sheet.setAttribute('aria-hidden', 'true'); return; }
+    // Un formulaire en cours ne se redessine pas : on perdrait la saisie.
+    if (s.kind === 'edit') { if (!editeur) { ui.sheet = null; renderSheet(); } return; }
     let f = null;
     if (s.kind === 'projet' && D.pById.has(s.id)) f = ficheProjet(D.pById.get(s.id), s.tab || 'general');
     else if (s.kind === 'structure' && D.sById.has(s.id)) f = ficheStructure(D.sById.get(s.id), s.tab || 'projets');
@@ -2115,7 +2449,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     if (tab) { ui.vue = tab.dataset.vue; ui.sheet = null; render(); $('main').scrollTop = 0; return; }
     const kpiVue = t.closest('.es-kpi[data-vue]');
     if (kpiVue) { ui.vue = kpiVue.dataset.vue; render(); return; }
-    if (t.closest('[data-close]') || t === $('backdrop')) { ui.sheet = null; renderSheet(); return; }
+    if (t.closest('[data-close]') || t === $('backdrop')) { if (editeur) fermerEditeur(); else { ui.sheet = null; renderSheet(); } return; }
     const onglet = t.closest('.es-sheet-tabs [data-tab]');
     if (onglet) { ui.sheet.tab = onglet.dataset.tab; renderSheet(); return; }
     const copier = t.closest('[data-copier]');
@@ -2127,6 +2461,25 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
       return;
     }
     if (t.matches('[data-fait]')) return; // géré par « change »
+    if (t.closest('[data-ed-annuler]')) { fermerEditeur(); return; }
+    const suppr2 = t.closest('[data-ed-suppr]');
+    if (suppr2) { supprimerEditeur(suppr2); return; }
+    const rte = t.closest('[data-rte]');
+    if (rte) {
+      const [cmd, arg] = rte.dataset.rte.split(':');
+      document.execCommand(cmd, false, arg || null);
+      const zone = document.querySelector('.ed-cr'); if (zone) zone.focus();
+      return;
+    }
+    const edit = t.closest('[data-edit]');
+    if (edit) { const [cle, id] = edit.dataset.edit.split(':'); ouvrirEditeur(cle, Number(id)); return; }
+    const nouv = t.closest('[data-new]');
+    if (nouv) {
+      const ctx = {};
+      if (nouv.dataset.ctx) { const [k, v] = nouv.dataset.ctx.split(':'); ctx[k] = Number(v); }
+      ouvrirEditeur(nouv.dataset.new, null, defautsCreation(nouv.dataset.new, ctx));
+      return;
+    }
     const selS = t.closest('[data-sel-structure]');
     if (selS) { voirStructure(Number(selS.dataset.selStructure)); return; }
     const dep = t.closest('[data-deplier]');
@@ -2194,7 +2547,11 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
   });
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { fermerPop(); if (ui.sheet) { ui.sheet = null; renderSheet(); } }
+    if (e.key === 'Escape') {
+      fermerPop();
+      if (document.querySelector('.ms-filter-panel:not([hidden])')) { document.querySelectorAll('.ms-filter-panel').forEach(p => { p.hidden = true; }); return; }
+      if (editeur) fermerEditeur(); else if (ui.sheet) { ui.sheet = null; renderSheet(); }
+    }
     if (e.key === 'Enter' && e.target.closest && e.target.closest('.nd[data-open]')) ouvrir(e.target.closest('.nd').dataset.open);
   });
 
@@ -2227,6 +2584,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 
   document.addEventListener('submit', (e) => {
     const form = e.target;
+    if (form.id === 'ed-form') { e.preventDefault(); enregistrerEditeur(); return; }
     if (form.hasAttribute('data-fin-ajout-ligne')) {
       e.preventDefault();
       financeEcrire([['AddRecord', FN.FIN_TABLES.budget.tableId, null, {

@@ -56,6 +56,12 @@ await shot('espace-projet-fiche', { vue: 'projets', apres: async (p) => {
 await shot('espace-partenaires', { vue: 'partenaires', height: 1100, apres: async (p) => {
   await p.click('.pa-item >> text=Thales'); await p.click('[data-deplier]');
 } });
+await shot('espace-edition-echange', { vue: 'partenaires', apres: async (p) => {
+  await p.click('.pa-item >> text=Thales'); await p.click('.pa-head-actions [data-new="interactions"]'); await p.waitForSelector('#ed-form');
+} });
+await shot('espace-edition-projet', { vue: 'projets', apres: async (p) => {
+  await p.click('.es-pcard >> text=VisionMer'); await p.click('[data-edit^="opportunites:"]'); await p.waitForSelector('#ed-form');
+} });
 await shot('espace-partenaires-globale', { vue: 'partenaires', apres: (p) => p.click('[data-set="partenaires.mode"][data-val="tableau"]') });
 await shot('espace-partenaires-cartes', { vue: 'partenaires', apres: (p) => p.click('[data-set="partenaires.mode"][data-val="cartes"]') });
 await shot('espace-partenaires-graphe', { vue: 'partenaires', apres: (p) => p.click('[data-set="partenaires.mode"][data-val="graphe"]') });

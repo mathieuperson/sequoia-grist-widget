@@ -207,6 +207,13 @@ relations), sur le modèle de données du Cluster. Aucun code n'en est repris.
   règles de calcul : **[docs/espace-finance.md](docs/espace-finance.md)**. Logique pure dans `finance.js`
   (`tests/finance.test.mjs`) ; lecture des `.xlsx` par `vendor/read-excel-file-5.8.8.min.js` (MIT).
 
+- **Modifier et créer** : structures, contacts, échanges (avec éditeur de compte rendu) et opportunités se
+  modifient depuis leur fiche (« ✎ Modifier ») et se créent depuis les onglets et les fiches (« + Structure »,
+  « + Contact », « + Échange », « + Opportunité », préremplis selon d'où on part). Le formulaire est construit
+  d'après le type réel de chaque colonne du document (texte, nombre, date, choix, références simples ou multiples) :
+  une colonne ajoutée dans Grist y apparaît sans toucher au widget ; les colonnes formules n'y figurent pas. Seules
+  les valeurs changées sont écrites ; la suppression demande une confirmation.
+
 `espace.html?vue=projets` (ou `partenaires`, `contacts`, `actions`, `finance`) ouvre directement une vue. La logique pure vit
 dans `espace.js`, testée par `tests/espace.test.mjs`.
 

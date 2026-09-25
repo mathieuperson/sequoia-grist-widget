@@ -476,12 +476,19 @@ async function fetchColumnMeta(tableId) {
     const res = await fetch(`${baseUrl}/tables/${encodeURIComponent(tableId)}/columns?auth=${encodeURIComponent(token)}`);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
-    const cols = (data.columns || []).map(c => ({
-      id: c.id,
-      type: (c.fields && c.fields.type) || '',
-      label: (c.fields && c.fields.label) || c.id,
-      isFormula: !!(c.fields && c.fields.isFormula)
-    }));
+    const cols = (data.columns || []).map(c => {
+      let wo = c.fields && c.fields.widgetOptions;
+      if (typeof wo === 'string') { try { wo = JSON.parse(wo); } catch (err) { wo = null; } }
+      return {
+        id: c.id,
+        type: (c.fields && c.fields.type) || '',
+        label: (c.fields && c.fields.label) || c.id,
+        isFormula: !!(c.fields && c.fields.isFormula),
+        // Les choix d'une colonne Choice / ChoiceList, dans l'ordre du document :
+        // de quoi proposer une liste dans un formulaire d'édition.
+        choices: (wo && Array.isArray(wo.choices)) ? wo.choices.filter(Boolean).map(String) : []
+      };
+    });
     _colMetaCache[tableId] = cols;
     return cols;
   } catch (err) {
