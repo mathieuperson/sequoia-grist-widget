@@ -8,6 +8,7 @@ Widgets personnalisés Grist pour le CRM SequoIA (déployés via GitHub Pages).
 |---|---|---|---|
 | **Pilotage Partenariats & Innovation** | `/pilotage.html` | Structures | Complet (lit et écrit Interactions / Opportunités / Actions) |
 | **CRM SequoIA — fiche 360** | `/crm.html` | Structures | Complet (lit et écrit Contacts / Interactions / Opportunités) |
+| **Espace SequoIA** | `/espace.html` | Structures | Complet (lit tout ; écrit Actions, Opportunités et les tables Finance) |
 | Dashboard financement CIFRE | `/cifre-financement.html` | Thèses (ou toute table de thèses doctorales) | Lecture |
 | Cartographie | `/cartographie.html` | Structures | Complet (`allowSelectBy`, suit la sélection Grist) |
 
@@ -167,6 +168,66 @@ Limites assumées :
   changements d'étape dans le document.
 - Les « lettres de soutien émises » du volet Dispositifs structurants ne sont pas affichées : aucune colonne du
   document ne les porte aujourd'hui.
+
+### Espace SequoIA (`espace.html`)
+
+Une application à onglets qui rassemble tout le document au même endroit : **Tableau de bord**, **Projets**,
+**Partenaires**, **Contacts**, **Actions**. L'ergonomie s'inspire d'un espace de gestion de laboratoire (barre
+d'onglets en pastilles, fiche qui glisse depuis la droite, vues cartes / tableau / calendrier, graphes de
+relations), sur le modèle de données du Cluster. Aucun code n'en est repris.
+
+- **Barre du haut** : « Qui êtes-vous ? » choisit son profil parmi les contacts (retenu dans le navigateur),
+  ce qui allume les filtres « Mes projets » (colonne de contacts des opportunités) et « Mes actions ». La cloche
+  liste les actions en retard ou dues dans la semaine et les échéances de projet à 30 jours ; les alertes
+  consultées sont marquées comme vues.
+- **Tableau de bord** : bandeau aux couleurs des trois piliers, indicateurs, échanges par mois, projets par étape,
+  partenaires les plus engagés, réseau partenaires ↔ projets actifs, alertes.
+- **Projets** : cartes groupées par étape (glisser une carte change son étape), par type ou par partenaire ;
+  tableau triable ; calendrier annuel du début à l'échéance. La fiche d'un projet montre sa progression dans le
+  temps, ses échanges (directs ou par ricochet via les actions) avec extrait du CR, ses actions (cochables, ajout
+  rapide), ses personnes et ses **liens**.
+- **Documents** (onglet de la fiche projet) : les **fichiers** du projet (brief, PDF, convention…), stockés dans une
+  colonne de type *Pièces jointes* de la table Opportunités (`Documents`), qu'on dépose ou glisse dans la fiche et
+  qu'on ouvre d'un clic ; et les **liens** vers des documents qui vivent ailleurs (colonne texte `Liens`, une ligne
+  par lien, `Libellé | https://…`). Si une colonne manque, le widget propose de l'ajouter. Si l'instance refuse
+  l'envoi de fichiers depuis le widget, le message dit pourquoi et rappelle qu'on peut déposer le fichier
+  directement dans la cellule `Documents` du projet dans Grist : il apparaît alors dans la fiche.
+- **Partenaires** : quatre vues. **Fiche** (par défaut, comme le CRM) : la liste des structures à gauche, à droite
+  la fiche 360° — en-tête (logo, piliers, axes, site), indicateurs (dernier contact et seuil de relance à 90 j,
+  échanges, projets, prochaine action), projets, contacts (copie des adresses), actions (ajout rapide) et
+  historique des échanges dont chaque **compte rendu se déplie en entier**, avec suites et pièces jointes ; « Tout
+  déplier » les lit à la suite. **Vue globale** : un tableau triable de toutes les structures (projets actifs,
+  montant, contacts, échanges, dernier contact, actions, prochaine action). **Cartes** et **Graphe**. Filtres
+  Partenaires / À relancer / Prospects / Équipes / Tous. Cliquer une structure n'importe où dans l'Espace ouvre sa fiche.
+- **Contacts** : tableau triable et graphe contacts ↔ structures.
+- **Actions** : kanban par `Statut` si la colonne existe (glisser une carte change le statut), sinon par
+  urgence ; calendrier mensuel avec les échéances de projet.
+
+- **Finance** : suivi budgétaire à partir des exports SIFAC — synthèse par exercice (prévu, engagé, facturé,
+  payé, reste, courbe de consommation, catégories, lignes budgétaires), dépenses ventilables sur les lignes
+  budgétaires et les projets, écritures brutes pour recouper SIFAC, import `.xlsx` / `.csv`. Trois tables
+  (`Budget_lignes`, `Depenses`, `Sifac_lignes`) que le widget crée d'un clic. Attendu, circuit de travail et
+  règles de calcul : **[docs/espace-finance.md](docs/espace-finance.md)**. Logique pure dans `finance.js`
+  (`tests/finance.test.mjs`) ; lecture des `.xlsx` par `vendor/read-excel-file-5.8.8.min.js` (MIT).
+
+- **Modifier et créer** : structures, contacts, échanges (avec éditeur de compte rendu) et opportunités se
+  modifient depuis leur fiche (« ✎ Modifier ») et se créent depuis les onglets et les fiches (« + Structure »,
+  « + Contact », « + Échange », « + Opportunité », préremplis selon d'où on part). Le formulaire est construit
+  d'après le type réel de chaque colonne du document (texte, nombre, date, choix, références simples ou multiples) :
+  une colonne ajoutée dans Grist y apparaît sans toucher au widget ; les colonnes formules n'y figurent pas. Seules
+  les valeurs changées sont écrites ; la suppression demande une confirmation.
+
+- **Lire un compte rendu** : un clic sur un échange (fiche projet, contact) ou « 📖 Lire en grand » (fiche
+  partenaire) ouvre le CR en pleine page, mis en forme (y compris les anciens CR en Markdown), avec ses participants,
+  projets, suites et pièces jointes ; « ← Retour » ramène à la fiche d'origine.
+- **Colonnes des structures** : associées dans les réglages du widget, ou à défaut retrouvées par leur nom
+  (`url_logo`, `type_acteur`, `pilier_sequoia`, `axe_sequoia`, `entreprise_activite`, `recherche_structure`…).
+  La fiche affiche type d'acteur, catégorie, secteur, taille, piliers et axes en badges.
+- Dans les formulaires, les listes multiples montrent leurs valeurs en pastilles (retirables d'un clic) ; les colonnes
+  « Laboratoire(s) / Équipe(s) / Établissement(s) Cluster » ne proposent que des structures de ce rôle.
+
+`espace.html?vue=projets` (ou `partenaires`, `contacts`, `actions`, `finance`) ouvre directement une vue. La logique pure vit
+dans `espace.js`, testée par `tests/espace.test.mjs`.
 
 ### CRM SequoIA — fiche 360 (`crm.html`)
 
@@ -346,6 +407,7 @@ latérale se replie en onglets).
 npm run preview
 npm run preview -- --width 1200
 npm run preview:pilotage
+npm run preview:espace
 ```
 
 Le jeu d'essai du pilotage (`pilotageConfig()` dans `tests/browser/fixtures.mjs` : 12 partenaires, 9 équipes de
