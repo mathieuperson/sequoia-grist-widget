@@ -15,7 +15,20 @@ faite indépendamment, et les widgets s'adaptent dès que la colonne apparaît.
 
 ## Étape 1 — Structures : ajouter les trois colonnes
 
-Page de la table **STRUCTURES** → clic sur `+` à droite des en-têtes → *Ajouter une colonne*.
+**`Parent` : partir de la colonne existante `recherche_equipe_labo`** plutôt que d'en
+créer une nouvelle — elle porte déjà le labo de chaque équipe.
+
+1. Colonne `recherche_equipe_labo` → panneau créateur → onglet **Colonne**.
+2. *Type de colonne* → **Référence** → table `Structures`, colonne affichée `nom_acteur`.
+   Grist relie automatiquement chaque texte à la ligne du même nom ; les cellules qui
+   restent en rouge sont des labos absents de la table (à créer) ou mal orthographiés.
+3. Renommer la colonne en `Parent` (libellé et ID). Grist met à jour les formules du
+   document qui la citaient.
+4. Y ajouter ensuite les filiales → groupe.
+
+Si la colonne est déjà une référence vers `Structures`, seul le renommage est utile.
+
+Pour `Tutelles` et `Niveau` : clic sur `+` à droite des en-têtes → *Ajouter une colonne*.
 
 | Colonne (ID) | Type (panneau créateur → *Colonne*) | Réglages |
 |---|---|---|
@@ -112,9 +125,9 @@ Opportunites.lookupRecords(Suite_de=$id)
 
 ## Étape 5 — Ménage (quand tout est renseigné)
 
-- `recherche_equipe_labo` (texte) fait doublon avec `Parent` : le pilotage lit déjà le
-  labo dans le parent quand il existe. Une fois tous les parents saisis, démapper la
-  colonne dans les widgets, puis la masquer ou la supprimer.
+- `recherche_equipe_labo` : si elle a été convertie en `Parent` (étape 1), il n'y a
+  rien à supprimer ; dans les widgets, démapper le rôle *Laboratoire* et mapper
+  *Rattachée à* sur `Parent`.
 - `recherche_structure` fait doublon avec `Niveau` : même démarche.
 
 ## Formules Grist équivalentes (si besoin hors widgets)

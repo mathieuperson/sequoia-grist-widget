@@ -958,9 +958,11 @@ body { overflow: hidden; }
   }
 
   // Le laboratoire d'une équipe : le nom de son parent quand la colonne Parent
-  // est renseignée, à défaut l'ancien champ texte « Laboratoire ».
+  // est renseignée, à défaut le champ « Laboratoire » — qui peut lui-même être
+  // une référence (on affiche alors le nom, pas l'identifiant).
   function laboOf(s) {
-    const parentId = refIdsFromValue(sField(s, 'Parent'))[0];
+    const parentId = refIdsFromValue(sField(s, 'Parent'))[0] ||
+      refIdsFromValue(sField(s, 'RechercheEquipeLabo'))[0];
     const parent = parentId ? structures.find(x => x.id === parentId) : null;
     if (parent) return txt(formatValue(sField(parent, 'Nom')));
     return txt(formatValue(sField(s, 'RechercheEquipeLabo')));
