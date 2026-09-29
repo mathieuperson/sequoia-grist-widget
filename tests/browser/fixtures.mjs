@@ -367,6 +367,11 @@ export function espaceConfig() {
   cfg.columnsMeta.Opportunites.push(refCol('ContactCluster', 'RefList:Contacts', 'Contact(s) Cluster'));
   // Un ancien compte rendu en Markdown, tel que le CRM les stockait.
   cfg.tables.Interactions.data.CR[12] = '# Réunion Kerlink – revue annuelle du partenariat\n\n## Participants\n- **Julien Faure** (Kerlink)\n- **Mathieu** (Cluster)\n\n## Points clés\nLe projet *VisionMer* avance : les capteurs sont déployés sur deux sites.\n\n## Décisions\n1. Déposer le dossier ANR avant le 26/10\n2. Associer OBELIX au montage';
+  // Pièces jointes des échanges.
+  const it = cfg.tables.Interactions;
+  it.colIds.push('PJ');
+  it.data.PJ = it.data.id.map((_, i) => (i === 12 ? ['L', 802] : null));
+  cfg.columnsMeta.Interactions.push({ id: 'PJ', fields: { type: 'Attachments', label: 'Pièce-jointe' } });
   // Des fichiers joints au projet VisionMer (colonne Pièces jointes).
   opp.colIds.push('Documents');
   opp.data.Documents = opp.data.id.map((_, i) => (i === 1 ? ['L', 801, 802] : null));

@@ -355,6 +355,13 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .jr-dater { font: inherit; font-size: 11px; font-weight: 600; color: var(--sequoia-green-dark); background: var(--sequoia-green-light); border: 0; border-radius: 6px; padding: 2px 8px; cursor: pointer; margin-top: 4px; }
 .jr-dater-champ { font: inherit; font-size: 11.5px; width: 118px; border: 1px solid var(--border); border-radius: 6px; padding: 2px 4px; margin-top: 4px; }
 .jr-form textarea { flex: 1; min-width: 0; min-height: 38px; border: 1px solid var(--border); border-radius: 9px; padding: 8px 10px; font: inherit; font-size: 13px; resize: vertical; }
+.ed-rte-img { margin-left: auto; padding: 4px 9px; border-radius: 6px; cursor: pointer; font-size: 12.5px; font-weight: 600; }
+.ed-rte-img:hover { background: var(--card-bg); }
+.ed-cr-attente { color: var(--text-muted); font-style: italic; }
+.ed-pj { display: flex; flex-wrap: wrap; gap: 5px; }
+.ed-pj-drop { padding: 12px; margin-top: 6px; font-size: 12.5px; }
+.ed-pj-msg { font-size: 12px; color: var(--text-muted); }
+.ed-pj-msg.erreur { color: var(--es-late); }
 .doc-ico { flex: 0 0 22px; font-size: 16px; line-height: 1.2; }
 .doc-nom { border: 0; background: none; padding: 0; font: inherit; font-weight: 600; color: var(--sequoia-green-dark); cursor: pointer; text-align: left; word-break: break-word; }
 .doc-nom:hover { text-decoration: underline; }
@@ -1941,7 +1948,8 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     if (estCR(cle, m)) {
       return '<div class="ed-field full"><label>' + H(m.label || 'Compte rendu') + '</label><div class="ed-rte">' +
         '<div class="ed-rte-bar">' + [['bold', 'G', 'Gras'], ['italic', 'I', 'Italique'], ['insertUnorderedList', '• Liste', 'Liste'], ['formatBlock:h3', 'Titre', 'Titre']]
-          .map(([cmd, t, l]) => '<button type="button" data-rte="' + cmd + '" title="' + l + '">' + t + '</button>').join('') + '</div>' +
+          .map(([cmd, t, l]) => '<button type="button" data-rte="' + cmd + '" title="' + l + '">' + t + '</button>').join('') +
+          '<label class="ed-rte-img" title="Insérer une image (on peut aussi la coller ou la glisser dans le texte)">🖼 Image<input type="file" accept="image/*" hidden data-cr-image></label></div>' +
         '<div class="ed-cr" contenteditable="true" data-col="' + H(m.id) + '" data-kind="cr"></div></div></div>';
     }
     if (base === 'Bool') return '<div class="ed-field"><label class="ed-check"><input type="checkbox" id="' + H(id) + '" data-col="' + H(m.id) + '" data-kind="bool"' + (valeur ? ' checked' : '') + '> ' + H(m.label || m.id) + '</label></div>';
@@ -1967,8 +1975,12 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         opts.map(o => '<option value="' + o.id + '"' + (o.id === valeur ? ' selected' : '') + '>' + H(o.label) + '</option>').join('') + '</select></div>';
     }
     if (base === 'Attachments') {
-      const n = attachmentIdsFromValue(valeur).length;
-      return '<div class="ed-field"><label>' + H(m.label || m.id) + '</label><div class="es-muted" style="font-size:12.5px;padding-top:6px">' + n + ' fichier(s) — à gérer dans l’onglet Documents de la fiche.</div></div>';
+      // Liste des fichiers, retirables, et dépôt de nouveaux fichiers ; la valeur
+      // vit dans editeur.pj[colonne] jusqu'à l'enregistrement.
+      return '<div class="ed-field full"><label>' + H(m.label || m.id) + '</label>' +
+        '<div class="ed-pj" data-col="' + H(m.id) + '" data-kind="pj"></div>' +
+        '<label class="fi-drop ed-pj-drop" data-pj-drop="' + H(m.id) + '"><input type="file" multiple hidden data-pj-upload="' + H(m.id) + '"><b>Joindre un fichier</b> ou le déposer ici</label>' +
+        '<div class="ed-pj-msg" data-pj-msg="' + H(m.id) + '"></div></div>';
     }
     // Texte : une zone sur plusieurs lignes pour les notes et descriptions.
     // Un texte sur plusieurs lignes (liens, notes) doit garder ses retours à la ligne.
@@ -2026,9 +2038,70 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
       }
     });
     const cr = sheet.querySelector('[data-kind="cr"]');
-    if (cr) { cr.innerHTML = normalizeCrToHtml(valeurs[cr.dataset.col] || ''); resolveImagesIn(cr); }
+    if (cr) {
+      cr.innerHTML = normalizeCrToHtml(valeurs[cr.dataset.col] || '');
+      resolveImagesIn(cr);
+      // Une image collée ou glissée dans le compte rendu part dans les pièces
+      // jointes du document et s'insère à l'endroit du curseur.
+      cr.addEventListener('paste', (e) => {
+        const images = Array.from((e.clipboardData && e.clipboardData.items) || []).filter(it => it.type && it.type.startsWith('image/')).map(it => it.getAsFile());
+        if (images.length) { e.preventDefault(); images.forEach(f => insererImageCR(cr, f)); }
+      });
+      cr.addEventListener('drop', (e) => {
+        const images = Array.from((e.dataTransfer && e.dataTransfer.files) || []).filter(f => f.type.startsWith('image/'));
+        if (images.length) { e.preventDefault(); e.stopPropagation(); images.forEach(f => insererImageCR(cr, f)); }
+      });
+    }
+    editeur.pj = {};
+    meta.cols.filter(m => m.type === 'Attachments').forEach(m => { editeur.pj[m.id] = attachmentIdsFromValue(valeurs[m.id]).slice(); afficherPj(m.id); });
     const premier = sheet.querySelector('.ed-form input[type="text"], .ed-form textarea');
     if (premier) premier.focus();
+  }
+
+  async function insererImageCR(zone, fichier) {
+    const attente = document.createElement('span');
+    attente.className = 'ed-cr-attente';
+    attente.textContent = 'Envoi de l’image…';
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount && zone.contains(sel.anchorNode)) {
+      const r = sel.getRangeAt(0); r.deleteContents(); r.insertNode(attente); r.collapse(false);
+    } else zone.appendChild(attente);
+    try {
+      const [id] = await uploadAttachments([fichier]);
+      const img = document.createElement('img');
+      img.setAttribute('data-att-id', id);
+      img.src = await getAttachmentDownloadUrl(id);
+      attente.replaceWith(img);
+    } catch (err) {
+      console.error(err);
+      attente.remove();
+      toast('Image non envoyée : ' + (err && err.message ? err.message : err), true);
+    }
+  }
+
+  function afficherPj(col) {
+    const zone = document.querySelector('[data-kind="pj"][data-col="' + col + '"]');
+    if (!zone || !editeur) return;
+    const ids = editeur.pj[col];
+    zone.innerHTML = ids.length ? ids.map(id => '<span class="ed-chip">📎 <span data-pj-nom="' + id + '">Fichier #' + id + '</span>' +
+      '<button type="button" data-pj-retirer="' + H(col) + '" data-val="' + id + '" aria-label="Retirer">×</button></span>').join('') : '<span class="es-muted" style="font-size:12.5px">Aucun fichier.</span>';
+    remplirComptesRendus();
+  }
+
+  async function joindreFichiers(col, fichiers) {
+    const liste = Array.from(fichiers || []);
+    const msg = document.querySelector('[data-pj-msg="' + col + '"]');
+    if (!liste.length || !editeur) return;
+    if (msg) { msg.className = 'ed-pj-msg'; msg.textContent = 'Envoi de ' + liste.length + ' fichier(s)…'; }
+    try {
+      const ids = await uploadAttachments(liste);
+      editeur.pj[col] = editeur.pj[col].concat(ids);
+      afficherPj(col);
+      if (msg) msg.textContent = ids.length + ' fichier(s) prêt(s) — enregistrez pour les rattacher.';
+    } catch (err) {
+      console.error(err);
+      if (msg) { msg.className = 'ed-pj-msg erreur'; msg.textContent = (err && err.message ? err.message : String(err)); }
+    }
   }
 
   // Les valeurs retenues d'une liste multiple, en clair sous le bouton : « 1
@@ -2054,6 +2127,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
       else if (k === 'choice') out[col] = el.value;
       else if (k === 'ref') out[col] = Number(el.value) || 0;
       else if (k === 'cr') out[col] = serializeCrForSave(el);
+      else if (k === 'pj') out[col] = editeur.pj[col].length ? ['L', ...editeur.pj[col]] : null;
     });
     Object.entries(editeur.selects).forEach(([col, s]) => {
       const sel = s.widget.getSelected();
@@ -2730,6 +2804,13 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     if (t.matches('[data-fait]')) return; // géré par « change »
     if (t.closest('[data-ed-annuler]')) { fermerEditeur(); return; }
     if (t.closest('[data-retour]') && ui.sheet && ui.sheet.retour) { ui.sheet = ui.sheet.retour; renderSheet(); return; }
+    const pjRet = t.closest('[data-pj-retirer]');
+    if (pjRet && editeur) {
+      const col = pjRet.dataset.pjRetirer;
+      editeur.pj[col] = editeur.pj[col].filter(x => String(x) !== pjRet.dataset.val);
+      afficherPj(col);
+      return;
+    }
     const chip = t.closest('[data-chip-retirer]');
     if (chip && editeur) {
       const sel = editeur.selects[chip.dataset.chipRetirer];
@@ -2878,6 +2959,11 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     }
     if (t.id === 'fin-fichier' && t.files && t.files[0]) { lireFichier(t.files[0]); return; }
     if (t.dataset && t.dataset.docUpload && t.files && t.files.length) { envoyerDocuments(Number(t.dataset.docUpload), t.files); return; }
+    if (t.dataset && t.dataset.pjUpload && t.files && t.files.length) { joindreFichiers(t.dataset.pjUpload, t.files); t.value = ''; return; }
+    if (t.matches && t.matches('[data-cr-image]') && t.files && t.files.length) {
+      const zone = document.querySelector('.ed-cr');
+      Array.from(t.files).forEach(f => insererImageCR(zone, f)); t.value = ''; return;
+    }
     if (t.id === 'fin-exo' && apercu) { apercu.exercice = Number(t.value) || apercu.exercice; render(); return; }
     if (t.matches('select[data-set]')) { poser(t.dataset.set, t.value); render(); }
   });
@@ -2946,6 +3032,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     if (!zone || !e.dataTransfer || !e.dataTransfer.files.length) return;
     e.preventDefault();
     if (zone.dataset.docProjet) envoyerDocuments(Number(zone.dataset.docProjet), e.dataTransfer.files);
+    else if (zone.dataset.pjDrop) joindreFichiers(zone.dataset.pjDrop, e.dataTransfer.files);
     else lireFichier(e.dataTransfer.files[0]);
   });
 
