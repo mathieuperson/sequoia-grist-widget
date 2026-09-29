@@ -862,6 +862,9 @@ body { overflow: hidden; }
     invalidateTableCache(structTableId);
     try {
       const data = await fetchTableCached(structTableId);
+      // Le parent se passe de mappage : une colonne « parent » suffit.
+      const colParent = dataColumns(data).find(c => normalizeKey(c) === 'parent');
+      if (!mappings.Parent && colParent) mappings = Object.assign({}, mappings, { Parent: colParent });
       structures = recordsFromTableData(data).map(r => mapRecord(r, mappings));
     } catch (err) {
       console.error('Lecture de la table Structures impossible', err);
@@ -951,7 +954,10 @@ body { overflow: hidden; }
   // laboratoire ou une activité d'équipe — ce sont les colonnes faites pour
   // ça. Tout le reste est un partenaire.
   function isTeam(s) {
-    return !!(txt(formatValue(sField(s, 'RechercheEquipeLabo'))) ||
+    // Un « Laboratoire » devenu référence (le parent) ne dit plus qu'on est une
+    // équipe : une filiale a aussi un parent. Seul le texte compte ici.
+    const labo = sField(s, 'RechercheEquipeLabo');
+    return !!((typeof labo === 'string' && txt(labo)) ||
               txt(formatValue(sField(s, 'RechercheEquipeActivite'))) ||
               normalizeKey(formatValue(sField(s, 'Niveau'))).includes('equipe') ||
               normalizeKey(formatValue(sField(s, 'RechercheStructure'))).includes('equipe'));
@@ -965,7 +971,9 @@ body { overflow: hidden; }
       refIdsFromValue(sField(s, 'RechercheEquipeLabo'))[0];
     const parent = parentId ? structures.find(x => x.id === parentId) : null;
     if (parent) return txt(formatValue(sField(parent, 'Nom')));
-    return txt(formatValue(sField(s, 'RechercheEquipeLabo')));
+    // Colonne parent restée en texte : le nom du labo y est écrit tel quel.
+    const texte = [sField(s, 'Parent'), sField(s, 'RechercheEquipeLabo')].find(v => typeof v === 'string' && txt(v));
+    return texte ? txt(texte) : '';
   }
   function isProspect(s) {
     return normalizeKey(formatValue(sField(s, 'Categorie'))).includes('prospect');

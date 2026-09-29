@@ -833,7 +833,7 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         taille: txt(sf(s, 'Taille')),
         piliers: listeChoix(sf(s, 'PilierSequoia')),
         axes: listeChoix(sf(s, 'AxeSequoia')),
-        isTeam: !!(txt(sf(s, 'RechercheEquipeLabo')) || txt(sf(s, 'RechercheEquipeActivite')) ||
+        isTeam: !!((typeof sf(s, 'RechercheEquipeLabo') === 'string' && txt(sf(s, 'RechercheEquipeLabo'))) || txt(sf(s, 'RechercheEquipeActivite')) ||
           normalizeKey(txt(sf(s, 'Niveau'))).includes('equipe') ||
           normalizeKey(txt(sf(s, 'RechercheStructure'))).includes('equipe')),
         // « Laboratoire », « Équipe », « Institut »… : ce que la structure est dans la recherche.

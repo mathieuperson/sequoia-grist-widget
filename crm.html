@@ -907,6 +907,30 @@
   // Parent et Tutelles sont des colonnes de la table Structures (mappées sur
   // le widget). L'arbre est recalculé à chaque livraison de Grist.
   let arbre = null;
+  let colParentDevinee = null;
+
+  // Une colonne nommée « parent » (ou l'ancienne recherche_equipe_labo une
+  // fois convertie) qui référence Structures : c'est le parent.
+  function devinerColonneParent(meta) {
+    const versStructures = m => (m.type || '') === 'Ref:' + structTableId;
+    const parNom = meta.find(m => versStructures(m) && ['parent', 'structureparente', 'rattacheea'].includes(normalizeKey(m.id)));
+    const ancienne = meta.find(m => versStructures(m) && normalizeKey(m.id) === 'rechercheequipelabo');
+    return (parNom || ancienne || {}).id || null;
+  }
+
+  // Selon la version de Grist, une colonne non mappée peut manquer aux
+  // enregistrements livrés au widget : on la relit alors dans la table.
+  async function completerParents(records) {
+    const col = mappings.Parent;
+    if (!col || !records.length || (col in records[0])) return;
+    try {
+      invalidateTableCache(structTableId);
+      const data = await fetchTableCached(structTableId);
+      const parId = {};
+      (data.id || []).forEach((id, i) => { parId[id] = (data[col] || [])[i]; });
+      structures.forEach(s => { s.Parent = parId[s.id]; });
+    } catch (err) { console.error('Lecture de la colonne parent impossible', err); }
+  }
 
   function arbreStructures() {
     if (!arbre) {
@@ -3982,16 +4006,21 @@
   // ---------------------------------------------------------------------
 
   grist.onRecords(async function (records, maps) {
-    mappings = maps || {};
-    structures = mapRecords(records, maps);
-    arbre = null;
     if (structTableId === null) {
       try { structTableId = await grist.getTable().getTableId(); } catch (err) { console.error(err); }
       try {
         const meta = await fetchColumnMeta(structTableId);
         structListCols = meta.filter(m => /^(RefList|ChoiceList):?/.test(m.type || '')).map(m => m.id);
+        colParentDevinee = devinerColonneParent(meta);
       } catch (err) { console.error(err); }
     }
+    mappings = Object.assign({}, maps || {});
+    // Le parent se passe de mappage : une colonne « parent » qui référence
+    // Structures suffit. Le mappage explicite reste prioritaire.
+    if (!mappings.Parent && colParentDevinee) mappings.Parent = colParentDevinee;
+    structures = mapRecords(records, mappings);
+    await completerParents(records);
+    arbre = null;
     if (!related.contacts) await loadRelated();
     if (current) {
       // Keep the open fiche in sync with the new data (or drop it if the
@@ -4014,7 +4043,10 @@
     // Deliberately not opening a fiche here: Grist restores the last cursor
     // position at load time, which would auto-open a partner (and fetch its
     // attachments) before being asked. A click in the list is what opens it.
-    if (maps) mappings = maps;
+    if (maps) {
+      mappings = Object.assign({}, maps);
+      if (!mappings.Parent && colParentDevinee) mappings.Parent = colParentDevinee;
+    }
   });
 
   document.getElementById('search').addEventListener('input', (e) => {

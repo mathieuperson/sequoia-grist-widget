@@ -1381,27 +1381,27 @@ async function testCrmContactsCluster(browser) {
 
 // Hiérarchie : 5 Cluster SequoIA, 6 IRISA (tutelle : Inria Rennes #3),
 // 7 KERDATA (parent : IRISA). Une interaction saisie sur KERDATA.
-function crmHierarchieConfig() {
+function crmHierarchieConfig(colParent = 'Parent', mapper = true) {
   const cfg = crmConfig();
   const S = cfg.tables.Structures;
-  S.colIds.push('Parent', 'Tutelles', 'Niveau');
+  S.colIds.push(colParent, 'Tutelles', 'Niveau');
   const ajout = {
     id: [5, 6, 7], nom_acteur: ['Cluster SequoIA', 'IRISA', 'KERDATA'],
     type_acteur: ['Institutionnel', 'Recherche', 'Recherche'],
     acteur_categorie: ['Partenaire', 'Partenaire', 'Partenaire'],
-    Parent: [0, 0, 6], Tutelles: [null, ['L', 3], null], Niveau: ['', 'Laboratoire', 'Équipe']
+    [colParent]: [0, 0, 6], Tutelles: [null, ['L', 3], null], Niveau: ['', 'Laboratoire', 'Équipe']
   };
   const n = S.data.id.length;
   S.colIds.forEach(c => {
-    if (!S.data[c]) S.data[c] = new Array(n).fill(c === 'Parent' ? 0 : '');
+    if (!S.data[c]) S.data[c] = new Array(n).fill(c === colParent ? 0 : '');
     S.data[c] = S.data[c].concat(c in ajout ? ajout[c] : ['', '', '']);
   });
   S.data.id = S.data.id.concat(ajout.id);
   S.data.Tutelles = S.data.Tutelles.map(v => v || null);
-  cfg.mappings.Parent = 'Parent';
+  if (mapper) cfg.mappings.Parent = colParent;
   cfg.mappings.Tutelles = 'Tutelles';
   cfg.mappings.Niveau = 'Niveau';
-  cfg.columnsMeta.Structures.push(refCol('Parent', 'Ref:Structures', 'Parent'),
+  cfg.columnsMeta.Structures.push(refCol(colParent, 'Ref:Structures', colParent),
     refCol('Tutelles', 'RefList:Structures', 'Tutelles'), choiceCol('Niveau', ['Laboratoire', 'Équipe']));
 
   const C = cfg.tables.Contacts.data;
@@ -1488,6 +1488,26 @@ async function testCrmHierarchie(browser) {
   ok(!!upd && upd[3].Parent === 1 && (await page.locator('#m-ref-parent .ref-chip').count()) === 1,
     'un seul parent : le nouveau remplace l\'ancien');
 
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
+async function testCrmParentNonMappe(browser) {
+  console.log('\n=== crm.html : colonne « parent » reconnue sans mappage ===');
+  const { page, context, consoleErrors } = await openCrm(browser, crmHierarchieConfig('parent', false));
+  await page.locator('.list-item', { hasText: 'IRISA' }).click();
+  await page.waitForTimeout(250);
+  ok((await page.locator('.head-tree').textContent()).includes('KERDATA'),
+    'la colonne parent est lue sans avoir été mappée');
+  await page.locator('.list-item', { hasText: 'KERDATA' }).click();
+  await page.waitForTimeout(250);
+  await page.click('#btn-edit-structure');
+  await page.waitForTimeout(250);
+  await page.fill('#m-ref-parent .ref-input', 'Thales');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(300);
+  const upd = (await userActions(page)).reverse().find(a => a[0] === 'UpdateRecord' && a[1] === 'Structures' && a[3] && 'parent' in a[3]);
+  ok(!!upd && upd[3].parent === 1, 'modifier le parent écrit dans la colonne parent');
   ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
   await context.close();
 }
@@ -2513,6 +2533,7 @@ try {
   await testCrmLiensExtraEditable(browser);
   await testCrmContactsCluster(browser);
   await testCrmHierarchie(browser);
+  await testCrmParentNonMappe(browser);
   await testCrmLiensProjets(browser);
   await testCrmSuggestionsRecherche(browser);
   await testCartographieFiltres(browser);
