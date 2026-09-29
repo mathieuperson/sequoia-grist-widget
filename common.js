@@ -391,13 +391,18 @@ async function uploadAttachments(files) {
     // d'envoi, pare-feu). Une lecture sur la même adresse départage « l'API
     // est inaccessible au widget » de « seul l'envoi de fichier est bloqué ».
     const taille = liste.reduce((t, f) => t + (f.size || 0), 0);
-    let lectureOk = false;
-    try {
-      const probe = await fetch(`${baseUrl}/attachments?auth=${encodeURIComponent(token)}`);
-      lectureOk = probe.ok;
-    } catch (e) { /* lecture bloquée aussi */ }
-    const cause = lectureOk
-      ? 'le serveur lit bien le document, mais refuse l’envoi de fichiers depuis le widget'
+    const url = `${baseUrl}/attachments?auth=${encodeURIComponent(token)}`;
+    const avant = await listerPiecesJointes(url);
+    if (avant) {
+      // Si seule la réponse a été bloquée (en-têtes CORS absents sur un
+      // POST), un envoi « opaque » passe : le navigateur ne lit pas la
+      // réponse, et on retrouve les pièces créées en relisant la liste.
+      const ids = await envoiOpaque(url, liste, avant);
+      if (ids.length) return ids;
+    }
+    const cause = avant
+      ? 'le serveur lit bien le document, mais bloque l’envoi de fichiers depuis le widget ' +
+        '(vraisemblablement un filtrage devant Grist) — déposez le fichier dans la cellule Grist'
       : 'le widget ne parvient pas à joindre l’API du document';
     throw new Error('Le document n’a pas pu être joint : ' + cause +
       ' (' + formatTaille(taille) + ', ' + (err && err.message ? err.message : err) + ')');
@@ -414,6 +419,37 @@ async function uploadAttachments(files) {
     .filter(id => id !== null && id !== undefined);
   if (!ids.length) throw new Error('Le document n’a renvoyé aucun identifiant de pièce jointe');
   return ids;
+}
+
+// Liste des pièces jointes du document : Map id -> { fileName, fileSize },
+// ou null si la lecture échoue.
+async function listerPiecesJointes(url) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    const liste = new Map();
+    (data.records || []).forEach(r => liste.set(r.id, r.fields || {}));
+    return liste;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function envoiOpaque(url, fichiers, avant) {
+  const form = new FormData();
+  fichiers.forEach(fichier => form.append('upload', fichier, fichier.name));
+  try {
+    await fetch(url, { method: 'POST', mode: 'no-cors', body: form });
+  } catch (e) {
+    return [];
+  }
+  const apres = await listerPiecesJointes(url);
+  if (!apres) return [];
+  const noms = new Set(fichiers.map(f => f.name));
+  return Array.from(apres.keys())
+    .filter(id => !avant.has(id) && noms.has(apres.get(id).fileName))
+    .sort((a, b) => a - b);
 }
 
 function formatTaille(octets) {
