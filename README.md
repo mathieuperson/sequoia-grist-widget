@@ -267,6 +267,15 @@ tables sont lues via `docApi.fetchTable` et écrites via `docApi.applyUserAction
 de la fiche. Le bouton ↻ en bas de la liste recharge les tables liées (utile si quelqu'un d'autre a modifié le
 document).
 
+**Hiérarchie des structures et liens entre projets** — avec les colonnes `Parent` (Ref:Structures), `Tutelles`
+(RefList:Structures) et `Niveau` mappées, la fiche affiche le rattachement (fil d'Ariane, tutelles, entités
+rattachées) et **consolide** sur un labo, un établissement ou un groupe les échanges, opportunités et actions de
+ce qui est en dessous (pastille « via KERDATA »). Dans les popups, *Contact(s) partenaire* se limite aux
+structures choisies et à leurs sous-structures, *Contact(s) cluster* aux contacts de la structure « Cluster
+SequoIA », et les structures de rattachement sont proposées d'un clic. Côté projets, `Cadre` et `Suite_de`
+(Ref:Opportunites) relient une CIFRE à sa chaire ou au stage qui l'a précédée. Mise en place pas à pas :
+[`docs/hierarchie-structures.md`](docs/hierarchie-structures.md).
+
 ### Dashboard financement CIFRE
 
 Regroupe les thèses CIFRE par **Université > Entreprise partenaire** : nombre de CIFRE, montant total, et

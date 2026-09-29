@@ -2,7 +2,7 @@ import { chromium } from 'playwright';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildMockScript } from './mock-grist.mjs';
-import { choiceCol, crmConfig, pilotageConfig, PILOTAGE_STATUTS, rel } from './fixtures.mjs';
+import { choiceCol, refCol, D, crmConfig, pilotageConfig, PILOTAGE_STATUTS, rel } from './fixtures.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.join(__dirname, '..', '..'); // repo root, two levels up from tests/browser/
@@ -1379,6 +1379,157 @@ async function testCrmContactsCluster(browser) {
   await context.close();
 }
 
+// Hiérarchie : 5 Cluster SequoIA, 6 IRISA (tutelle : Inria Rennes #3),
+// 7 KERDATA (parent : IRISA). Une interaction saisie sur KERDATA.
+function crmHierarchieConfig() {
+  const cfg = crmConfig();
+  const S = cfg.tables.Structures;
+  S.colIds.push('Parent', 'Tutelles', 'Niveau');
+  const ajout = {
+    id: [5, 6, 7], nom_acteur: ['Cluster SequoIA', 'IRISA', 'KERDATA'],
+    type_acteur: ['Institutionnel', 'Recherche', 'Recherche'],
+    acteur_categorie: ['Partenaire', 'Partenaire', 'Partenaire'],
+    Parent: [0, 0, 6], Tutelles: [null, ['L', 3], null], Niveau: ['', 'Laboratoire', 'Équipe']
+  };
+  const n = S.data.id.length;
+  S.colIds.forEach(c => {
+    if (!S.data[c]) S.data[c] = new Array(n).fill(c === 'Parent' ? 0 : '');
+    S.data[c] = S.data[c].concat(c in ajout ? ajout[c] : ['', '', '']);
+  });
+  S.data.id = S.data.id.concat(ajout.id);
+  S.data.Tutelles = S.data.Tutelles.map(v => v || null);
+  cfg.mappings.Parent = 'Parent';
+  cfg.mappings.Tutelles = 'Tutelles';
+  cfg.mappings.Niveau = 'Niveau';
+  cfg.columnsMeta.Structures.push(refCol('Parent', 'Ref:Structures', 'Parent'),
+    refCol('Tutelles', 'RefList:Structures', 'Tutelles'), choiceCol('Niveau', ['Laboratoire', 'Équipe']));
+
+  const C = cfg.tables.Contacts.data;
+  C.id.push(13, 14);
+  C.Nom.push('Cluster', 'Kerdata'); C.Prenom.push('Léa', 'Kim');
+  C.Nom_Complet.push('Léa Cluster', 'Kim Kerdata');
+  C.Fonction.push('Chargée de mission', 'Chercheur');
+  C.Structures.push(['L', 5], ['L', 7]);
+  C.Email.push('', ''); C.Telephone.push('', ''); C.Linkedin.push('', '');
+  C.Contact_Principal.push(false, false); C.Commentaire.push('', '');
+
+  const I = cfg.tables.Interactions.data;
+  I.id.push(24); I.Date.push(D(2026, 4, 2)); I.Type.push('Réunion');
+  I.Partenaires.push(['L', 7]); I.Objet.push('Point données KERDATA');
+  I.ContactPartenaire.push(['L', 14]); I.ContactCluster.push(null); I.LaboratoireCluster.push(null);
+  I.ProchaineEcheance.push(null); I.Suites.push(''); I.Opportunites.push(null); I.CR.push(''); I.PJ.push(null);
+  return cfg;
+}
+
+async function testCrmHierarchie(browser) {
+  console.log('\n=== crm.html : hiérarchie des structures (parent, tutelles, contacts filtrés) ===');
+  const { page, context, consoleErrors } = await openCrm(browser, crmHierarchieConfig());
+
+  // Fiche du labo : ses équipes et tutelles en tête, l'échange de l'équipe consolidé.
+  await page.locator('.list-item', { hasText: 'IRISA' }).click();
+  await page.waitForTimeout(250);
+  const arbreIrisa = await page.locator('.head-tree').textContent();
+  ok(arbreIrisa.includes('KERDATA') && arbreIrisa.includes('Inria Rennes'),
+    'la fiche du labo nomme ses équipes et ses tutelles');
+  ok((await page.evaluate(() => window.__crm.kpis.nbInteractions)) === 1,
+    'la fiche du labo compte l\'échange saisi sur son équipe');
+  ok((await page.locator('.via-pill', { hasText: 'via KERDATA' }).count()) >= 1,
+    'l\'échange consolidé dit d\'où il vient');
+
+  // Fiche de la tutelle : l'échange de l'équipe du labo remonte aussi.
+  await page.locator('.list-item', { hasText: 'Inria Rennes' }).click();
+  await page.waitForTimeout(250);
+  ok((await page.locator('.head-tree').textContent()).includes('IRISA'),
+    'la tutelle liste le labo dont elle est tutelle');
+  ok((await page.evaluate(() => window.__crm.kpis.nbInteractions)) === 2,
+    'la tutelle consolide les échanges de ses labos et de leurs équipes');
+
+  // Nouvelle interaction depuis l'équipe : contacts filtrés, rattachements suggérés.
+  await page.locator('.list-item', { hasText: 'KERDATA' }).click();
+  await page.waitForTimeout(250);
+  ok((await page.locator('.head-tree').textContent()).includes('IRISA'),
+    'la fiche de l\'équipe affiche son labo');
+  await page.click('#btn-new-interaction');
+  await page.waitForTimeout(250);
+  const partenaireOpts = await page.locator('#m-ref-contacts datalist option').evaluateAll(els => els.map(e => e.value));
+  const clusterOpts = await page.locator('#m-ref-contacts-cluster datalist option').evaluateAll(els => els.map(e => e.value));
+  ok(partenaireOpts.includes('Kim Kerdata') && !partenaireOpts.includes('Léa Cluster'),
+    'contacts partenaire : ceux des structures choisies seulement');
+  ok(clusterOpts.length === 1 && clusterOpts[0] === 'Léa Cluster',
+    'contacts cluster : seulement ceux de la structure Cluster SequoIA');
+  const suggestions = await page.locator('#m-suggest-partenaires [data-suggest]').allTextContents();
+  ok(suggestions.some(t => t.includes('IRISA')) && suggestions.some(t => t.includes('Inria Rennes')),
+    'le labo et sa tutelle sont proposés en rattachement');
+  await page.locator('#m-suggest-partenaires [data-suggest]', { hasText: 'IRISA' }).click();
+  await page.waitForTimeout(100);
+  ok(!(await page.locator('#m-suggest-partenaires').textContent()).includes('IRISA'),
+    'un rattachement ajouté n\'est plus proposé');
+  await page.fill('#m-objet', 'Atelier données');
+  await page.click('#m-create');
+  await page.waitForTimeout(400);
+  const add = (await userActions(page)).find(a => a[0] === 'AddRecord' && a[1] === 'Interactions');
+  ok(!!add && JSON.stringify(add[3].Partenaires) === JSON.stringify(['L', 7, 6]),
+    'le rattachement cliqué est enregistré avec le partenaire');
+  await page.click('.form-modal-actions [data-close]');
+  await page.waitForTimeout(300);
+
+  // Popup structure : le parent remplace le champ texte Laboratoire.
+  await page.click('#btn-edit-structure');
+  await page.waitForTimeout(250);
+  ok((await page.locator('#m-rlabo').count()) === 0 &&
+     (await page.locator('#m-ref-parent .ref-chip', { hasText: 'IRISA' }).count()) === 1,
+    'la popup structure montre le parent à la place du champ Laboratoire');
+  const parentOpts = await page.locator('#m-ref-parent datalist option').evaluateAll(els => els.map(e => e.value));
+  ok(!parentOpts.includes('KERDATA'), 'une structure ne peut pas être son propre parent');
+  await page.fill('#m-ref-parent .ref-input', 'Thales');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(300);
+  const upd = (await userActions(page)).reverse().find(a => a[0] === 'UpdateRecord' && a[1] === 'Structures' && a[3] && 'Parent' in a[3]);
+  ok(!!upd && upd[3].Parent === 1 && (await page.locator('#m-ref-parent .ref-chip').count()) === 1,
+    'un seul parent : le nouveau remplace l\'ancien');
+
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
+async function testCrmLiensProjets(browser) {
+  console.log('\n=== crm.html : liens entre projets (Cadre, Suite de) ===');
+  const cfg = crmConfig();
+  const O = cfg.tables.Opportunites;
+  O.colIds.push('Cadre', 'Suite_de');
+  // #31 (POC) est mené dans le cadre de la chaire #30 et fait suite au #32.
+  O.data.Cadre = [0, 30, 0];
+  O.data.Suite_de = [0, 32, 0];
+  cfg.columnsMeta.Opportunites.push(refCol('Cadre', 'Ref:Opportunites', 'Cadre'),
+    refCol('Suite_de', 'Ref:Opportunites', 'Suite de'));
+  const { page, context, consoleErrors } = await openCrm(browser, cfg);
+  await page.locator('.list-item', { hasText: 'Thales' }).click();
+  await page.waitForTimeout(250);
+
+  await page.locator('.opp-row[data-opp="30"]').first().click();
+  await page.waitForTimeout(250);
+  const chaire = await page.locator('.head-tree').textContent();
+  ok(chaire.includes('Projets dans ce cadre') && chaire.includes('POC détection'),
+    'la chaire liste les projets menés dans son cadre');
+
+  await page.locator('.head-tree [data-voir-opp="31"]').click();
+  await page.waitForTimeout(250);
+  const poc = await page.locator('.head-tree').textContent();
+  ok(poc.includes('Dans le cadre de') && poc.includes('Chaire IA de confiance') && poc.includes('Vieux projet'),
+    'le projet affiche son cadre et son antécédent, et on y navigue d\'un clic');
+
+  await page.click('#btn-edit-opp');
+  await page.waitForTimeout(250);
+  ok((await page.locator('#m-ref-cadre .ref-chip', { hasText: 'Chaire IA de confiance' }).count()) === 1 &&
+     (await page.locator('#m-ref-suite .ref-chip', { hasText: 'Vieux projet' }).count()) === 1,
+    'la popup opportunité montre le cadre et l\'antécédent enregistrés');
+  const cadreOpts = await page.locator('#m-ref-cadre datalist option').evaluateAll(els => els.map(e => e.value));
+  ok(!cadreOpts.includes('POC détection d\'intrusion'), 'un projet ne peut pas être son propre cadre');
+
+  ok(consoleErrors.length === 0, 'aucune erreur console (' + consoleErrors.join(' | ') + ')');
+  await context.close();
+}
+
 async function testCrmSuggestionsRecherche(browser) {
   console.log('\n=== crm.html : suggestions de recherche ===');
   const { page, context, consoleErrors } = await openCrm(browser);
@@ -2361,6 +2512,8 @@ try {
   await testCrmLiensMultiColonnes(browser);
   await testCrmLiensExtraEditable(browser);
   await testCrmContactsCluster(browser);
+  await testCrmHierarchie(browser);
+  await testCrmLiensProjets(browser);
   await testCrmSuggestionsRecherche(browser);
   await testCartographieFiltres(browser);
   await testCartographieStatistiques(browser);

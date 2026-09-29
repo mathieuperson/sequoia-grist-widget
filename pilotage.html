@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pilotage Partenariats &amp; Innovation — Cluster SequoIA</title>
-<link rel="stylesheet" href="./common.css?v=20260929">
+<link rel="stylesheet" href="./common.css?v=20260929a">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="./common.js?v=20260929"></script>
-<script src="./pilotage.js?v=20260929"></script>
+<script src="./common.js?v=20260929a"></script>
+<script src="./pilotage.js?v=20260929a"></script>
 <style>
 /* Charte alignée sur common.css (vert #1f6b3f, fond #f4f6f5, police
    système). Seules les valeurs absentes de common.css sont ajoutées ici,
@@ -676,7 +676,11 @@ body { overflow: hidden; }
     { name: 'AxeSequoia', title: 'Axe SequoIA', optional: true },
     { name: 'RechercheStructure', title: 'Structure de recherche', optional: true },
     { name: 'RechercheEquipeLabo', title: 'Laboratoire', optional: true },
-    { name: 'RechercheEquipeActivite', title: 'Équipe / activité', optional: true }
+    { name: 'RechercheEquipeActivite', title: 'Équipe / activité', optional: true },
+    // Hiérarchie (voir crm.html) : le laboratoire d'une équipe se lit dans
+    // son parent dès que la colonne est mappée.
+    { name: 'Parent', title: 'Rattachée à (Ref:Structures)', optional: true },
+    { name: 'Niveau', title: 'Niveau (Groupe, Filiale, Laboratoire, Équipe…)', optional: true }
   ];
 
   // Mêmes candidats de tables et de colonnes que crm.html : un document qui
@@ -948,7 +952,18 @@ body { overflow: hidden; }
   // ça. Tout le reste est un partenaire.
   function isTeam(s) {
     return !!(txt(formatValue(sField(s, 'RechercheEquipeLabo'))) ||
-              txt(formatValue(sField(s, 'RechercheEquipeActivite'))));
+              txt(formatValue(sField(s, 'RechercheEquipeActivite'))) ||
+              normalizeKey(formatValue(sField(s, 'Niveau'))).includes('equipe') ||
+              normalizeKey(formatValue(sField(s, 'RechercheStructure'))).includes('equipe'));
+  }
+
+  // Le laboratoire d'une équipe : le nom de son parent quand la colonne Parent
+  // est renseignée, à défaut l'ancien champ texte « Laboratoire ».
+  function laboOf(s) {
+    const parentId = refIdsFromValue(sField(s, 'Parent'))[0];
+    const parent = parentId ? structures.find(x => x.id === parentId) : null;
+    if (parent) return txt(formatValue(sField(parent, 'Nom')));
+    return txt(formatValue(sField(s, 'RechercheEquipeLabo')));
   }
   function isProspect(s) {
     return normalizeKey(formatValue(sField(s, 'Categorie'))).includes('prospect');
@@ -1036,7 +1051,7 @@ body { overflow: hidden; }
     const teams = structures.filter(isTeam).map(s => ({
       id: s.id,
       name: txt(formatValue(sField(s, 'Nom'))) || ('#' + s.id),
-      labo: txt(formatValue(sField(s, 'RechercheEquipeLabo'))),
+      labo: laboOf(s),
       thematiques: txt(formatValue(sField(s, 'RechercheEquipeActivite')))
     }));
 
@@ -2915,7 +2930,7 @@ body { overflow: hidden; }
       .map(s => ({
         id: s.id,
         name: txt(formatValue(sField(s, 'Nom'))) || ('#' + s.id),
-        labo: txt(formatValue(sField(s, 'RechercheEquipeLabo')))
+        labo: laboOf(s)
       }))
       .sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   }

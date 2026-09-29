@@ -6,8 +6,8 @@
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-<link rel="stylesheet" href="./common.css?v=20260929">
-<script src="./common.js?v=20260929"></script>
+<link rel="stylesheet" href="./common.css?v=20260929a">
+<script src="./common.js?v=20260929a"></script>
 <style>
   /* ---------- Sidebar ---------- */
   .filter-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
@@ -471,6 +471,17 @@
   }
   .struct-pill:hover { border-color: var(--sequoia-green); background: var(--sequoia-green-light); }
   .head-tel { font-size: 12.5px; color: var(--text-muted); }
+  /* Hiérarchie d'une structure : parent, tutelles, entités rattachées. */
+  .head-tree { display: flex; flex-direction: column; gap: 5px; margin-bottom: 8px; }
+  .tree-line { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; font-size: 12px; }
+  .tree-label { color: var(--text-muted); min-width: 118px; }
+  .tree-sep { color: var(--text-muted); }
+  .tree-more { color: var(--text-muted); font-size: 11.5px; }
+  /* Suggestions d'ajout sous un sélecteur (structures de rattachement). */
+  .ref-suggest { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-top: 6px; font-size: 12px; color: var(--text-muted); }
+  .ref-suggest button { border: 1px dashed var(--border); background: var(--card-bg); color: var(--sequoia-green-dark);
+    border-radius: 10px; padding: 2px 9px; font-size: 11.5px; cursor: pointer; }
+  .ref-suggest button:hover { border-color: var(--sequoia-green); background: var(--sequoia-green-light); }
   .pill-role {
     margin-left: 5px; padding-left: 5px;
     border-left: 1px solid var(--border);
@@ -658,7 +669,12 @@
     { name: 'Logo', title: 'URL du logo', optional: true },
     { name: 'RechercheStructure', title: 'Structure de recherche', optional: true },
     { name: 'RechercheEquipeActivite', title: 'Équipe / activité', optional: true },
-    { name: 'RechercheEquipeLabo', title: 'Laboratoire', optional: true }
+    { name: 'RechercheEquipeLabo', title: 'Laboratoire', optional: true },
+    // Hiérarchie : le parent (filiale → groupe, équipe → labo) et, pour un
+    // labo, ses tutelles. Colonnes de référence vers Structures elle-même.
+    { name: 'Parent', title: 'Rattachée à (Ref:Structures)', optional: true },
+    { name: 'Tutelles', title: 'Tutelles (RefList:Structures)', optional: true },
+    { name: 'Niveau', title: 'Niveau (Groupe, Filiale, Laboratoire, Équipe…)', optional: true }
   ];
 
   const RELATED = {
@@ -729,8 +745,15 @@
         Commentaire: ['Commentaire', 'Commentaires', 'Notes'],
         Partenaires: ['Partenaires', 'Partenaire', 'Structures', 'Structure'],
         ContactPartenaire: ['ContactPartenaire', 'Contact_Partenaire', 'Contact(s) partenaire'],
-        ContactCluster: ['ContactCluster', 'Contact_Cluster', 'Contact(s) Cluster']
-      }
+        ContactCluster: ['ContactCluster', 'Contact_Cluster', 'Contact(s) Cluster'],
+        // Liens entre projets, références vers la table elle-même : une CIFRE
+        // menée dans le cadre d'une chaire, une CIFRE qui fait suite à un stage.
+        Cadre: ['Cadre', 'Projet_cadre', 'ProjetCadre', 'Dans_le_cadre_de'],
+        SuiteDe: ['Suite_de', 'SuiteDe', 'Fait_suite_a', 'Projet_precedent']
+      },
+      // Rôles qui ne valent que s'ils pointent vers la table elle-même : un
+      // nom approchant (« Note de cadrage ») ne doit pas être pris pour un lien.
+      selfRefRoles: ['Cadre', 'SuiteDe']
     }
   };
 
@@ -810,6 +833,9 @@
         // fields in the create/edit popups — except a formula/lookup column,
         // which Grist would refuse to write to.
         const extraEditableLinkCols = discovered.filter(c => c !== primary && !formulaCols.has(c));
+        (conf.selfRefRoles || []).forEach(role => {
+          if (cols[role] && refTargets[cols[role]] !== tableId) cols[role] = null;
+        });
 
         return {
           tableId,
@@ -865,10 +891,76 @@
   function rel(key) { return related[key] || { tableId: null, cols: {}, linkCols: [], extraEditableLinkCols: [], listCols: [], refTargets: {}, colLabels: {}, records: [] }; }
 
   function linkedRecords(key, structureId) {
+    return linkedRecordsIn(key, new Set([structureId]));
+  }
+
+  // Les lignes de `key` rattachées à l'une des structures de `ids`.
+  function linkedRecordsIn(key, ids) {
     const r = rel(key);
     const linkCols = r.linkCols && r.linkCols.length ? r.linkCols : [r.cols[RELATED[key].linkRole]].filter(Boolean);
-    if (linkCols.length === 0 || structureId == null) return [];
-    return r.records.filter(rec => linkCols.some(col => recordLinksTo(rec, col, structureId)));
+    if (linkCols.length === 0 || !ids.size) return [];
+    return r.records.filter(rec => linkCols.some(col => refIdsFromValue(rec[col]).some(id => ids.has(id))));
+  }
+
+  // ---- Hiérarchie des structures ----
+  //
+  // Parent et Tutelles sont des colonnes de la table Structures (mappées sur
+  // le widget). L'arbre est recalculé à chaque livraison de Grist.
+  let arbre = null;
+
+  function arbreStructures() {
+    if (!arbre) {
+      arbre = buildStructureTree(structures.map(s => ({
+        id: s.id,
+        parents: refIdsFromValue(s.Parent),
+        tutelles: refIdsFromValue(s.Tutelles)
+      })));
+    }
+    return arbre;
+  }
+
+  function structureById(id) { return structures.find(x => x.id === id) || null; }
+  function nomStructure(id) {
+    const st = structureById(id);
+    return st ? (structField(st, 'Nom') || 'Sans nom') : '#' + id;
+  }
+
+  // La fiche d'un labo montre aussi ce qui a été saisi sur ses équipes, celle
+  // d'un établissement ce qui l'a été sur les labos dont il est tutelle, celle
+  // d'un groupe ce qui l'a été sur ses filiales : rien n'est recopié, le
+  // rattachement suffit. D'où ce périmètre : la structure et tout ce qui est
+  // en dessous, tutelles comprises.
+  function perimetre(structureId) {
+    return new Set([structureId, ...structureDescendants(arbreStructures(), structureId, true)]);
+  }
+
+  // Les structures et ce qui est *dans* chacune (par Parent seulement) : les
+  // contacts d'une équipe restent proposables quand on a choisi son labo.
+  // Pas les tutelles : choisir l'Université de Rennes ne doit pas proposer
+  // les contacts de tous les labos qu'elle porte.
+  function avecSousStructures(ids) {
+    const out = new Set(ids);
+    ids.forEach(id => structureDescendants(arbreStructures(), id, false).forEach(x => out.add(x)));
+    return out;
+  }
+
+  // Le Cluster SequoIA est une structure comme une autre : ses contacts (et
+  // ceux de ses éventuelles sous-structures) sont les « contacts cluster ».
+  function estCluster(s) {
+    const k = normalizeKey(structField(s, 'Nom'));
+    return k === 'sequoia' || k.startsWith('clustersequoia');
+  }
+
+  function clusterStructureIds() {
+    return avecSousStructures(structures.filter(estCluster).map(s => s.id));
+  }
+
+  // Sans structure Cluster dans le document, ou sans contact rattaché, on
+  // retombe sur tout le carnet plutôt que sur une liste vide.
+  function clusterContactOptions() {
+    const ids = clusterStructureIds();
+    const options = ids.size ? contactOptionsForStructures(ids) : [];
+    return options.length ? options : contactPickerOptions(null, 'all');
   }
 
   // ---- Rattachement indirect, par un contact ----
@@ -944,6 +1036,11 @@
     const primary = r.cols[RELATED[key].linkRole];
     const via = (r.linkCols || []).find(col => recordLinksTo(rec, col, structureId));
     if (via) return via === primary ? '' : (r.colLabels[via] || via);
+    // Rattachée à une structure du dessous : une équipe, une filiale, un labo
+    // dont la structure est tutelle.
+    const dessous = structureDescendants(arbreStructures(), structureId, true)
+      .filter(id => (r.linkCols || []).some(col => recordLinksTo(rec, col, id)));
+    if (dessous.length) return 'via ' + dessous.map(nomStructure).join(', ');
     // Aucune colonne ne désigne cette structure : la ligne est là par un de
     // ses contacts. Le nommer, sinon elle a l'air mal classée.
     const noms = contactNamesFor(contactsLinkingTo(key, rec, structureId));
@@ -963,7 +1060,7 @@
 
   function interactionsOf(id) {
     const cols = rel('interactions').cols;
-    return linkedRecords('interactions', id).sort((a, b) => {
+    return linkedRecordsIn('interactions', perimetre(id)).sort((a, b) => {
       const da = cols.Date ? (Number(a[cols.Date]) || 0) : 0;
       const db = cols.Date ? (Number(b[cols.Date]) || 0) : 0;
       return db - da;
@@ -972,7 +1069,7 @@
 
   function opportunitesOf(id) {
     const cols = rel('opportunites').cols;
-    const directes = linkedRecords('opportunites', id);
+    const directes = linkedRecordsIn('opportunites', perimetre(id));
     // L'ordre de l'entonnoir, celui que le document donne à sa colonne Statut :
     // une affaire en montage se lit avant une en contractualisation. Trier par
     // montant, comme avant, mêlait les étapes et donnait un classement qui ne
@@ -1659,6 +1756,7 @@
         '<div class="head-text">' +
           '<h1 title="' + escapeHtml(sujet) + '">' + escapeHtml(sujet) + '</h1>' +
           '<div class="head-meta">' + escapeHtml(choiceListValues(cols.Type ? o[cols.Type] : null).join(' · ')) + '</div>' +
+          liensProjetHtml(o) +
           '<div class="head-pills">' +
             rattachements.map(x => '<button type="button" class="struct-pill" data-voir-structure="' + x.id + '">' +
               escapeHtml(x.nom) + (x.role ? ' <span class="pill-role">' + escapeHtml(x.role) + '</span>' : '') +
@@ -1768,6 +1866,32 @@
     '</div>';
   }
 
+  // Les liens entre projets : le cadre (la chaire d'une CIFRE), l'antécédent
+  // (le stage qui a mené à la CIFRE), et dans l'autre sens les projets menés
+  // dans ce cadre et ceux qui en sont la suite. Chaque nom ouvre sa fiche.
+  function liensProjetHtml(o) {
+    const r = rel('opportunites');
+    const cols = r.cols;
+    if (!cols.Cadre && !cols.SuiteDe) return '';
+    const nom = id => {
+      const x = r.records.find(y => y.id === id);
+      return x ? ((cols.Sujet ? formatValue(x[cols.Sujet]) : '') || 'Sans sujet') : '#' + id;
+    };
+    const pill = id => '<button type="button" class="struct-pill" data-voir-opp="' + id + '">' + escapeHtml(nom(id)) + '</button>';
+    const pointant = col => col ? r.records.filter(x => refIdsFromValue(x[col]).includes(o.id)).map(x => x.id) : [];
+    const lignes = [
+      ['Dans le cadre de', cols.Cadre ? refIdsFromValue(o[cols.Cadre]) : []],
+      ['Fait suite à', cols.SuiteDe ? refIdsFromValue(o[cols.SuiteDe]) : []],
+      ['Projets dans ce cadre', pointant(cols.Cadre)],
+      ['Suites', pointant(cols.SuiteDe)]
+    ].filter(([, ids]) => ids.length);
+    return lignes.length
+      ? '<div class="head-tree">' + lignes.map(([label, ids]) =>
+          '<div class="tree-line"><span class="tree-label">' + escapeHtml(label) + '</span>' +
+          ids.map(pill).join('') + '</div>').join('') + '</div>'
+      : '';
+  }
+
   // Tout ce qui se rattache au projet : les échanges et actions qui le
   // désignent directement, plus ceux qui s'y rattachent par ricochet — un
   // échange dont une action vise le projet, une action née d'un échange du
@@ -1834,6 +1958,9 @@
     });
     document.querySelectorAll('[data-voir-contact]').forEach(btn => {
       btn.addEventListener('click', () => ouvrirContact(Number(btn.dataset.voirContact)));
+    });
+    document.querySelectorAll('[data-voir-opp]').forEach(btn => {
+      btn.addEventListener('click', () => ouvrirOpportunite(Number(btn.dataset.voirOpp)));
     });
     document.querySelectorAll('[data-voir-interaction]').forEach(el => {
       el.addEventListener('click', () => {
@@ -1984,7 +2111,7 @@
     const axeValues = choiceListValues(s.AxeSequoia);
     const site = structField(s, 'SiteWeb');
 
-    const metaParts = [structField(s, 'TypeActeur'), structField(s, 'Categorie'),
+    const metaParts = [structField(s, 'Niveau'), structField(s, 'TypeActeur'), structField(s, 'Categorie'),
       structField(s, 'Taille'), structField(s, 'Activite')].filter(Boolean);
 
     main.innerHTML =
@@ -1996,6 +2123,7 @@
           '<div class="head-text">' +
             '<h1 title="' + escapeHtml(nom) + '">' + escapeHtml(nom) + '</h1>' +
             '<div class="head-meta">' + escapeHtml(metaParts.join(' · ')) + '</div>' +
+            hierarchieHtml(s) +
             '<div class="head-pills">' +
               pilierValues.map(v => '<span class="value-pill ' + pilierClass(v) + '">' + escapeHtml(v) + '</span>').join('') +
               axeValues.map(v => '<span class="type-pill">' + escapeHtml(v) + '</span>').join('') +
@@ -2046,8 +2174,39 @@
       '</div>';
 
     document.getElementById('btn-edit-structure').addEventListener('click', () => openStructureModal(s));
+    main.querySelectorAll('.head-tree [data-voir-structure]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const st = structureById(Number(btn.dataset.voirStructure));
+        if (st) selectStructure(st);
+      });
+    });
     document.getElementById('btn-new-interaction').addEventListener('click', () => openInteractionModal(null, s));
     bindPanelEvents(s);
+  }
+
+  // Où se situe la structure : au-dessus d'elle (parent, tutelles), en
+  // dessous (entités rattachées, labos dont elle est tutelle). Chaque nom
+  // ouvre la fiche correspondante.
+  function hierarchieHtml(s) {
+    const t = arbreStructures();
+    const pill = id => '<button type="button" class="struct-pill" data-voir-structure="' + id + '">' +
+      escapeHtml(nomStructure(id)) + '</button>';
+    const MAX = 12;
+    const liste = ids => ids.slice(0, MAX).map(pill).join('') +
+      (ids.length > MAX ? '<span class="tree-more">+ ' + (ids.length - MAX) + ' autres</span>' : '');
+    const ligne = (label, contenu) => '<div class="tree-line"><span class="tree-label">' +
+      escapeHtml(label) + '</span>' + contenu + '</div>';
+
+    const chaine = structureAncestors(t, s.id, false);
+    const tutelles = t.tutelles.get(s.id) || [];
+    const enfants = t.enfants.get(s.id) || [];
+    const sousTutelle = t.sousTutelle.get(s.id) || [];
+    const lignes = [];
+    if (chaine.length) lignes.push(ligne('Rattachée à', chaine.map(pill).join('<span class="tree-sep">›</span>')));
+    if (tutelles.length) lignes.push(ligne('Tutelles', liste(tutelles)));
+    if (enfants.length) lignes.push(ligne('Entités rattachées (' + enfants.length + ')', liste(enfants)));
+    if (sousTutelle.length) lignes.push(ligne('Tutelle de (' + sousTutelle.length + ')', liste(sousTutelle)));
+    return lignes.length ? '<div class="head-tree">' + lignes.join('') + '</div>' : '';
   }
 
   // `extra` accueille une jauge ou une répartition : un indicateur qui se voit
@@ -2137,7 +2296,7 @@
   function actionsOfStructure(structureId) {
     const a = rel('actions');
     if (!a.tableId) return [];
-    const directes = linkedRecords('actions', structureId);
+    const directes = linkedRecordsIn('actions', perimetre(structureId));
     return directes.concat(recordsViaContacts('actions', structureId, directes));
   }
 
@@ -2655,7 +2814,16 @@
         textField('m-logo', 'URL du logo', structField(s, 'Logo'), true) +
         textField('m-rstructure', 'Structure de recherche', structField(s, 'RechercheStructure')) +
         textField('m-requipe', 'Équipe / activité', structField(s, 'RechercheEquipeActivite')) +
-        textField('m-rlabo', 'Laboratoire', structField(s, 'RechercheEquipeLabo')) +
+        // Le champ texte « Laboratoire » s'efface devant le parent dès que la
+        // colonne Parent est mappée : c'est elle qui porte le rattachement.
+        (mappings.Parent ? '' : textField('m-rlabo', 'Laboratoire', structField(s, 'RechercheEquipeLabo'))) +
+        (mappings.Niveau ? selectField('m-niveau', 'Niveau', structField(s, 'Niveau')) : '') +
+        (mappings.Parent
+          ? '<div class="form-field full"><label>Rattachée à (groupe, laboratoire…)</label><div id="m-ref-parent"></div></div>'
+          : '') +
+        (mappings.Tutelles
+          ? '<div class="form-field full"><label>Tutelles (établissements du laboratoire)</label><div id="m-ref-tutelles"></div></div>'
+          : '') +
       '</div>' +
       '<div class="form-modal-actions">' +
         (isNew
@@ -2680,8 +2848,21 @@
       bind('m-rstructure', 'RechercheStructure');
       bind('m-requipe', 'RechercheEquipeActivite');
       bind('m-rlabo', 'RechercheEquipeLabo');
+      bind('m-niveau', 'Niveau');
 
       const raw = rawStructures();
+      if (mappings.Niveau) populateChoiceSelect('m-niveau', structTableId, mappings.Niveau, raw, structField(s, 'Niveau'));
+
+      // Parent et tutelles. Une structure ne peut être rattachée ni à
+      // elle-même ni à ce qui est déjà en dessous d'elle : ce serait une boucle.
+      const exclus = new Set(s ? [s.id, ...structureDescendants(arbreStructures(), s.id, false)] : []);
+      const candidates = structurePickerOptions().filter(o => !exclus.has(o.id));
+      const brut = (role) => (s && mappings[role] ? { id: s.id, [mappings[role]]: s[role] } : null);
+      const getParent = mappings.Parent ? mountRefPicker('m-ref-parent', candidates, brut('Parent'),
+        structTableId, mappings.Parent, isNew, null, structureChip) : null;
+      const getTutelles = mappings.Tutelles ? mountRefPicker('m-ref-tutelles',
+        structurePickerOptions().filter(o => !s || o.id !== s.id), brut('Tutelles'),
+        structTableId, mappings.Tutelles, isNew, null, structureChip) : null;
       populateChoiceSelect('m-type', structTableId, mappings.TypeActeur, raw, typeActeur);
       populateChoiceSelect('m-categorie', structTableId, mappings.Categorie, raw, structField(s, 'Categorie'));
       populateChoiceSelect('m-taille', structTableId, mappings.Taille, raw, structField(s, 'Taille'));
@@ -2716,9 +2897,13 @@
         [['m-description', 'Description'], ['m-type', 'TypeActeur'], ['m-categorie', 'Categorie'],
          ['m-taille', 'Taille'], ['m-site', 'SiteWeb'], ['m-logo', 'Logo'],
          ['m-rstructure', 'RechercheStructure'], ['m-requipe', 'RechercheEquipeActivite'],
-         ['m-rlabo', 'RechercheEquipeLabo']].forEach(([elId, role]) => {
+         ['m-rlabo', 'RechercheEquipeLabo'], ['m-niveau', 'Niveau']].forEach(([elId, role]) => {
           const el = document.getElementById(elId);
           if (el) set(role, el.value.trim());
+        });
+        [[getParent, 'Parent'], [getTutelles, 'Tutelles']].forEach(([get, role]) => {
+          const ids = get ? get().map(c => c.id) : [];
+          if (ids.length) set(role, refListValue(structTableId, mappings[role], ids));
         });
         Object.entries(choixSaisis).forEach(([role, values]) => {
           if (values.length) set(role, structColValue(mappings[role], values));
@@ -2856,8 +3041,11 @@
         textField('m-montant', 'Montant (€)', rawGet('Montant') === null ? '' : rawGet('Montant'), false, 'number') +
         dateField('m-debut', 'Date de début', rawGet('DateDebut')) +
         dateField('m-echeance', 'Échéance', rawGet('Echeance')) +
-        '<div class="form-field full"><label>Partenaire(s)</label><div id="m-ref-partenaires"></div></div>' +
+        '<div class="form-field full"><label>Partenaire(s)</label><div id="m-ref-partenaires"></div>' +
+          '<div id="m-suggest-partenaires"></div></div>' +
         extraStructureFieldsHtml('opportunites') +
+        (cols.Cadre ? '<div class="form-field full"><label>Dans le cadre de (projet)</label><div id="m-ref-cadre"></div></div>' : '') +
+        (cols.SuiteDe ? '<div class="form-field full"><label>Fait suite à (projet)</label><div id="m-ref-suite"></div></div>' : '') +
         '<div class="form-field full"><label>Contact(s) partenaire</label><div id="m-ref-contacts"></div></div>' +
         '<div class="form-field full"><label>Contact(s) cluster</label><div id="m-ref-contacts-cluster"></div></div>' +
         areaField('m-commentaire', 'Commentaire', get('Commentaire'), true) +
@@ -2895,16 +3083,29 @@
       const structuresChoisies = () => new Set([s.id,
         ...getPartenaires().map(c => c.id),
         ...Object.values(getExtraLinks).flatMap(g => g().map(c => c.id))]);
-      const rafraichir = () => getContacts.setOptions(contactOptionsForStructures(structuresChoisies()));
+      let peindreSuggestions = () => {};
+      const rafraichir = () => {
+        getContacts.setOptions(contactOptionsForStructures(structuresChoisies()));
+        peindreSuggestions();
+      };
       const getPartenaires = mountRefPicker('m-ref-partenaires',
         structurePickerOptions(), o, r.tableId, cols.Partenaires, isNew,
         [{ id: s.id, label: structField(s, 'Nom') || 'Sans nom' }], structureChip, rafraichir);
+      // Une colonne Partenaires à valeur unique : ajouter reviendrait à remplacer.
+      if (estColonneListe(r.tableId, cols.Partenaires)) {
+        peindreSuggestions = suggestionsRattachement('m-suggest-partenaires', getPartenaires);
+      }
       const getExtraLinks = mountExtraStructureLinks('opportunites', o, r.tableId, isNew, rafraichir);
+      const autresProjets = projetOptions(o ? o.id : null);
+      const getCadre = mountRefPicker('m-ref-cadre', autresProjets, o, r.tableId, cols.Cadre, isNew,
+        null, opportuniteChip);
+      const getSuite = mountRefPicker('m-ref-suite', autresProjets, o, r.tableId, cols.SuiteDe, isNew,
+        null, opportuniteChip);
       const getContacts = mountRefPicker('m-ref-contacts',
         contactOptionsForRecord('opportunites', o, s.id), o, r.tableId, cols.ContactPartenaire, isNew,
         null, contactChip);
       const getClusterContacts = mountRefPicker('m-ref-contacts-cluster',
-        contactPickerOptions(s.id, 'all'), o, r.tableId, cols.ContactCluster, isNew,
+        clusterContactOptions(), o, r.tableId, cols.ContactCluster, isNew,
         null, contactChip);
 
       if (isNew) {
@@ -2936,6 +3137,10 @@
           Object.entries(getExtraLinks).forEach(([colId, getChips]) => {
             const chips = getChips();
             if (chips.length) fields[colId] = refListValue(r.tableId, colId, chips.map(c => c.id));
+          });
+          [[getCadre, 'Cadre'], [getSuite, 'SuiteDe']].forEach(([get, role]) => {
+            const ids = get().map(c => c.id);
+            if (ids.length) set(role, refListValue(r.tableId, cols[role], ids));
           });
           try {
             setModalStatus('Création…');
@@ -3000,7 +3205,8 @@
               ? ' <button type="button" class="btn-mini" id="suites-reprendre">Reprendre celle-ci comme action</button>'
               : '') + '</div>'
           : textField('m-suites', 'Suites à donner', get('Suites'))) +
-        '<div class="form-field full"><label>Partenaire(s)</label><div id="m-ref-partenaires"></div></div>' +
+        '<div class="form-field full"><label>Partenaire(s)</label><div id="m-ref-partenaires"></div>' +
+          '<div id="m-suggest-partenaires"></div></div>' +
         extraStructureFieldsHtml('interactions') +
         '<div class="form-field full"><label>Contact(s) partenaire</label><div id="m-ref-contacts"></div></div>' +
         '<div class="form-field full"><label>Contact(s) cluster</label><div id="m-ref-contacts-cluster"></div></div>' +
@@ -3055,20 +3261,26 @@
       const structuresChoisies = () => new Set([s.id,
         ...getPartenaires().map(c => c.id),
         ...Object.values(getExtraLinks).flatMap(g => g().map(c => c.id))]);
+      let peindreSuggestions = () => {};
       const rafraichir = () => {
         const ids = structuresChoisies();
         getContacts.setOptions(contactOptionsForStructures(ids));
         getOpportunites.setOptions(opportuniteOptionsForStructures(ids));
+        peindreSuggestions();
       };
       const getPartenaires = mountRefPicker('m-ref-partenaires',
         structurePickerOptions(), i, r.tableId, cols.Partenaires, isNew,
         [{ id: s.id, label: structField(s, 'Nom') || 'Sans nom' }], structureChip, rafraichir);
+      // Une colonne Partenaires à valeur unique : ajouter reviendrait à remplacer.
+      if (estColonneListe(r.tableId, cols.Partenaires)) {
+        peindreSuggestions = suggestionsRattachement('m-suggest-partenaires', getPartenaires);
+      }
       const getExtraLinks = mountExtraStructureLinks('interactions', i, r.tableId, isNew, rafraichir);
       const getContacts = mountRefPicker('m-ref-contacts',
         contactOptionsForRecord('interactions', i, s.id), i, r.tableId, cols.ContactPartenaire, isNew,
         null, contactChip);
       const getClusterContacts = mountRefPicker('m-ref-contacts-cluster',
-        contactPickerOptions(s.id, 'all'), i, r.tableId, cols.ContactCluster, isNew,
+        clusterContactOptions(), i, r.tableId, cols.ContactCluster, isNew,
         null, contactChip);
       const getOpportunites = mountRefPicker('m-ref-opportunites',
         opportunitePickerOptions(i, s.id), i, r.tableId, cols.Opportunites, isNew,
@@ -3357,7 +3569,7 @@
   function contactOptionsForStructures(structIds) {
     const vus = new Set();
     const options = [];
-    structIds.forEach(id => contactsOf(id).forEach(c => {
+    avecSousStructures(structIds).forEach(id => contactsOf(id).forEach(c => {
       if (vus.has(c.id)) return;
       vus.add(c.id);
       options.push({ id: c.id, label: contactName(c) });
@@ -3376,10 +3588,14 @@
   // ligne (Ref) : Grist refuse l'autre forme. Vider une RefList s'ecrit ['L'],
   // vider une Ref s'ecrit 0.
   function refListValue(tableId, colId, ids) {
+    if (estColonneListe(tableId, colId)) return ['L', ...ids];
+    return ids.length ? ids[0] : 0;
+  }
+
+  function estColonneListe(tableId, colId) {
     const r = Object.keys(related).map(k => related[k]).find(x => x.tableId === tableId)
       || { listCols: structListCols };
-    if (isListCol(r, colId)) return ['L', ...ids];
-    return ids.length ? ids[0] : 0;
+    return isListCol(r, colId);
   }
 
   // Les opportunités proposées : celles des structures que l'échange désigne,
@@ -3419,6 +3635,44 @@
   function structureChip(id) {
     const st = structures.find(x => x.id === id);
     return st ? { id, label: structField(st, 'Nom') || 'Sans nom' } : null;
+  }
+
+  // Sous le sélecteur de partenaires : les structures de rattachement de ceux
+  // déjà choisis (labo d'une équipe, ses tutelles, groupe d'une filiale), à
+  // ajouter d'un clic quand elles sont vraiment parties prenantes. Rien n'est
+  // ajouté d'office : la fiche d'un labo montre déjà ce qui est saisi sur ses
+  // équipes, recopier le labo partout n'apporterait que du bruit.
+  // Renvoie de quoi repeindre la ligne quand la sélection change.
+  function suggestionsRattachement(elId, getPartenaires) {
+    const el = document.getElementById(elId);
+    if (!el) return () => {};
+    const peindre = () => {
+      const choisis = new Set(getPartenaires().map(c => c.id));
+      const ids = [];
+      choisis.forEach(id => structureAncestors(arbreStructures(), id, true).forEach(a => {
+        if (!choisis.has(a) && !ids.includes(a) && structureById(a)) ids.push(a);
+      }));
+      el.innerHTML = ids.length
+        ? '<div class="ref-suggest">Rattachements :' + ids.map(id =>
+            '<button type="button" data-suggest="' + id + '" title="Ajouter comme partenaire">+ ' +
+            escapeHtml(nomStructure(id)) + '</button>').join('') + '</div>'
+        : '';
+      el.querySelectorAll('[data-suggest]').forEach(b => b.addEventListener('click', () => {
+        const id = Number(b.dataset.suggest);
+        getPartenaires.add({ id, label: nomStructure(id) });
+      }));
+    };
+    peindre();
+    return peindre;
+  }
+
+  // Les projets proposés comme cadre ou comme antécédent : tous, sauf
+  // celui qu'on édite.
+  function projetOptions(saufId) {
+    const r = rel('opportunites');
+    return r.records.filter(x => x.id !== saufId)
+      .map(x => ({ id: x.id, label: (r.cols.Sujet ? formatValue(x[r.cols.Sujet]) : '') || 'Sans sujet' }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'fr'));
   }
 
   // Toutes les structures du document, pour taguer une interaction/
@@ -3491,7 +3745,14 @@
     } else {
       chips = defaultChipsWhenNew || [];
     }
-    const picker = renderLocalPicker(el, proposees, chips, (next) => {
+    // Une colonne Ref (Parent, Cadre…) ne porte qu'une valeur : la dernière
+    // choisie remplace la précédente, au lieu d'être ignorée à l'écriture.
+    const unique = colId && !estColonneListe(tableId, colId);
+    const appliquer = (next) => {
+      if (unique && next.length > 1) {
+        next = next.slice(-1);
+        picker.setChips(next);
+      }
       chips = next;
       if (!isNew && colId && record) {
         updateRecord(tableId, record.id, { [colId]: refListValue(tableId, colId, next.map(c => c.id)) })
@@ -3499,8 +3760,16 @@
           .catch(err => { console.error(err); setModalStatus('Erreur d’enregistrement'); });
       }
       if (onChips) onChips(next);
-    });
+    };
+    const picker = renderLocalPicker(el, proposees, chips, appliquer);
     const getChips = () => chips;
+    // Ajout depuis le code (suggestion cliquée) : même chemin qu'une saisie.
+    getChips.add = (chip) => {
+      if (chips.some(c => c.id === chip.id)) return;
+      const next = chips.concat([chip]);
+      picker.setChips(next);
+      appliquer(next);
+    };
     // Les pastilles deja posees restent proposables, comme au montage.
     getChips.setOptions = (liste) => {
       const ids = new Set(liste.map(o => o.id));
@@ -3513,7 +3782,7 @@
   // Lightweight chip picker over a fixed option list (no cross-table
   // autocomplete needed: the options are contacts already loaded).
   function renderLocalPicker(container, options, initialChips, onChange) {
-    if (!container) return { setOptions() {} };
+    if (!container) return { setOptions() {}, setChips() {} };
     let chips = [...(initialChips || [])];
     const datalistId = 'dl-' + Math.random().toString(36).slice(2);
 
@@ -3556,7 +3825,10 @@
       input.addEventListener('change', tryAdd);
     }
     paint();
-    return { setOptions(next) { options = next; paint(); } };
+    return {
+      setOptions(next) { options = next; paint(); },
+      setChips(next) { chips = [...next]; paint(); }
+    };
   }
 
   // ---- Compte-rendu ----
@@ -3712,6 +3984,7 @@
   grist.onRecords(async function (records, maps) {
     mappings = maps || {};
     structures = mapRecords(records, maps);
+    arbre = null;
     if (structTableId === null) {
       try { structTableId = await grist.getTable().getTableId(); } catch (err) { console.error(err); }
       try {

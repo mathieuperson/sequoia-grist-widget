@@ -811,6 +811,69 @@ function recordLinksTo(record, colId, rowId) {
   return refIdsFromValue(record[colId]).includes(rowId);
 }
 
+// ---------- Hiérarchie des structures ----------
+//
+// Une structure désigne son parent (filiale → groupe, équipe → laboratoire)
+// et, pour un laboratoire, ses tutelles (les établissements qui le portent).
+// Le parent est une appartenance : l'équipe est *dans* le labo. La tutelle
+// est un rattachement : IRISA n'est pas *dans* l'Université de Rennes, mais
+// ce qui se passe à l'IRISA la concerne. D'où l'option `avecTutelles`, qui
+// n'est prise que là où ce rattachement compte (consolidation des échanges).
+//
+// `rows` : [{ id, parents: [ids], tutelles: [ids] }]. Un document peut porter
+// une boucle par erreur (A parent de B parent de A) : chaque parcours tient
+// la liste des lignes déjà vues et ne boucle jamais.
+function buildStructureTree(rows) {
+  const tree = { parents: new Map(), tutelles: new Map(), enfants: new Map(), sousTutelle: new Map() };
+  const ajouter = (map, cle, id) => {
+    if (!map.has(cle)) map.set(cle, []);
+    map.get(cle).push(id);
+  };
+  (rows || []).forEach(r => {
+    const parents = (r.parents || []).filter(p => p && p !== r.id);
+    const tutelles = (r.tutelles || []).filter(t => t && t !== r.id);
+    tree.parents.set(r.id, parents);
+    tree.tutelles.set(r.id, tutelles);
+    parents.forEach(p => ajouter(tree.enfants, p, r.id));
+    tutelles.forEach(t => ajouter(tree.sousTutelle, t, r.id));
+  });
+  return tree;
+}
+
+// Parcours en largeur : le plus proche d'abord, sans doublon ni la ligne de
+// départ. `voisins(id)` donne les lignes atteignables d'un pas.
+function parcourirStructures(depart, voisins) {
+  const vus = new Set([depart]);
+  const ordre = [];
+  const file = [depart];
+  while (file.length) {
+    const id = file.shift();
+    voisins(id).forEach(v => {
+      if (vus.has(v)) return;
+      vus.add(v);
+      ordre.push(v);
+      file.push(v);
+    });
+  }
+  return ordre;
+}
+
+// Au-dessus : parent, grand-parent… et, avec `avecTutelles`, les tutelles de
+// chacun (IRISA → Université de Rennes, INSA, CNRS…).
+function structureAncestors(tree, id, avecTutelles) {
+  if (!tree) return [];
+  return parcourirStructures(id, x => (tree.parents.get(x) || [])
+    .concat(avecTutelles ? (tree.tutelles.get(x) || []) : []));
+}
+
+// En dessous : enfants, petits-enfants… et, avec `avecTutelles`, les labos
+// dont la structure est tutelle, avec leurs propres équipes.
+function structureDescendants(tree, id, avecTutelles) {
+  if (!tree) return [];
+  return parcourirStructures(id, x => (tree.enfants.get(x) || [])
+    .concat(avecTutelles ? (tree.sousTutelle.get(x) || []) : []));
+}
+
 // ---------- Writing to any table (not just the mapped one) ----------
 
 async function addRecord(tableId, fields) {

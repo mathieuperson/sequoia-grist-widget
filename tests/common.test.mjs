@@ -8,7 +8,7 @@ const src = fs.readFileSync(new URL('../common.js', import.meta.url), 'utf8');
 // in a sandbox and expose the functions we need via a `window` shim.
 const sandbox = { console, window: {}, document: undefined };
 vm.createContext(sandbox);
-vm.runInContext(src + '\nwindow.exports = { escapeHtml, pilierClass, initials, formatValue, formatMontant, formatDate, gristDateToInputValue, inputValueToGristDate, statusColor, statusStyle, statusTextColor, registerStatusStyles, readableTextOn, choiceStylesFromWidgetOptions, mapRecord, mapRecords, attachmentIdsFromValue, guessDisplayColumn, chipLabels, debounce, createFieldSaver, isListCol, colValue };', sandbox);
+vm.runInContext(src + '\nwindow.exports = { escapeHtml, pilierClass, initials, formatValue, formatMontant, formatDate, gristDateToInputValue, inputValueToGristDate, statusColor, statusStyle, statusTextColor, registerStatusStyles, readableTextOn, choiceStylesFromWidgetOptions, mapRecord, mapRecords, attachmentIdsFromValue, guessDisplayColumn, chipLabels, debounce, createFieldSaver, isListCol, colValue, buildStructureTree, structureAncestors, structureDescendants };', sandbox);
 const fn = sandbox.window.exports;
 
 let pass = 0, fail = 0;
@@ -328,6 +328,26 @@ eq(Array.from(estampilles).length <= 1, true,
   eq(sandbox.daterNouvellesLignes('Ancienne note', 'Ancienne note\nNouvelle\nsur deux lignes', '2026-09-25'),
     'Ancienne note\n[2026-09-25] Nouvelle\nsur deux lignes', 'daterNouvellesLignes: les lignes existantes gardent leur forme, une note sur deux lignes prend une seule date');
   eq(sandbox.daterNouvellesLignes('', '', '2026-09-25'), '', 'daterNouvellesLignes: vide');
+}
+
+// ---- Hiérarchie des structures ----
+{
+  // 1 Univ Rennes, 2 CNRS, 3 IRISA (tutelles 1, 2), 4 KERDATA (parent 3),
+  // 5 INUIT (parent 3), 6 Thales, 7 Thales SIX (parent 6), 8/9 boucle.
+  const t = fn.buildStructureTree([
+    { id: 1 }, { id: 2 }, { id: 3, tutelles: [1, 2] }, { id: 4, parents: [3] },
+    { id: 5, parents: [3] }, { id: 6 }, { id: 7, parents: [6] },
+    { id: 8, parents: [9] }, { id: 9, parents: [8] }, { id: 10, parents: [10] }
+  ]);
+  eq(fn.structureAncestors(t, 4, false), [3], 'ancêtres par parent seulement');
+  eq(fn.structureAncestors(t, 4, true), [3, 1, 2], 'ancêtres avec les tutelles, le plus proche d\'abord');
+  eq(fn.structureDescendants(t, 3, false), [4, 5], 'descendants par parent');
+  eq(fn.structureDescendants(t, 1, false), [], 'une tutelle n\'a pas d\'enfant par parent');
+  eq(fn.structureDescendants(t, 1, true), [3, 4, 5], 'avec les tutelles : le labo et ses équipes');
+  eq(fn.structureDescendants(t, 6, true), [7], 'filiale sous son groupe');
+  eq(fn.structureAncestors(t, 8, false), [9], 'une boucle ne tourne pas indéfiniment');
+  eq(fn.structureAncestors(t, 10, false), [], 'une structure parente d\'elle-même est ignorée');
+  eq(fn.structureAncestors(null, 1, true), [], 'sans arbre, rien');
 }
 
 console.log(`\n${pass} passed, ${fail} failed (final)`);

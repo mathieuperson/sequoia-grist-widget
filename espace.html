@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Espace SequoIA — Cluster SequoIA</title>
-<link rel="stylesheet" href="./common.css?v=20260929">
+<link rel="stylesheet" href="./common.css?v=20260929a">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-<script src="./common.js?v=20260929"></script>
-<script src="./pilotage.js?v=20260929"></script>
-<script src="./espace.js?v=20260929"></script>
-<script src="./finance.js?v=20260929"></script>
+<script src="./common.js?v=20260929a"></script>
+<script src="./pilotage.js?v=20260929a"></script>
+<script src="./espace.js?v=20260929a"></script>
+<script src="./finance.js?v=20260929a"></script>
 <script src="./vendor/read-excel-file-5.8.8.min.js"></script>
 <style>
 /* Une application à onglets, dans la charte de common.css : fond gris
@@ -796,7 +796,9 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     Description: ['description', 'Description', 'presentation'],
     RechercheEquipeLabo: ['recherche_equipe_labo', 'RechercheEquipeLabo'],
     RechercheEquipeActivite: ['recherche_equipe_activite', 'RechercheEquipeActivite'],
-    RechercheStructure: ['recherche_structure', 'RechercheStructure']
+    RechercheStructure: ['recherche_structure', 'RechercheStructure'],
+    // Niveau de la structure (voir crm.html) : une « Équipe » est une équipe.
+    Niveau: ['Niveau', 'Niveau_structure']
   };
   let colsStructure = {};
   function resoudreColsStructure(ids, data) {
@@ -831,7 +833,8 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
         taille: txt(sf(s, 'Taille')),
         piliers: listeChoix(sf(s, 'PilierSequoia')),
         axes: listeChoix(sf(s, 'AxeSequoia')),
-        isTeam: !!(txt(sf(s, 'RechercheEquipeLabo')) || txt(sf(s, 'RechercheEquipeActivite'))),
+        isTeam: !!(txt(sf(s, 'RechercheEquipeLabo')) || txt(sf(s, 'RechercheEquipeActivite')) ||
+          normalizeKey(txt(sf(s, 'Niveau'))).includes('equipe')),
         // « Laboratoire », « Équipe », « Institut »… : ce que la structure est dans la recherche.
         roleRecherche: normalizeKey(txt(sf(s, 'RechercheStructure'))),
         isProspect: normalizeKey(categorie).includes('prospect')
