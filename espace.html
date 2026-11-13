@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Espace SequoIA — Cluster SequoIA</title>
-<link rel="stylesheet" href="./common.css?v=20261113">
+<link rel="stylesheet" href="./common.css?v=20261113b">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-<script src="./common.js?v=20261113"></script>
-<script src="./pilotage.js?v=20261113"></script>
-<script src="./espace.js?v=20261113"></script>
-<script src="./finance.js?v=20261113"></script>
+<script src="./common.js?v=20261113b"></script>
+<script src="./pilotage.js?v=20261113b"></script>
+<script src="./espace.js?v=20261113b"></script>
+<script src="./finance.js?v=20261113b"></script>
 <script src="./vendor/read-excel-file-5.8.8.min.js"></script>
 <style>
 /* Une application à onglets, dans la charte de common.css : fond gris
@@ -2043,10 +2043,9 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
       resolveImagesIn(cr);
       // Une image collée ou glissée dans le compte rendu part dans les pièces
       // jointes du document et s'insère à l'endroit du curseur.
-      cr.addEventListener('paste', (e) => {
-        const images = Array.from((e.clipboardData && e.clipboardData.items) || []).filter(it => it.type && it.type.startsWith('image/')).map(it => it.getAsFile());
-        if (images.length) { e.preventDefault(); images.forEach(f => insererImageCR(cr, f)); }
-      });
+      // Du texte collé (Word, Outlook…) est inséré nettoyé, même si le
+      // presse-papier y joint une capture du passage.
+      cr.addEventListener('paste', (e) => { handleCrPaste(e, (f) => insererImageCR(cr, f)); });
       cr.addEventListener('drop', (e) => {
         const images = Array.from((e.dataTransfer && e.dataTransfer.files) || []).filter(f => f.type.startsWith('image/'));
         if (images.length) { e.preventDefault(); e.stopPropagation(); images.forEach(f => insererImageCR(cr, f)); }
@@ -2066,17 +2065,23 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     if (sel && sel.rangeCount && zone.contains(sel.anchorNode)) {
       const r = sel.getRangeAt(0); r.deleteContents(); r.insertNode(attente); r.collapse(false);
     } else zone.appendChild(attente);
+    const img = document.createElement('img');
     try {
       const [id] = await uploadAttachments([fichier]);
-      const img = document.createElement('img');
       img.setAttribute('data-att-id', id);
       img.src = await getAttachmentDownloadUrl(id);
-      attente.replaceWith(img);
     } catch (err) {
-      console.error(err);
-      attente.remove();
-      toast('Image non envoyée : ' + (err && err.message ? err.message : err), true);
+      // Envoi refusé (fréquent depuis un widget) : l'image est intégrée au
+      // compte rendu, réduite et compressée.
+      console.warn('Téléversement refusé, image intégrée au CR', err);
+      try { img.src = await imageFileToDataUrl(fichier); } catch (err2) {
+        console.error(err2);
+        attente.remove();
+        toast('Image illisible, non ajoutée', true);
+        return;
+      }
     }
+    attente.replaceWith(img);
   }
 
   function afficherPj(col) {

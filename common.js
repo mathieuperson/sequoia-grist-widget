@@ -927,6 +927,39 @@ function cleanPastedHtml(html) {
   return { html: tmp.innerHTML, imagesPerdues };
 }
 
+// Collage dans un éditeur de compte rendu (CRM et Espace). Le texte, mis en
+// forme ou non, l'emporte : Word, Outlook ou un navigateur joignent souvent
+// une capture du passage copié, qu'il ne faut pas prendre pour une image.
+// Une image seule passe par `insertImage(file)`. Renvoie true si le collage
+// a été pris en charge (le contenu de l'éditeur a changé).
+async function handleCrPaste(e, insertImage) {
+  const cd = e.clipboardData;
+  if (!cd) return false;
+  const html = cd.getData('text/html');
+  const texte = cd.getData('text/plain');
+  const images = Array.from(cd.items || [])
+    .filter(it => it.kind === 'file' && it.type && it.type.startsWith('image/'))
+    .map(it => it.getAsFile()).filter(Boolean);
+  if (!html && !texte && !images.length) return false;
+  e.preventDefault();
+  if (html || texte) {
+    let fait = false;
+    if (html) {
+      try {
+        const { html: propre, imagesPerdues } = cleanPastedHtml(html);
+        fait = document.execCommand('insertHTML', false, propre);
+        if (fait && imagesPerdues && typeof toast === 'function') {
+          toast(imagesPerdues + ' image(s) du texte non reprise(s) — collez-les une par une', true);
+        }
+      } catch (err) { console.error(err); }
+    }
+    if (!fait && texte) document.execCommand('insertText', false, texte);
+    return true;
+  }
+  for (const f of images) await insertImage(f);
+  return true;
+}
+
 // Réduit une image (1400 px max) et la renvoie en data: URL, pour l'intégrer
 // au CR quand l'envoi en pièce jointe est refusé.
 function imageFileToDataUrl(file, maxSide) {

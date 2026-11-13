@@ -6,8 +6,8 @@
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-<link rel="stylesheet" href="./common.css?v=20261113">
-<script src="./common.js?v=20261113"></script>
+<link rel="stylesheet" href="./common.css?v=20261113b">
+<script src="./common.js?v=20261113b"></script>
 <style>
   /* ---------- Sidebar ---------- */
   .filter-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
@@ -3690,29 +3690,7 @@
     }
 
     editor.addEventListener('paste', async (e) => {
-      const cd = e.clipboardData;
-      if (!cd) return;
-      const html = cd.getData('text/html');
-      const texte = cd.getData('text/plain');
-      const images = Array.from(cd.items || [])
-        .filter(it => it.kind === 'file' && it.type && it.type.startsWith('image/'))
-        .map(it => it.getAsFile()).filter(Boolean);
-      e.preventDefault();
-
-      // Du texte (mis en forme ou non) l'emporte : Word, Outlook ou un
-      // navigateur joignent souvent une capture du passage copié, qu'il ne
-      // faut pas prendre pour une image à coller.
-      if (html) {
-        const { html: propre, imagesPerdues } = cleanPastedHtml(html);
-        document.execCommand('insertHTML', false, propre);
-        if (imagesPerdues) toast(imagesPerdues + ' image(s) du texte non reprise(s) — collez-les une par une', true);
-      } else if (texte) {
-        document.execCommand('insertText', false, texte);
-      } else if (images.length) {
-        for (const f of images) await collerImage(f);
-      } else {
-        return;
-      }
+      if (!(await handleCrPaste(e, collerImage))) return;
       saveCR(serializeCrForSave(editor));
     });
   }
