@@ -744,6 +744,7 @@ body {
 /* Marque où finissent les valeurs retenues, remontées en tête du panneau. */
 .ms-option.ms-first-unselected { border-top: 1px solid var(--border); margin-top: 4px; padding-top: 7px; }
 .ms-option input { margin: 0; }
+.ms-create { display: block; width: 100%; margin-top: 6px; padding: 6px 8px; border: 1px dashed var(--sequoia-green, #1f6b45); border-radius: 6px; background: transparent; color: var(--sequoia-green, #1f6b45); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
 .ms-empty { font-size: 12.5px; color: var(--text-muted); padding: 6px 4px; }
 
 /* ---------- Avancement dans un pipeline (statusProgressMarkup) ----------
