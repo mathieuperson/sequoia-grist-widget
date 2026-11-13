@@ -6,8 +6,8 @@
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-<link rel="stylesheet" href="./common.css?v=20261113c">
-<script src="./common.js?v=20261113c"></script>
+<link rel="stylesheet" href="./common.css?v=20261113d">
+<script src="./common.js?v=20261113d"></script>
 <style>
   /* ---------- Sidebar ---------- */
   .filter-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
@@ -2579,14 +2579,23 @@
       });
 
       const input = container.querySelector('.ref-input');
-      function tryAdd() {
+      function tryAdd(allowNew) {
         const val = input.value.trim();
         if (!val) return;
-        const match = options.find(o => o.toLowerCase() === val.toLowerCase());
+        let match = options.find(o => o.toLowerCase() === val.toLowerCase());
         if (!match) {
-          input.classList.add('ref-input-error');
-          setTimeout(() => input.classList.remove('ref-input-error'), 900);
-          return;
+          // Nouvelle modalité (seulement validée par Entrée, pas en quittant
+          // le champ) : ajoutée aux choix de la colonne Grist.
+          if (!allowNew) {
+            input.classList.add('ref-input-error');
+            setTimeout(() => input.classList.remove('ref-input-error'), 900);
+            return;
+          }
+          match = val;
+          options.push(val);
+          addChoicesToColumn(tableId, colId, [val]).then(ok => {
+            if (!ok) toast('« ' + val + ' » enregistré, mais pas ajouté à la liste des choix', true);
+          });
         }
         if (values.includes(match)) { input.value = ''; return; }
         if (single) values = [match]; else values.push(match);
@@ -2594,8 +2603,8 @@
         paint();
         onChange([...values]);
       }
-      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); tryAdd(); } });
-      input.addEventListener('change', tryAdd); // fires when picking a datalist suggestion
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); tryAdd(true); } });
+      input.addEventListener('change', () => tryAdd(false)); // fires when picking a datalist suggestion
     }
 
     paint();

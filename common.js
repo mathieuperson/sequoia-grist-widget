@@ -498,6 +498,37 @@ async function fetchColumnChoices(tableId, colId) {
   }
 }
 
+// Ajoute des modalités à la liste des choix d'une colonne Choice / ChoiceList
+// (« Modifier les choix » dans Grist), en gardant couleurs et réglages. Sans
+// cela la valeur serait enregistrée mais signalée comme invalide. Rend true si
+// la colonne a été mise à jour ; false (droits insuffisants…) laisse la valeur
+// enregistrée telle quelle.
+async function addChoicesToColumn(tableId, colId, nouveaux) {
+  const ajout = (nouveaux || []).map(v => String(v).trim()).filter(Boolean);
+  if (!tableId || !colId || !ajout.length) return false;
+  try {
+    const { token, baseUrl } = await grist.docApi.getAccessToken({ readOnly: true });
+    const res = await fetch(`${baseUrl}/tables/${encodeURIComponent(tableId)}/columns?auth=${encodeURIComponent(token)}`);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const col = ((await res.json()).columns || []).find(c => c.id === colId);
+    if (!col || !/^Choice/.test((col.fields && col.fields.type) || '')) return false;
+    let wo = col.fields.widgetOptions;
+    if (typeof wo === 'string') { try { wo = JSON.parse(wo); } catch (err) { wo = {}; } }
+    wo = wo || {};
+    const choix = Array.isArray(wo.choices) ? wo.choices.slice() : [];
+    const manquants = ajout.filter(v => !choix.includes(v));
+    if (!manquants.length) return true;
+    wo.choices = choix.concat(manquants);
+    await grist.docApi.applyUserActions([['ModifyColumn', tableId, colId, { widgetOptions: JSON.stringify(wo) }]]);
+    delete _choicesCache[tableId + '::' + colId];
+    if (typeof _colMetaCache !== 'undefined') delete _colMetaCache[tableId];
+    return true;
+  } catch (err) {
+    console.error('addChoicesToColumn failed for', tableId, colId, err);
+    return false;
+  }
+}
+
 // Column metadata (id, type, label, isFormula) of a table, from the REST
 // /columns endpoint. A reference column's type carries its target table:
 // "Ref:Structures", "RefList:Contacts". isFormula distinguishes a computed
@@ -1071,7 +1102,7 @@ function createMultiSelect(root, conf) {
   // Choice simple et non une ChoiceList — proposer d'en cocher trois pour n'en
   // écrire qu'une ferait mentir le formulaire.
   const opts = Object.assign(
-    { values: [], selected: [], labelAll: 'Tous', onChange: null, single: false }, conf || {});
+    { values: [], selected: [], labelAll: 'Tous', onChange: null, single: false, onCreate: null }, conf || {});
   if (!root) return { setOptions() {}, getSelected: () => [], setSelected() {}, close() {} };
   let values = opts.values.slice();
   let selected = opts.single ? opts.selected.slice(0, 1) : opts.selected.slice();
@@ -1128,10 +1159,45 @@ function createMultiSelect(root, conf) {
     });
   }
 
+  // `onCreate(valeur)` permet de saisir une modalité absente de la liste :
+  // un bouton « + Ajouter » apparaît quand la recherche ne trouve pas de
+  // valeur identique.
+  let createBtn = null;
+  if (opts.onCreate) {
+    createBtn = document.createElement('button');
+    createBtn.type = 'button';
+    createBtn.className = 'ms-create';
+    createBtn.hidden = true;
+    optionsEl.after(createBtn);
+    createBtn.addEventListener('click', () => creer());
+  }
+  function aCreer() {
+    const v = search.value.trim();
+    if (!v || values.some(x => x.toLowerCase() === v.toLowerCase())) return '';
+    return v;
+  }
+  function majCreate() {
+    if (!createBtn) return;
+    const v = aCreer();
+    createBtn.hidden = !v;
+    createBtn.textContent = '+ Ajouter « ' + v + ' »';
+  }
+  function creer() {
+    const v = aCreer();
+    if (!v) return;
+    values.push(v);
+    selected = opts.single ? [v] : selected.concat(v);
+    search.value = '';
+    renderOptions(); filterOptionRows(''); updateButton(); majCreate();
+    opts.onCreate(v);
+    if (opts.onChange) opts.onChange(selected.slice());
+  }
+
   function filterOptionRows(q) {
     optionsEl.querySelectorAll('.ms-option').forEach(l => {
       l.hidden = !!q && !l.textContent.toLowerCase().includes(q);
     });
+    majCreate();
   }
 
   btn.addEventListener('click', (e) => {
@@ -1145,6 +1211,9 @@ function createMultiSelect(root, conf) {
   });
   panel.addEventListener('click', (e) => e.stopPropagation());
   search.addEventListener('input', () => filterOptionRows(search.value.trim().toLowerCase()));
+  search.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); if (createBtn) creer(); }
+  });
 
   // "Tout cocher" ne porte que sur les valeurs visibles : combiné à la
   // recherche, c'est ce qui permet de cocher un sous-ensemble d'un coup.
