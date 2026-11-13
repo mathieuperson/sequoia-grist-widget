@@ -3449,6 +3449,32 @@
       .sort((a, b) => a.label.localeCompare(b.label, 'fr'));
   }
 
+  // Une colonne « Laboratoire(s) Cluster » ne propose que des laboratoires,
+  // « Équipe(s) Cluster » que des équipes, « Établissement(s) Cluster » que
+  // des établissements — même règle que l'Espace. Si aucune structure n'a ce
+  // rôle, la liste entière plutôt qu'un champ vide.
+  function filtreRoleStructure(colId, label) {
+    const k = normalizeKey(colId + ' ' + (label || ''));
+    const role = (s) => normalizeKey(structField(s, 'RechercheStructure'));
+    const estEquipe = (s) => !!(String(structField(s, 'RechercheEquipeLabo') || '').trim() ||
+      String(structField(s, 'RechercheEquipeActivite') || '').trim());
+    if (k.includes('labo')) return (s) => role(s).includes('laboratoire');
+    if (k.includes('equipe')) return (s) => role(s).includes('equipe') || estEquipe(s);
+    if (k.includes('etablissement')) return (s) =>
+      normalizeKey(structField(s, 'TypeActeur')).includes('academique') ||
+      role(s) === 'institut' || role(s).includes('etablissement');
+    return null;
+  }
+
+  function structurePickerOptionsForCol(r, colId) {
+    const filtre = filtreRoleStructure(colId, r.colLabels && r.colLabels[colId]);
+    const gardes = filtre ? structures.filter(filtre) : [];
+    if (!gardes.length) return structurePickerOptions();
+    return gardes
+      .map(s => ({ id: s.id, label: structField(s, 'Nom') || 'Sans nom' }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'fr'));
+  }
+
   // Une interaction/opportunité peut référencer une structure par d'autres
   // colonnes que la principale (Etablissement Cluster, Laboratoire Cluster,
   // Equipe Cluster…) — déjà prises en compte pour l'affichage sur la fiche
@@ -3472,7 +3498,7 @@
     const r = rel(relKey);
     const getters = {};
     (r.extraEditableLinkCols || []).forEach(colId => {
-      getters[colId] = mountRefPicker(extraStructureFieldId(colId), structurePickerOptions(), record, tableId, colId, isNew, null, structureChip, onChips);
+      getters[colId] = mountRefPicker(extraStructureFieldId(colId), structurePickerOptionsForCol(r, colId), record, tableId, colId, isNew, null, structureChip, onChips);
     });
     return getters;
   }
@@ -3542,7 +3568,7 @@
           chips.map((c, idx) => '<span class="ref-chip">' + escapeHtml(c.label) +
             '<button type="button" data-i="' + idx + '" title="Retirer">✕</button></span>').join('') +
         '</div>' +
-        '<input class="editable-input ref-input" list="' + datalistId + '" placeholder="Ajouter un contact… (Entrée)">' +
+        '<input class="editable-input ref-input" list="' + datalistId + '" placeholder="Rechercher… (Entrée)">' +
         '<datalist id="' + datalistId + '">' +
           options.filter(o => !chips.some(c => c.id === o.id))
             .map(o => '<option value="' + escapeHtml(o.label) + '">').join('') +
