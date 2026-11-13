@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Espace SequoIA — Cluster SequoIA</title>
-<link rel="stylesheet" href="./common.css?v=20261113b">
+<link rel="stylesheet" href="./common.css?v=20261113c">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-<script src="./common.js?v=20261113b"></script>
-<script src="./pilotage.js?v=20261113b"></script>
-<script src="./espace.js?v=20261113b"></script>
-<script src="./finance.js?v=20261113b"></script>
+<script src="./common.js?v=20261113c"></script>
+<script src="./pilotage.js?v=20261113c"></script>
+<script src="./espace.js?v=20261113c"></script>
+<script src="./finance.js?v=20261113c"></script>
 <script src="./vendor/read-excel-file-5.8.8.min.js"></script>
 <style>
 /* Une application à onglets, dans la charte de common.css : fond gris
@@ -1913,7 +1913,10 @@ table.es-table { width: 100%; border-collapse: collapse; font-size: 13px; }
     const type = (s) => normalizeKey(s.type);
     if (k.includes('labo')) return (s) => s.roleRecherche.includes('laboratoire');
     if (k.includes('equipe')) return (s) => s.roleRecherche.includes('equipe') || s.isTeam;
-    if (k.includes('etablissement')) return (s) => type(s).includes('academique') || s.roleRecherche === 'institut' || s.roleRecherche.includes('etablissement');
+    // Établissements du cluster = membres du consortium (Catégorie).
+    if (k.includes('etablissement')) return D.structures.some(s => normalizeKey(s.categorie).includes('consortium'))
+      ? (s) => normalizeKey(s.categorie).includes('consortium')
+      : (s) => type(s).includes('academique') || s.roleRecherche === 'institut' || s.roleRecherche.includes('etablissement');
     return null;
   }
 

@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Pilotage Partenariats &amp; Innovation — Cluster SequoIA</title>
-<link rel="stylesheet" href="./common.css?v=20261113b">
+<link rel="stylesheet" href="./common.css?v=20261113c">
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
-<script src="./common.js?v=20261113b"></script>
-<script src="./pilotage.js?v=20261113b"></script>
+<script src="./common.js?v=20261113c"></script>
+<script src="./pilotage.js?v=20261113c"></script>
 <style>
 /* Charte alignée sur common.css (vert #1f6b3f, fond #f4f6f5, police
    système). Seules les valeurs absentes de common.css sont ajoutées ici,
@@ -2899,12 +2899,14 @@ body { overflow: hidden; }
   function getStructuresForForm(role) {
     const roleOf = (s) => normalizeKey(formatValue(sField(s, 'RechercheStructure')));
     const typeOf = (s) => normalizeKey(formatValue(sField(s, 'TypeActeur')));
+    const estConsortium = (s) => normalizeKey(formatValue(sField(s, 'Categorie'))).includes('consortium');
     const matches = {
       // Un établissement du Cluster est un acteur académique, ou un acteur de
       // recherche dont la structure est un institut. Une liste vide dit alors
       // qu'aucune structure n'est typée ainsi — c'est une information, pas un
       // champ à remplir de tout le reste.
-      etablissement: (s) => typeOf(s).includes('academique') ||
+      // Les membres du consortium (Catégorie) quand le document les marque.
+      etablissement: structures.some(estConsortium) ? estConsortium : (s) => typeOf(s).includes('academique') ||
         (typeOf(s).includes('recherche') && roleOf(s) === 'institut'),
       laboratoire: (s) => roleOf(s).includes('laboratoire'),
       // Une équipe se reconnaît aussi à son activité, comme dans isTeam().

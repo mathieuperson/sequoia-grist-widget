@@ -6,8 +6,8 @@
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-<link rel="stylesheet" href="./common.css?v=20261113b">
-<script src="./common.js?v=20261113b"></script>
+<link rel="stylesheet" href="./common.css?v=20261113c">
+<script src="./common.js?v=20261113c"></script>
 <style>
   /* ---------- Sidebar ---------- */
   .filter-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
@@ -3460,15 +3460,28 @@
       String(structField(s, 'RechercheEquipeActivite') || '').trim());
     if (k.includes('labo')) return (s) => role(s).includes('laboratoire');
     if (k.includes('equipe')) return (s) => role(s).includes('equipe') || estEquipe(s);
+    // Établissements du cluster = membres du consortium (Catégorie).
     if (k.includes('etablissement')) return (s) =>
-      normalizeKey(structField(s, 'TypeActeur')).includes('academique') ||
-      role(s) === 'institut' || role(s).includes('etablissement');
+      normalizeKey(structField(s, 'Categorie')).includes('consortium');
+    return null;
+  }
+
+  // Repli si aucune structure n'a le rôle exact : les acteurs « Recherche »
+  // pour un labo / une équipe, « Académique » pour un établissement.
+  function repliRoleStructure(colId, label) {
+    const k = normalizeKey(colId + ' ' + (label || ''));
+    const type = (s) => normalizeKey(structField(s, 'TypeActeur'));
+    if (k.includes('labo') || k.includes('equipe')) return (s) => type(s).includes('recherche');
+    if (k.includes('etablissement')) return (s) => type(s).includes('academique');
     return null;
   }
 
   function structurePickerOptionsForCol(r, colId) {
-    const filtre = filtreRoleStructure(colId, r.colLabels && r.colLabels[colId]);
-    const gardes = filtre ? structures.filter(filtre) : [];
+    const label = r.colLabels && r.colLabels[colId];
+    const filtre = filtreRoleStructure(colId, label);
+    let gardes = filtre ? structures.filter(filtre) : [];
+    const repli = repliRoleStructure(colId, label);
+    if (!gardes.length && repli) gardes = structures.filter(repli);
     if (!gardes.length) return structurePickerOptions();
     return gardes
       .map(s => ({ id: s.id, label: structField(s, 'Nom') || 'Sans nom' }))
@@ -3497,9 +3510,26 @@
   function mountExtraStructureLinks(relKey, record, tableId, isNew, onChips) {
     const r = rel(relKey);
     const getters = {};
+    const roleCol = (mot) => (r.extraEditableLinkCols || []).find(c =>
+      normalizeKey(c + ' ' + (r.colLabels[c] || '')).includes(mot));
+    const colLabo = roleCol('labo');
+    const colEquipe = roleCol('equipe');
+    // Choisir un laboratoire restreint les équipes proposées aux siennes
+    // (colonne « Laboratoire » de l'équipe) ; sans correspondance, toutes.
+    const filtrerEquipes = () => {
+      if (!colLabo || !colEquipe || !getters[colLabo] || !getters[colEquipe]) return;
+      const toutes = structurePickerOptionsForCol(r, colEquipe);
+      const labos = getters[colLabo]().map(c => normalizeKey(c.label));
+      if (!labos.length) { getters[colEquipe].setOptions(toutes); return; }
+      const parId = new Map(structures.map(s => [s.id, s]));
+      const filtrees = toutes.filter(o => labos.includes(normalizeKey(structField(parId.get(o.id), 'RechercheEquipeLabo'))));
+      getters[colEquipe].setOptions(filtrees.length ? filtrees : toutes);
+    };
     (r.extraEditableLinkCols || []).forEach(colId => {
-      getters[colId] = mountRefPicker(extraStructureFieldId(colId), structurePickerOptionsForCol(r, colId), record, tableId, colId, isNew, null, structureChip, onChips);
+      getters[colId] = mountRefPicker(extraStructureFieldId(colId), structurePickerOptionsForCol(r, colId), record, tableId, colId, isNew, null, structureChip,
+        (next) => { if (colId === colLabo) filtrerEquipes(); if (onChips) onChips(next); });
     });
+    filtrerEquipes();
     return getters;
   }
 
