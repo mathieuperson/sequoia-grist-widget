@@ -899,6 +899,58 @@ function serializeCrForSave(container) {
     : tmp.innerHTML;
 }
 
+// Nettoie du HTML collé (Word, Outlook, pages web) : garde la structure et
+// la mise en forme de base, jette styles, classes et commentaires Office.
+// Les images que le navigateur ne peut pas lire (file:, cid:, blob:) sont
+// retirées et comptées ; celles en data: ou http(s) sont gardées.
+const PASTE_ALLOWED_TAGS = ['p', 'br', 'div', 'span', 'b', 'strong', 'i', 'em', 'u', 's',
+  'h1', 'h2', 'h3', 'h4', 'ul', 'ol', 'li', 'a', 'blockquote', 'pre', 'code',
+  'table', 'thead', 'tbody', 'tr', 'td', 'th', 'img', 'hr', 'sub', 'sup'];
+
+function cleanPastedHtml(html) {
+  const sansOffice = String(html || '')
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<\/?o:p[^>]*>/gi, '');
+  const clean = typeof DOMPurify !== 'undefined'
+    ? DOMPurify.sanitize(sansOffice, { ALLOWED_TAGS: PASTE_ALLOWED_TAGS,
+        ALLOWED_ATTR: ['href', 'src', 'alt', 'colspan', 'rowspan'] })
+    : escapeHtml(sansOffice.replace(/<[^>]+>/g, ''));
+  const tmp = document.createElement('div');
+  tmp.innerHTML = clean;
+  let imagesPerdues = 0;
+  tmp.querySelectorAll('img').forEach(img => {
+    const src = img.getAttribute('src') || '';
+    if (!/^(data:image\/|https?:)/i.test(src)) { img.remove(); imagesPerdues++; }
+  });
+  // Les <span> sans attribut ne portent plus rien une fois le style retiré.
+  tmp.querySelectorAll('span').forEach(sp => sp.replaceWith(...sp.childNodes));
+  return { html: tmp.innerHTML, imagesPerdues };
+}
+
+// Réduit une image (1400 px max) et la renvoie en data: URL, pour l'intégrer
+// au CR quand l'envoi en pièce jointe est refusé.
+function imageFileToDataUrl(file, maxSide) {
+  const max = maxSide || 1400;
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.width, img.height));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.width * k);
+      canvas.height = Math.round(img.height * k);
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      URL.revokeObjectURL(url);
+      resolve(canvas.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image illisible')); };
+    img.src = url;
+  });
+}
+
 async function resolveImagesIn(container) {
   const imgs = container.querySelectorAll('img[data-att-id]');
   for (const img of imgs) {

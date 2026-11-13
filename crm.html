@@ -6,8 +6,8 @@
 <script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
-<link rel="stylesheet" href="./common.css?v=20260929">
-<script src="./common.js?v=20260929"></script>
+<link rel="stylesheet" href="./common.css?v=20261113">
+<script src="./common.js?v=20261113"></script>
 <style>
   /* ---------- Sidebar ---------- */
   .filter-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
@@ -3619,41 +3619,75 @@
       });
     });
 
-    editor.addEventListener('paste', async (e) => {
-      const items = e.clipboardData && e.clipboardData.items;
-      if (!items) return;
-      for (const item of items) {
-        if (item.type && item.type.startsWith('image/')) {
-          e.preventDefault();
-          const placeholder = document.createElement('span');
-          placeholder.textContent = 'Téléversement de l’image…';
-          placeholder.style.color = 'var(--text-muted)';
-          const sel = window.getSelection();
-          if (sel && sel.rangeCount) {
-            const range = sel.getRangeAt(0);
-            range.deleteContents();
-            range.insertNode(placeholder);
-            range.collapse(false);
-          } else {
-            editor.appendChild(placeholder);
-          }
-          try {
-            const [attId] = await uploadAttachments([item.getAsFile()]);
-            const img = document.createElement('img');
-            img.setAttribute('data-att-id', attId);
-            img.src = await getAttachmentDownloadUrl(attId);
-            placeholder.replaceWith(img);
-          } catch (err) {
-            // Dire pourquoi : « échec » seul n'aide ni l'utilisateur ni moi.
-            placeholder.textContent = 'Image non téléversée — ' +
-              (err && err.message ? err.message : 'raison inconnue');
-            console.error(err);
-            toast(err && err.message ? err.message : 'Téléversement impossible', true);
-          }
-          saveCR(serializeCrForSave(editor));
+    // Insère un noeud là où se trouve le curseur (ou à la fin).
+    const insererAuCurseur = (node) => {
+      const sel = window.getSelection();
+      if (sel && sel.rangeCount && editor.contains(sel.anchorNode)) {
+        const range = sel.getRangeAt(0);
+        range.deleteContents();
+        range.insertNode(node);
+        range.setStartAfter(node);
+        range.collapse(true);
+        sel.removeAllRanges();
+        sel.addRange(range);
+      } else {
+        editor.appendChild(node);
+      }
+    };
+
+    // Une image collée : envoyée en pièce jointe Grist si le serveur
+    // l'accepte, sinon intégrée directement dans le CR (réduite et compressée)
+    // — le serveur DINUM refuse souvent l'envoi de fichiers depuis un widget.
+    async function collerImage(file) {
+      const placeholder = document.createElement('span');
+      placeholder.textContent = 'Ajout de l’image…';
+      placeholder.style.color = 'var(--text-muted)';
+      insererAuCurseur(placeholder);
+      const img = document.createElement('img');
+      try {
+        const [attId] = await uploadAttachments([file]);
+        img.setAttribute('data-att-id', attId);
+        img.src = await getAttachmentDownloadUrl(attId);
+      } catch (err) {
+        console.warn('Téléversement refusé, image intégrée au CR', err);
+        try {
+          img.src = await imageFileToDataUrl(file);
+        } catch (err2) {
+          console.error(err2);
+          placeholder.textContent = '';
+          placeholder.remove();
+          toast('Image illisible, non ajoutée', true);
           return;
         }
       }
+      placeholder.replaceWith(img);
+    }
+
+    editor.addEventListener('paste', async (e) => {
+      const cd = e.clipboardData;
+      if (!cd) return;
+      const html = cd.getData('text/html');
+      const texte = cd.getData('text/plain');
+      const images = Array.from(cd.items || [])
+        .filter(it => it.kind === 'file' && it.type && it.type.startsWith('image/'))
+        .map(it => it.getAsFile()).filter(Boolean);
+      e.preventDefault();
+
+      // Du texte (mis en forme ou non) l'emporte : Word, Outlook ou un
+      // navigateur joignent souvent une capture du passage copié, qu'il ne
+      // faut pas prendre pour une image à coller.
+      if (html) {
+        const { html: propre, imagesPerdues } = cleanPastedHtml(html);
+        document.execCommand('insertHTML', false, propre);
+        if (imagesPerdues) toast(imagesPerdues + ' image(s) du texte non reprise(s) — collez-les une par une', true);
+      } else if (texte) {
+        document.execCommand('insertText', false, texte);
+      } else if (images.length) {
+        for (const f of images) await collerImage(f);
+      } else {
+        return;
+      }
+      saveCR(serializeCrForSave(editor));
     });
   }
 
