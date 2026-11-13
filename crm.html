@@ -2891,11 +2891,13 @@
             }, { single: !isListCol(r, colId) });
         });
 
-      // Ajouter un partenaire rend aussitôt ses contacts taguables.
-      const structuresChoisies = () => new Set([s.id,
-        ...getPartenaires().map(c => c.id),
-        ...Object.values(getExtraLinks).flatMap(g => g().map(c => c.id))]);
-      const rafraichir = () => getContacts.setOptions(contactOptionsForStructures(structuresChoisies()));
+      // Ajouter un partenaire (ou une structure cluster) filtre aussitôt les
+      // contacts proposés dans le champ correspondant.
+      const rafraichir = () => {
+        if (!getClusterContacts) return;
+        filtrerContacts(s, getPartenaires, getExtraLinks, getContacts, getClusterContacts);
+      };
+      let getClusterContacts = null;
       const getPartenaires = mountRefPicker('m-ref-partenaires',
         structurePickerOptions(), o, r.tableId, cols.Partenaires, isNew,
         [{ id: s.id, label: structField(s, 'Nom') || 'Sans nom' }], structureChip, rafraichir);
@@ -2903,9 +2905,10 @@
       const getContacts = mountRefPicker('m-ref-contacts',
         contactOptionsForRecord('opportunites', o, s.id), o, r.tableId, cols.ContactPartenaire, isNew,
         null, contactChip);
-      const getClusterContacts = mountRefPicker('m-ref-contacts-cluster',
+      getClusterContacts = mountRefPicker('m-ref-contacts-cluster',
         contactPickerOptions(s.id, 'all'), o, r.tableId, cols.ContactCluster, isNew,
         null, contactChip);
+      rafraichir();
 
       if (isNew) {
         document.getElementById('m-sujet').focus();
@@ -3056,10 +3059,11 @@
         ...getPartenaires().map(c => c.id),
         ...Object.values(getExtraLinks).flatMap(g => g().map(c => c.id))]);
       const rafraichir = () => {
-        const ids = structuresChoisies();
-        getContacts.setOptions(contactOptionsForStructures(ids));
-        getOpportunites.setOptions(opportuniteOptionsForStructures(ids));
+        if (!getOpportunites) return;
+        filtrerContacts(s, getPartenaires, getExtraLinks, getContacts, getClusterContacts);
+        getOpportunites.setOptions(opportuniteOptionsForStructures(structuresChoisies()));
       };
+      let getOpportunites = null;
       const getPartenaires = mountRefPicker('m-ref-partenaires',
         structurePickerOptions(), i, r.tableId, cols.Partenaires, isNew,
         [{ id: s.id, label: structField(s, 'Nom') || 'Sans nom' }], structureChip, rafraichir);
@@ -3070,9 +3074,10 @@
       const getClusterContacts = mountRefPicker('m-ref-contacts-cluster',
         contactPickerOptions(s.id, 'all'), i, r.tableId, cols.ContactCluster, isNew,
         null, contactChip);
-      const getOpportunites = mountRefPicker('m-ref-opportunites',
+      getOpportunites = mountRefPicker('m-ref-opportunites',
         opportunitePickerOptions(i, s.id), i, r.tableId, cols.Opportunites, isNew,
         null, opportuniteChip);
+      rafraichir();
 
       if (isNew) {
         document.getElementById('m-objet').focus();
@@ -3363,6 +3368,20 @@
       options.push({ id: c.id, label: contactName(c) });
     }));
     return options.sort((a, b) => a.label.localeCompare(b.label, 'fr'));
+  }
+
+  // Contacts partenaire : ceux des structures du champ Partenaire(s) (la
+  // fiche ouverte si le champ est vide). Contacts cluster : ceux des
+  // établissements / laboratoires / équipes cluster choisis, ou tous tant
+  // qu'aucun n'est renseigné. Les pastilles déjà posées restent proposées.
+  function filtrerContacts(s, getPartenaires, getExtraLinks, getContacts, getClusterContacts) {
+    const partenaires = new Set(getPartenaires().map(c => c.id));
+    if (!partenaires.size) partenaires.add(s.id);
+    getContacts.setOptions(contactOptionsForStructures(partenaires));
+    const cluster = new Set(Object.values(getExtraLinks).flatMap(g => g().map(c => c.id)));
+    getClusterContacts.setOptions(cluster.size
+      ? contactOptionsForStructures(cluster)
+      : contactPickerOptions(null, 'all'));
   }
 
   // Etiquette d'un contact / d'une structure par son identifiant, pour les
